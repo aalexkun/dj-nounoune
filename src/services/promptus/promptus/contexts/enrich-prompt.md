@@ -1,0 +1,190 @@
+Help the users enrich the following Pipe Separated Value file. This contains the information ( first row are the header ) of a music library artists, albums, songs. 
+
+For each of the provided line,  
+Add an artist short_intro ( 50 words ) and a artist biography. Add any missing tags and information. 
+Normalize the genre using the following list. 
+
+# Genre to use
+
+When looking at the genres, remap into the following list for the best match. 
+
+Here is the expanded list of **150 musical genres and sub-genres**, incorporating the specific regional styles (Thai, Japanese, Korean, Chinese/Taiwanese, Québécois, French) directly into their relevant musical families.
+
+### **Pop & Regional Pop**
+
+1. **Synth-Pop:** Pop music dominated by synthesizers and electronic textures.
+2. **J-Pop (Japanese Pop):** Mainstream pop from Japan, ranging from idols to singer-songwriters.
+3. **K-Pop (Korean Pop):** High-concept, choreographed pop music from South Korea.
+4. **Mandopop:** Mandarin-language pop music (dominant in China and Taiwan).
+5. **Cantopop:** Cantonese-language pop music (Hong Kong/Southern China).
+6. **Hokkien Pop (Tai-Pop):** Pop music sung in Taiwanese Hokkien, often with distinct ballads.
+7. **T-Pop (Thai Pop):** Contemporary pop music from Thailand.
+8. **String Pop:** A specific style of Thai pop from the 90s/00s broadly appealing to youth.
+9. **City Pop:** Sophisticated, funk-influenced Japanese pop from the 1980s.
+10. **Shibuya-kei:** A stylish Japanese micro-genre blending 60s pop, bossa nova, and jazz.
+11. **Variété Française:** Mainstream French pop focusing on catchy melodies.
+12. **Chanson Française:** Lyrical, text-driven French songs (e.g., Edith Piaf, Jacques Brel).
+13. **Yé-yé:** 1960s French pop music inspired by American rock and roll.
+14. **Kayōkyoku:** Standard Japanese pop from the Showa era (pre-J-Pop).
+15. **K-Ballad:** Sentimental, vocal-focused ballads popular in Korean dramas.
+16. **Dream Pop:** Atmospheric textures and breathy vocals.
+17. **Bubblegum Pop:** Upbeat, catchy music marketed to pre-teens.
+18. **Indie Pop:** Melodic pop distributed by independent labels.
+19. **Art Pop:** Pop with avant-garde or artistic aspirations.
+20. **Sophisti-Pop:** Jazz/Soul-influenced pop (e.g., Sade).
+
+### **Rock, Punk & Metal**
+
+21. **Classic Rock:** The foundational rock style from the 60s and 70s.
+22. **J-Rock:** Japanese rock, often featuring faster tempos and technical proficiency.
+23. **Visual Kei:** Japanese rock characterized by elaborate makeup, costumes, and glam aesthetics.
+24. **Kawaii Metal:** A fusion of heavy metal and J-Pop idol music (e.g., Babymetal).
+25. **Rock Québécois:** Rock from Quebec, strongly tied to cultural identity (e.g., Les Colocs).
+26. **French Rock:** Rock sung in French, often blending Anglo sounds with chanson.
+27. **Chinese Rock (Yaogun):** Rock music from mainland China, often with rebellious themes.
+28. **Mandorock:** Rock music from the Mandarin-speaking world (Taiwan/China).
+29. **Phleng Phuea Chiwit:** "Songs for Life"—Thai folk-rock focused on social and political issues.
+30. **Punk Rock:** Fast, aggressive, and anti-establishment.
+31. **Post-Punk:** Experimental rock emerging from the punk movement.
+32. **Heavy Metal:** Aggressive vocals, distorted guitars, and loud volume.
+33. **Nu Metal:** Fuses heavy metal with hip hop, grunge, and industrial.
+34. **Black Metal:** Atmospheric, extreme metal (with scenes in Norway, Taiwan, etc.).
+35. **Death Metal:** Extreme metal with growled vocals and complex structures.
+36. **Power Metal:** Fast, melodic metal with fantasy themes.
+37. **Symphonic Metal:** Metal combined with orchestral elements.
+38. **Folk Metal:** Metal incorporating traditional folk instruments.
+39. **Shoegaze:** Ethereal vocals buried under walls of distorted guitar.
+40. **Math Rock:** Complex rhythms and odd time signatures (very popular in Japan/Taiwan).
+41. **Grunge:** Sludgy guitar and angst-filled lyrics (Seattle sound).
+42. **Indie Rock:** DIY ethos and diverse sounds.
+43. **Post-Hardcore:** Aggressive punk with more complex expression and dynamics.
+44. **Emo:** Emotional, confessional lyrics mixed with melodic hardcore.
+45. **Pop Punk:** Punk energy with catchy pop melodies.
+46. **Surf Rock:** Reverb-heavy guitar music evoking surf culture.
+47. **Garage Rock:** Raw, energetic rock often produced in lo-fi conditions.
+48. **Gothic Rock:** Dark, atmospheric rock with romantic/melancholic themes.
+49. **Industrial Rock:** Rock music fusing mechanical, industrial noises.
+50. **Psychobilly:** A mix of punk rock and rockabilly.
+
+### **Electronic & Dance**
+
+51. **House:** 4/4 beats and soulful vocals (Chicago roots).
+52. **Deep House:** Slower, jazz/funk-influenced house music.
+53. **Tech House:** A fusion of the minimal structure of techno with the groove of house.
+54. **Acid House:** Defined by the "squelching" sound of the Roland TB-303.
+55. **Techno:** Repetitive, mechanical, and futuristic (Detroit roots).
+56. **French Touch:** French house music using heavy filter effects and disco samples.
+57. **Trance:** Melodic, repetitive, and building to emotional peaks.
+58. **Psytrance:** High-tempo trance with psychedelic arrangements.
+59. **Dubstep:** Focus on sub-bass frequencies and syncopated rhythms.
+60. **Drum and Bass (DnB):** Fast breakbeats (170+ BPM) and heavy basslines.
+61. **Liquid DnB:** A melodic, soulful sub-genre of Drum and Bass.
+62. **Synthwave:** Retro-futuristic style inspired by 80s soundtracks.
+63. **Eurodance:** High-energy dance music popular in Europe.
+64. **Eurobeat:** High-BPM dance music, extremely popular in Japan (Initial D).
+65. **J-Core:** Japanese hardcore techno, often fast and chaotic.
+66. **Vaporwave:** Irony-laden sampling of 80s smooth jazz and commercial music.
+67. **Ambient:** Focuses on tone and atmosphere over rhythm.
+68. **IDM (Intelligent Dance Music):** Complex, experimental electronic music.
+69. **Hardstyle:** Hard-hitting electronic music with distorted kick drums.
+70. **Gabber:** Aggressive, high-speed hardcore techno (Rotterdam).
+71. **Happy Hardcore:** Very fast, upbeat dance music with high-pitched vocals.
+72. **Future Bass:** Heavy basslines with detuned synthesizers and pop melodies.
+73. **Electro Swing:** Vintage swing samples combined with modern house beats.
+74. **Trip-Hop:** Slow, atmospheric breakbeats (Bristol sound).
+75. **Downtempo:** Relaxed electronic music suitable for chilling.
+76. **Chillwave:** Faded, retro pop sounds with heavy processing.
+77. **UK Garage:** Syncopated 4/4 rhythms and chopped vocal samples.
+78. **2-Step:** A sub-genre of UK Garage with irregular rhythms.
+79. **Glitch Hop:** Hip hop beats featuring digital "glitch" aesthetic artifacts.
+80. **Tropical House:** Slow, relaxed house with Caribbean instrumentation (flutes, marimbas).
+
+### **Hip Hop, R&B & Soul**
+
+81. **Boom Bap:** Hard-hitting drums and sample-based loops.
+82. **Trap:** Heavy 808 bass, rapid hi-hats, and dark atmospheres.
+83. **French Rap (Rap Français):** Distinctive for its poetic and socially conscious lyricism.
+84. **Rap Québécois (Rap Queb):** Hip hop using local "joual" slang and cultural references.
+85. **K-Hip Hop:** Korean hip hop, known for melodic hooks and technical flow.
+86. **Cloud Rap:** Dreamy, lo-fi beats with abstract lyrics.
+87. **Drill:** Dark, violent lyrical themes with sliding basslines (Chicago/UK).
+88. **Phonk:** Gritty, lo-fi hip hop influenced by 90s Memphis rap.
+89. **Jazz Rap:** Hip hop built on jazz samples and instrumentation.
+90. **Neo-Soul:** Blends contemporary R&B with 70s soul influences.
+91. **Motown:** Soulful, pop-influenced R&B from Detroit.
+92. **Funk:** Focus on strong rhythmic groove of bass and drums.
+93. **Disco:** Four-on-the-floor beats, strings, and dancefloor focus.
+94. **G-Funk:** Smooth, synthesizer-heavy West Coast hip hop.
+95. **Grime:** Fast, syncopated electronic rap from the UK.
+96. **Reggaeton:** Urban music blending hip hop with Latin rhythms.
+97. **Contemporary R&B:** Polished production mixing pop, soul, and hip hop.
+98. **New Jack Swing:** R&B fused with hip hop swing beats (late 80s/early 90s).
+99. **Old School Hip Hop:** The earliest rap music, focused on block parties.
+100. **Conscious Hip Hop:** Rap focused on social issues and political content.
+
+### **Folk, Country & Traditional Roots**
+
+101. **Americana:** A melting pot of American roots music styles.
+102. **Bluegrass:** Fast-paced acoustic music with banjo and fiddle.
+103. **Enka:** Sentimental Japanese ballads resembling traditional folk/blues.
+104. **Trot:** Korean pop/folk genre with a distinctive repetitive rhythm.
+105. **Luk Thung:** Thai country music, popular in rural areas, mixing poetic lyrics with slow tempos.
+106. **Mor Lam:** Fast-paced Lao/Thai folk music, often featuring the *khaen* (bamboo organ).
+107. **Musique Trad (Quebec):** Traditional Quebecois folk (fiddle, accordion, foot-tapping).
+108. **Chanson à répondre:** Call-and-response songs traditional in French Canada.
+109. **Néo-Trad (Quebec):** Modern blends of Quebec folklore with rock/electronic.
+110. **Minyo:** Traditional Japanese folk songs associated with specific regions.
+111. **Celtic:** Traditional folk music of Ireland, Scotland, and Wales.
+112. **Flamenco:** Passionate Spanish guitar music with singing and dance.
+113. **Zydeco:** Accordion-based dance music from Louisiana Creoles.
+114. **Cajun:** Traditional French-Louisiana folk music.
+115. **Old-Time:** Precursor to country/bluegrass, relying on fiddle and banjo.
+
+### **Jazz & Blues**
+
+116. **Swing:** Big band dance music.
+117. **Bebop:** Fast tempos and complex improvisation.
+118. **Cool Jazz:** Relaxed tempos and lighter tones.
+119. **Gypsy Jazz (Jazz Manouche):** Acoustic guitar swing style (Django Reinhardt).
+120. **Japanese Jazz:** A massive scene in Japan, from traditional to avant-garde.
+121. **Acid Jazz:** Combines jazz elements with soul, funk, and disco.
+122. **Latin Jazz:** Jazz with Latin American rhythms.
+123. **Delta Blues:** Acoustic, guitar-based blues.
+124. **Chicago Blues:** Electrified blues with harmonica.
+125. **Jazz Fusion:** Blends jazz improvisation with rock amplification.
+
+### **Latin, Caribbean & Global Rhythms**
+
+126. **Salsa:** Dance music with Cuban and Puerto Rican roots.
+127. **Bossa Nova:** Relaxed, jazz-influenced Brazilian samba.
+128. **Samba:** Rhythmic, percussion-heavy Brazilian dance music.
+129. **Tropicalia:** Brazilian artistic movement blending pop, rock, and psychedelia.
+130. **Reggae:** Laid-back Jamaican music with offbeat rhythms.
+131. **Dancehall:** Up-tempo, digital-heavy Jamaican dance music.
+132. **Ska:** Upbeat precursor to reggae with walking basslines.
+133. **Tango:** Dramatic dance music from Argentina.
+134. **Mariachi:** Traditional Mexican folk music with trumpets.
+135. **Cumbia:** Rhythmic dance music originally from Colombia.
+136. **Bachata:** Romantic guitar music from the Dominican Republic.
+137. **Merengue:** Fast-paced dance music from the Dominican Republic.
+138. **Afrobeat:** Fusion of jazz, funk, and West African highlife.
+139. **Highlife:** Ghanaian guitar-based dance music.
+
+### **Classical, Orchestral & Mood**
+
+140. **Baroque:** Ornamented styles (Bach, Vivaldi).
+141. **Classical Era:** Balanced, structured works (Mozart).
+142. **Romantic:** Emotional, expansive symphonies (Beethoven).
+143. **Impressionism:** Focusing on mood/atmosphere (Debussy).
+144. **Minimalism:** Repetitive structures (Philip Glass).
+145. **Opera:** Theatrical dramas set to music.
+146. **Guoyue:** Modern Chinese orchestra using traditional instruments.
+147. **Gagaku:** Ancient Imperial court music of Japan.
+148. **Film Score:** Orchestral or electronic music written for movies.
+149. **Anime OST:** Eclectic scores composed specifically for Japanese animation.
+150. **Video Game Music (Chiptune):** Music synthesized using vintage computer chips.
+
+## Return Structure
+
+Return the PSV file with the same header
+

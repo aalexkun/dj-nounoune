@@ -1,6 +1,6 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { LogService } from 'src/services/logger.service';
-import { ParsedPsvRow, PsvParserService } from '../services/transformation/psv-parser.service';
+import { ParsedPsvRow, PsvService } from '../services/transformation/psv.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Artist, ArtistDocument } from '../schemas/artist.schema';
@@ -23,7 +23,7 @@ export class ImportCommand extends CommandRunner {
   private pathTransformer: PathTransformer;
   constructor(
     private readonly logService: LogService,
-    private readonly psvParser: PsvParserService,
+    private readonly psvParser: PsvService,
     private appService: AppService,
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,

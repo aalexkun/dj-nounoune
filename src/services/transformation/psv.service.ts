@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'csv-parse';
-import { finished } from 'stream/promises';
 import { parseBpm, parseInteger } from '../../utils/parsing';
 
 export interface ParsedPsvRow {
@@ -45,7 +44,7 @@ type Header =
   | 'Path';
 
 @Injectable()
-export class PsvParserService {
+export class PsvService {
   /**
    * Reads a PSV file and yields transformed records one by one
    */
@@ -72,6 +71,14 @@ export class PsvParserService {
       // 4. Pass to the callback (Load)
       await onRecord(transformed);
     }
+  }
+
+  toPsv(records: ParsedPsvRow[]): string {
+    return records.map((record) => Object.values(record).join('|')).join('\n');
+  }
+
+  fromPsv(rawRecord: Record<Header, string | number>): ParsedPsvRow {
+    return this.transformRecord(rawRecord);
   }
 
   private transformRecord(raw: Record<Header, string | number>): ParsedPsvRow {

@@ -5,10 +5,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { LogService } from './services/logger.service';
 import { CommandProviders } from './cli/command.provider';
-import { PsvParserService } from './services/transformation/psv-parser.service';
+import { PsvService } from './services/transformation/psv.service';
 import { Artist, ArtistSchema } from './schemas/artist.schema';
 import { Album, AlbumSchema } from './schemas/albums.schema';
 import { Song, SongSchema } from './schemas/song.schema';
+import { PromptusService } from './services/promptus/promptus/promptus.service';
 
 @Module({
   imports: [
@@ -32,6 +33,6 @@ import { Song, SongSchema } from './schemas/song.schema';
     ]),
   ],
   controllers: [AppController],
-  providers: [AppService, PsvParserService, LogService, ...CommandProviders],
+  providers: [AppService, PsvService, LogService, ...CommandProviders, PromptusService],
 })
-export class AppModule { }
+export class AppModule {}
