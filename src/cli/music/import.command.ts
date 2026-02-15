@@ -1,13 +1,13 @@
-import { Command, CommandRunner, Option } from 'nest-commander';
-import { ParsedPsvRow, PsvService } from '../services/transformation/psv.service';
+import { CommandRunner, Option, SubCommand } from 'nest-commander';
+import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Artist, ArtistDocument } from '../schemas/artist.schema';
-import { Album, AlbumDocument } from '../schemas/albums.schema';
-import { Song, SongDocument } from '../schemas/song.schema';
+import { Artist, ArtistDocument } from '../../schemas/artist.schema';
+import { Album, AlbumDocument } from '../../schemas/albums.schema';
+import { Song, SongDocument } from '../../schemas/song.schema';
 import { createHash } from 'crypto';
-import { PathTransformer } from '../utils/path.transformer';
-import { AppService } from '../app.service';
+import { PathTransformer } from '../../utils/path.transformer';
+import { AppService } from '../../app.service';
 import { Logger } from '@nestjs/common';
 
 interface ImportCommandOptions {
@@ -15,7 +15,7 @@ interface ImportCommandOptions {
   dryRun?: boolean;
 }
 
-@Command({
+@SubCommand({
   name: 'import',
   description: 'Import songs from a PSV file',
 })

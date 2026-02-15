@@ -19,7 +19,8 @@ Represents individual tracks.
   - `extension`: File extension (String)
   - `sample_rate`: Sample Rate (Number)
   - `duration`: Duration (Number)
-  - `is_hifi`: Is HiFi (Boolean)
+  - `is_high_res`: Is High Resolution audio (Boolean)
+  - `is_cd_quality`: Is CD Quality (Boolean)
 
 ### 2. `albums` Collection
 Represents albums, linking to songs.
@@ -146,20 +147,8 @@ It accepts:
     {
       "$match": {
         "$or": [
-          {
-            "technical_info.extension": {
-              "$regex": "^(flac|alac|wav|aiff|ape)$",
-              "$options": "i"
-            }
-          },
-          {
-            "technical_info.bit_depth": {
-              "$in": [
-                16,
-                24
-              ]
-            }
-          }
+          { "technical_info.is_cd_quality": true},
+          { "technical_info.is_high_res": true}
         ]
       }
     }

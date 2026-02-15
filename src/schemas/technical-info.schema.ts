@@ -15,7 +15,10 @@ export class TechnicalInfo {
   sample_rate: number;
 
   @Prop()
-  is_hifi: boolean;
+  is_high_res: boolean;
+
+  @Prop()
+  is_cd_quality: boolean;
 
   @Prop()
   duration: number;

@@ -16,6 +16,26 @@ export class MusicDbService {
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
   ) {}
 
+  async getAllSongs(): Promise<SongDocument[]> {
+    return await this.songModel.find().exec();
+  }
+
+  async upsertSong(song: SongDocument): Promise<SongDocument> {
+    const { _id, ...updateFields } = song;
+
+    return await this.songModel
+      .findByIdAndUpdate(
+        _id, // 1. The Filter: Match by ID
+        { $set: updateFields }, // 2. The Update: Set the new fields
+        {
+          returnDocument: 'after', // Replaces 'new: true'
+          upsert: true, // Create a new document if one doesn't exist
+          setDefaultsOnInsert: true, // Apply schema defaults if a new one is created
+        },
+      )
+      .exec();
+  }
+
   async aggregate(collection: string, params: any): Promise<MusicDbAggregateResult[]> {
     if (collection === 'artists') {
       return this.artistModel.aggregate(params);

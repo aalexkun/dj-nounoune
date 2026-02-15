@@ -11,6 +11,7 @@ import { Song, SongSchema } from './schemas/song.schema';
 import { PromptusService } from './services/promptus/promptus/promptus.service';
 import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
+import { FfprobeService } from './services/ffprobe/ffprobe.service';
 
 @Module({
   imports: [
@@ -35,6 +36,6 @@ import { MpdClientModule } from './services/mpd-client/mpd-client.module';
     MpdClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService],
+  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService, FfprobeService],
 })
 export class AppModule {}

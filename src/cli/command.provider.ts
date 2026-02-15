@@ -1,6 +1,5 @@
-import { ImportCommand } from './import.command';
-import { BasicCommand } from './basic.command';
-import { ClearCommand } from './clear.command';
+import { ImportCommand } from './music/import.command';
+import { ClearCommand } from './music/clear.command';
 import { PromptusSearchCommand } from './promptus/search.command';
 import { MpdCommand } from './mpd/mpd.command';
 import { TestMpdSubCommand } from './mpd/test.subcommand';
@@ -11,11 +10,14 @@ import { ShuffleMpdSubCommand } from './mpd/shuffle.subcommand';
 import { PlaylistMpdSubCommand } from './mpd/playlist.subcommand';
 import { PromptusPlaySubcommand } from './promptus/play.subcommand';
 import { PromptusCommand } from './promptus/promptus.command';
+import { MusicCommand } from './music/music.command';
+import { EnrichCommand } from './music/enrich.command';
 
 export const CommandProviders = [
+  MusicCommand,
   ImportCommand,
-  BasicCommand,
   ClearCommand,
+  EnrichCommand,
 
   MpdCommand,
   TestMpdSubCommand,
@@ -24,6 +26,7 @@ export const CommandProviders = [
   ClearMpdSubCommand,
   ShuffleMpdSubCommand,
   PlaylistMpdSubCommand,
+
   PromptusCommand,
   PromptusPlaySubcommand,
   PromptusSearchCommand,

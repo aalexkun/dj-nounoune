@@ -1,9 +1,9 @@
-import { Command, CommandRunner, Option } from 'nest-commander';
+import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Artist, ArtistDocument } from '../schemas/artist.schema';
-import { Album, AlbumDocument } from '../schemas/albums.schema';
-import { Song, SongDocument } from '../schemas/song.schema';
+import { Artist, ArtistDocument } from '../../schemas/artist.schema';
+import { Album, AlbumDocument } from '../../schemas/albums.schema';
+import { Song, SongDocument } from '../../schemas/song.schema';
 import { Logger } from '@nestjs/common';
 
 interface ClearCommandOptions {
@@ -11,7 +11,7 @@ interface ClearCommandOptions {
   collections?: string[];
 }
 
-@Command({
+@SubCommand({
   name: 'clear',
   description: 'Clear songs, albums, and artists collections',
 })
