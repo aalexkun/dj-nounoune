@@ -120,11 +120,11 @@ export class ImportCommand extends CommandRunner {
               bpm: userDoc.bpm,
               category: userDoc.category,
               filename: userDoc.filename,
+              path: userDoc.path,
               source: [
                 {
                   name: 'file',
-                  path: this.pathTransformer.transform(userDoc.path),
-                  sourceId: null,
+                  sourceId: `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`,
                 },
               ],
               technical_info: userDoc.technical_info,

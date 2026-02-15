@@ -12,9 +12,6 @@ export class Source {
   name: SourceType;
 
   @Prop({ type: String, required: false })
-  path?: string;
-
-  @Prop({ type: String, required: false })
   sourceId?: string | null;
 }
 
