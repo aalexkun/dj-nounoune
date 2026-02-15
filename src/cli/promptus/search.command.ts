@@ -1,15 +1,15 @@
-import { Command, CommandRunner } from 'nest-commander';
-import { PromptusService } from '../services/promptus/promptus/promptus.service';
-import { SearchPromptusRequest } from '../services/promptus/promptus/request/SearchPromptusRequest';
-import { MusicDbService } from '../services/music-db/music-db.service';
+import { CommandRunner, SubCommand } from 'nest-commander';
+import { PromptusService } from '../../services/promptus/promptus/promptus.service';
+import { SearchPromptusRequest } from '../../services/promptus/promptus/request/SearchPromptusRequest';
+import { MusicDbService } from '../../services/music-db/music-db.service';
 import { Logger } from '@nestjs/common';
 
-@Command({
+@SubCommand({
   name: 'search',
   description: 'Search for artists, albums, and songs based on a human text query.',
 })
-export class SearchCommand extends CommandRunner {
-  private readonly logger = new Logger(SearchCommand.name);
+export class PromptusSearchCommand extends CommandRunner {
+  private readonly logger = new Logger(PromptusSearchCommand.name);
 
   constructor(
     private promptusService: PromptusService,
@@ -26,7 +26,7 @@ export class SearchCommand extends CommandRunner {
     if (response?.parsed?.function === 'aggregate') {
       console.log(response.parsed);
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
-      console.log(result);
+      this.logger.log(JSON.stringify(result, null, 2));
     } else {
       this.logger.error(JSON.stringify(response, null, 2));
       throw new Error('Unsupported response type');

@@ -60,6 +60,7 @@ It accepts:
 ## Query Examples
 
 **1. Simple Search:** "Find the song 'Apache'"
+```json
 {
   "collection": "songs",
   "function": "aggregate",
@@ -74,8 +75,10 @@ It accepts:
     }
   ]
 }
+```
 
 **2. Parameter Search:** "Show me all 24-bit songs"
+```json
 {
   "collection": "songs",
   "function": "aggregate",
@@ -87,10 +90,10 @@ It accepts:
     }
   ]
 }
-
+```
 
 **3. Complex/Joined Search:** "Find albums by 'Pink Floyd' and include their tracks"
-
+```json
 {
   "collection": "artists",
   "function": "aggregate",
@@ -119,7 +122,7 @@ It accepts:
         "from": "songs",
         "localField": "artist_albums.tracks",
         "foreignField": "_id",
-        "as": "artist_albums.song_details"
+        "as": "artist_albums.tracks_details"
       }
     },
     {
@@ -131,9 +134,11 @@ It accepts:
     }
   ]
 }
+```
 
 **4. Lossless** Search for all lossless files
-Filter:
+
+```json
 {
   "collection": "songs",
   "function": "aggregate",
@@ -160,12 +165,13 @@ Filter:
     }
   ]
 }
-
+```
 ## Instructions for You
 1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the `collection`.
 2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
 3. **Construct** the JSON filter. Use `$regex` with `"i"` option for text fields to ensure case-insensitive matching.
-4. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks").
+4. **REQUIRED** Always add the tracks source details in the result query
+4. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks"). Always add the Tracks information
 5. **Output** the valid JSON DO NOT ADD any markdown
 
 ## Output format

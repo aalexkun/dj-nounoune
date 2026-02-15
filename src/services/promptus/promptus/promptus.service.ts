@@ -21,10 +21,8 @@ export class PromptusService {
 
   async generate<T>(request: PromptusRequest<T>): Promise<T> {
     const aiRequest = await request.getGeneratedContent();
-    this.logger.log(aiRequest);
 
     const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
-
     const responseText = this.parseResponse(response);
 
     if (request instanceof SearchPromptusRequest) {
