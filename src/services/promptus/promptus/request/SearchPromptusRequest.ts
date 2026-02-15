@@ -6,7 +6,7 @@ export class SearchPromptusRequest extends PromptusRequest<SearchPromptusRespons
   public config: Partial<GenerateContentConfig>;
   private _model = 'gemini-flash-lite-latest';
   private _role: RequestRole = 'user';
-  private _context = 'src/PromptusEngine/contexts/search-prompt.md';
+  private _context = 'src/services/promptus/promptus/contexts/search-prompt.md';
   private readonly _query: string;
 
   get model(): string {

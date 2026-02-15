@@ -10,6 +10,8 @@ import { Artist, ArtistSchema } from './schemas/artist.schema';
 import { Album, AlbumSchema } from './schemas/albums.schema';
 import { Song, SongSchema } from './schemas/song.schema';
 import { PromptusService } from './services/promptus/promptus/promptus.service';
+import { MusicDbService } from './services/music-db/music-db.service';
+import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 
 @Module({
   imports: [
@@ -31,8 +33,9 @@ import { PromptusService } from './services/promptus/promptus/promptus.service';
       { name: Album.name, schema: AlbumSchema },
       { name: Song.name, schema: SongSchema },
     ]),
+    MpdClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PsvService, LogService, ...CommandProviders, PromptusService],
+  providers: [AppService, PsvService, LogService, ...CommandProviders, PromptusService, MusicDbService],
 })
-export class AppModule {}
+export class AppModule { }
