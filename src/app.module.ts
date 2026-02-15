@@ -3,7 +3,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
-import { LogService } from './services/logger.service';
 import { CommandProviders } from './cli/command.provider';
 import { PsvService } from './services/transformation/psv.service';
 import { Artist, ArtistSchema } from './schemas/artist.schema';
@@ -36,6 +35,6 @@ import { MpdClientModule } from './services/mpd-client/mpd-client.module';
     MpdClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PsvService, LogService, ...CommandProviders, PromptusService, MusicDbService],
+  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService],
 })
-export class AppModule { }
+export class AppModule {}

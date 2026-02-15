@@ -1,6 +1,5 @@
 import { GenerateContentResponse, GoogleGenAI } from '@google/genai';
-import { Injectable } from '@nestjs/common';
-import { LogService } from '../../logger.service';
+import { Injectable, Logger } from '@nestjs/common';
 import { AppService } from '../../../app.service';
 
 import { SearchPromptusRequest } from './request/SearchPromptusRequest';
@@ -13,25 +12,20 @@ import { PromptusRequest } from './request/PromptusRequest';
 export class PromptusService {
   private apiKey: string;
   private readonly client: GoogleGenAI;
+  private readonly logger = new Logger('PromptusService');
 
-  constructor(
-    private logService: LogService,
-    appSerivce: AppService,
-  ) {
-    this.logService.setContext('PromptusService');
+  constructor(appSerivce: AppService) {
     this.apiKey = appSerivce.getGenAiApiKey();
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
   }
 
   async generate<T>(request: PromptusRequest<T>): Promise<T> {
     const aiRequest = await request.getGeneratedContent();
-    console.log(aiRequest);
+    this.logger.log(aiRequest);
 
     const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
 
     const responseText = this.parseResponse(response);
-
-    console.dir(response);
 
     if (request instanceof SearchPromptusRequest) {
       return new SearchPromptusResponse(response) as T;

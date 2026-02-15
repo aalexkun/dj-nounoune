@@ -1,5 +1,4 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { LogService } from 'src/services/logger.service';
 import { ParsedPsvRow, PsvService } from '../services/transformation/psv.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -9,6 +8,7 @@ import { Song, SongDocument } from '../schemas/song.schema';
 import { createHash } from 'crypto';
 import { PathTransformer } from '../utils/path.transformer';
 import { AppService } from '../app.service';
+import { Logger } from '@nestjs/common';
 
 interface ImportCommandOptions {
   file: string;
@@ -21,8 +21,8 @@ interface ImportCommandOptions {
 })
 export class ImportCommand extends CommandRunner {
   private pathTransformer: PathTransformer;
+  private readonly logger = new Logger(ImportCommand.name);
   constructor(
-    private readonly logService: LogService,
     private readonly psvParser: PsvService,
     private appService: AppService,
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
@@ -43,9 +43,9 @@ export class ImportCommand extends CommandRunner {
   async run(inputs: string[], options: ImportCommandOptions): Promise<void> {
     const { file, dryRun } = options;
 
-    this.logService.log(`Starting import process for: ${file}`);
+    this.logger.log(`Starting import process for: ${file}`);
     if (dryRun) {
-      this.logService.warn('DRY RUN ACTIVE: No changes will be committed to the database.');
+      this.logger.warn('DRY RUN ACTIVE: No changes will be committed to the database.');
     }
 
     let count = 0;

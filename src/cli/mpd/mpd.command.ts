@@ -4,11 +4,14 @@ import { Injectable } from '@nestjs/common';
 import { TestMpdSubCommand } from './test.subcommand';
 import { AddMpdSubCommand } from './add.subcommand';
 import { PlayMpdSubCommand } from './play.subcommand';
+import { ClearMpdSubCommand } from './clear.subcommand';
+import { ShuffleMpdSubCommand } from './shuffle.subcommand';
+import { PlaylistMpdSubCommand } from './playlist.subcommand';
 
 @Command({
     name: 'mpd',
     description: 'MPD Client commands',
-    subCommands: [TestMpdSubCommand, AddMpdSubCommand, PlayMpdSubCommand],
+    subCommands: [TestMpdSubCommand, AddMpdSubCommand, PlayMpdSubCommand, ClearMpdSubCommand, ShuffleMpdSubCommand, PlaylistMpdSubCommand],
 })
 @Injectable()
 export class MpdCommand extends CommandRunner {

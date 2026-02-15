@@ -1,16 +1,17 @@
 import { Command, CommandRunner } from 'nest-commander';
-import { LogService } from 'src/services/logger.service';
 import { PromptusService } from '../services/promptus/promptus/promptus.service';
 import { SearchPromptusRequest } from '../services/promptus/promptus/request/SearchPromptusRequest';
 import { MusicDbService } from '../services/music-db/music-db.service';
+import { Logger } from '@nestjs/common';
 
 @Command({
   name: 'search',
   description: 'Search for artists, albums, and songs based on a human text query.',
 })
 export class SearchCommand extends CommandRunner {
+  private readonly logger = new Logger(SearchCommand.name);
+
   constructor(
-    private readonly logService: LogService,
     private promptusService: PromptusService,
     private musicDbService: MusicDbService,
   ) {
@@ -27,9 +28,8 @@ export class SearchCommand extends CommandRunner {
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
       console.log(result);
     } else {
-      this.logService.dir(JSON.stringify(response));
+      this.logger.error(JSON.stringify(response, null, 2));
       throw new Error('Unsupported response type');
     }
-
   }
 }

@@ -1,5 +1,5 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { LogService } from 'src/services/logger.service';
+import { Logger } from '@nestjs/common';
 
 interface BasicCommandOptions {
   string?: string;
@@ -9,14 +9,13 @@ interface BasicCommandOptions {
 
 @Command({ name: 'basic', description: 'A parameter parse' })
 export class BasicCommand extends CommandRunner {
-  constructor(private readonly logService: LogService) {
+  private readonly logger = new Logger(BasicCommand.name);
+
+  constructor() {
     super();
   }
 
-  async run(
-    passedParam: string[],
-    options?: BasicCommandOptions,
-  ): Promise<void> {
+  async run(passedParam: string[], options?: BasicCommandOptions): Promise<void> {
     if (options?.boolean !== undefined && options?.boolean !== null) {
       this.runWithBoolean(passedParam, options.boolean);
     } else if (options?.number) {
@@ -54,18 +53,18 @@ export class BasicCommand extends CommandRunner {
   }
 
   runWithString(param: string[], option: string): void {
-    this.logService.log({ param, string: option });
+    this.logger.log({ param, string: option });
   }
 
   runWithNumber(param: string[], option: number): void {
-    this.logService.log({ param, number: option });
+    this.logger.log({ param, number: option });
   }
 
   runWithBoolean(param: string[], option: boolean): void {
-    this.logService.log({ param, boolean: option });
+    this.logger.log({ param, boolean: option });
   }
 
   runWithNone(param: string[]): void {
-    this.logService.log({ param });
+    this.logger.log({ param });
   }
 }

@@ -7,6 +7,9 @@ import { MpdCommand } from './mpd/mpd.command';
 import { TestMpdSubCommand } from './mpd/test.subcommand';
 import { AddMpdSubCommand } from './mpd/add.subcommand';
 import { PlayMpdSubCommand } from './mpd/play.subcommand';
+import { ClearMpdSubCommand } from './mpd/clear.subcommand';
+import { ShuffleMpdSubCommand } from './mpd/shuffle.subcommand';
+import { PlaylistMpdSubCommand } from './mpd/playlist.subcommand';
 
 export const CommandProviders = [
     ImportCommand,
@@ -16,5 +19,8 @@ export const CommandProviders = [
     MpdCommand,
     TestMpdSubCommand,
     AddMpdSubCommand,
-    PlayMpdSubCommand
+    PlayMpdSubCommand,
+    ClearMpdSubCommand,
+    ShuffleMpdSubCommand,
+    PlaylistMpdSubCommand
 ];
