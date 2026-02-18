@@ -7,7 +7,7 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
   public cache?: CacheRequest;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/promptus/contexts/get-sourceid-prompt.md';
+  private readonly _context = 'src/services/promptus/promptus/request/GetSourceIdPromptusRequest.md';
   private readonly _query: string;
 
   public structuredResponse: StructuredResponse = {

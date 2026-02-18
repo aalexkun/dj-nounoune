@@ -7,7 +7,7 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
   public config: Partial<GenerateContentConfig>;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/promptus/contexts/enrich-genre-prompt.md';
+  private readonly _context = 'src/services/promptus/promptus/request/EnrichPromptusRequest.md';
   private readonly _query: string;
   public cache: CacheRequest;
 

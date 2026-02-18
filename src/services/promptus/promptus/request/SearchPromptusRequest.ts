@@ -8,7 +8,7 @@ export class SearchPromptusRequest extends PromptusRequest<SearchPromptusRespons
   public cache?: CacheRequest;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/promptus/contexts/search-prompt.md';
+  private readonly _context = 'src/services/promptus/promptus/request/SearchPromptusRequest.md';
   private readonly _query: string;
 
   get model(): string {
