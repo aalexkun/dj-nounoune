@@ -1,4 +1,5 @@
 import { GenerateContentResponse } from '@google/genai';
+import { PromptusResponse } from './promptus.response';
 
 export interface SearchParams {
   collection: 'songs' | 'albums' | 'artists';
@@ -6,10 +7,11 @@ export interface SearchParams {
   params: any[];
 }
 
-export class SearchPromptusResponse {
+export class SearchPromptusResponse extends PromptusResponse {
   public parsed: SearchParams;
 
   constructor(raw: GenerateContentResponse) {
+    super(raw);
     if (typeof raw.text === 'string') {
       const cleanJson = raw.text.replace(/```json\n?|\n?```/g, '').trim();
       try {

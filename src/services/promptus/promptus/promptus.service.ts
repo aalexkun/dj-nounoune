@@ -4,11 +4,11 @@ import { AppService } from '../../../app.service';
 
 import { SearchPromptusRequest } from './request/search.promptus.request';
 import { EnrichPromptusRequest } from './request/enrich-promptus.request';
-import { SearchPromptusResponse } from './response/SearchPromptusResponse';
-import { EnrichPromptusResponse } from './response/EnrichPromptusResponse';
+import { SearchPromptusResponse } from './response/search.promptus.response';
+import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
-import { GetSourceIdPromptusResponse } from './response/GetSourceIdPromptusResponse';
+import { GetSourceIdPromptusResponse } from './response/getisource-id.promptus.response';
 
 @Injectable()
 export class PromptusService {

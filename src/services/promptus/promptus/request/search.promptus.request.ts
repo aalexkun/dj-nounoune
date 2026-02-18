@@ -1,6 +1,6 @@
 import { GenerateContentConfig } from '@google/genai';
 import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
-import { SearchPromptusResponse } from '../response/SearchPromptusResponse';
+import { SearchPromptusResponse } from '../response/search.promptus.response';
 
 export class SearchPromptusRequest extends PromptusRequest<SearchPromptusResponse> {
   public structuredResponse?: StructuredResponse | undefined;
