@@ -1,5 +1,6 @@
 import { GenerateContentConfig, GenerateContentParameters, SchemaUnion } from '@google/genai';
 import { promises as fs } from 'fs';
+import { PromptusStrategy } from '../promptus.type';
 
 export type RequestRole = 'user' | 'model';
 
@@ -33,6 +34,10 @@ export abstract class PromptusRequest<TResponse> {
       console.error(`Error reading context file: ${this.context}`, e);
       return '';
     }
+  }
+
+  get strategy(): PromptusStrategy {
+    return 'sequential';
   }
 
   public async getGeneratedContent(): Promise<GenerateContentParameters> {

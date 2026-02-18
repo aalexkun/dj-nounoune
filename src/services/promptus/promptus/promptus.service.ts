@@ -9,6 +9,7 @@ import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
 import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
+import { PromptusStrategy } from './promptus.type';
 
 @Injectable()
 export class PromptusService {
@@ -16,12 +17,14 @@ export class PromptusService {
   private readonly client: GoogleGenAI;
   private readonly logger = new Logger('PromptusService');
 
-  constructor(appSerivce: AppService) {
-    this.apiKey = appSerivce.getGenAiApiKey();
+  constructor(appService: AppService) {
+    this.apiKey = appService.getGenAiApiKey();
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
   }
 
-  async generate<T>(request: PromptusRequest<T>): Promise<T> {
+  async generate<ReqType>(request: PromptusRequest<ReqType | ReqType[]>): Promise<ReqType | ReqType[]> {
+    let strategy: PromptusStrategy = Array.isArray(request) ? request[0].strategy : request.strategy;
+
     const aiRequest = await request.getGeneratedContent();
 
     if (request.cache) {
@@ -29,18 +32,39 @@ export class PromptusService {
     }
 
     const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
-    const responseText = this.parseResponse(response);
 
-    if (request instanceof SearchPromptusRequest) {
-      return new SearchPromptusResponse(response) as T;
-    }
+    return this.wrapResponse(request, response);
+  }
 
-    if (request instanceof EnrichPromptusRequest) {
-      return new EnrichPromptusResponse(response) as T;
-    }
+  private wrapResponse<ReqType>(request: PromptusRequest<ReqType | ReqType[]>, response: GenerateContentResponse): ReqType | ReqType[] {
+    if (Array.isArray(request)) {
+      if (request.length === 0) {
+        return [] as ReqType[];
+      }
 
-    if (request instanceof GetSourceIdPromptusRequest) {
-      return new GetSourceIdPromptusResponse(response) as T;
+      if (request[0] instanceof SearchPromptusRequest) {
+        return request.map((r) => new SearchPromptusResponse(response)) as ReqType[];
+      }
+
+      if (request[0] instanceof EnrichPromptusRequest) {
+        return request.map((r) => new EnrichPromptusResponse(response)) as ReqType[];
+      }
+
+      if (request[0] instanceof GetSourceIdPromptusRequest) {
+        return request.map((r) => new GetSourceIdPromptusResponse(response)) as ReqType[];
+      }
+    } else {
+      if (request instanceof SearchPromptusRequest) {
+        return new SearchPromptusResponse(response) as ReqType;
+      }
+
+      if (request instanceof EnrichPromptusRequest) {
+        return new EnrichPromptusResponse(response) as ReqType;
+      }
+
+      if (request instanceof GetSourceIdPromptusRequest) {
+        return new GetSourceIdPromptusResponse(response) as ReqType;
+      }
     }
 
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);

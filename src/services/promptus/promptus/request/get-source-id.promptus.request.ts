@@ -10,7 +10,7 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
   private readonly _context = 'src/services/promptus/promptus/request/get-source-id.promptus.request.md';
   private readonly _query: string;
 
-  public structuredResponse: StructuredResponse = {
+  public readonly structuredResponse: StructuredResponse = {
     responseMimeType: 'application/json',
     responseSchema: {
       type: 'ARRAY',
