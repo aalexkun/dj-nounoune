@@ -6,7 +6,7 @@ import { AppService } from '../../app.service';
 import { extname } from 'path';
 import { SongDocument } from '../../schemas/song.schema';
 import { PromptusService } from '../../services/promptus/promptus/promptus.service';
-import { EnrichPromptusRequest } from '../../services/promptus/promptus/request/EnrichPromptusRequest';
+import { EnrichPromptusRequest } from '../../services/promptus/promptus/request/enrich-promptus.request';
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { FileService } from '../../services/file/file.service';
 import { chunkArray } from '../../utils/array.utils';

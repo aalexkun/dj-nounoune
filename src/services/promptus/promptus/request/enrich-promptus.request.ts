@@ -1,27 +1,28 @@
 import { GenerateContentConfig } from '@google/genai';
-import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './PromptusRequest';
-import { SearchPromptusResponse } from '../response/SearchPromptusResponse';
+import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
+import { EnrichPromptusResponse } from '../response/EnrichPromptusResponse';
 
-export class SearchPromptusRequest extends PromptusRequest<SearchPromptusResponse> {
+export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
   public structuredResponse?: StructuredResponse | undefined;
   public config: Partial<GenerateContentConfig>;
-  public cache?: CacheRequest;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/promptus/request/SearchPromptusRequest.md';
+  private readonly _context = 'src/services/promptus/promptus/request/enrich-promptus.request.md';
   private readonly _query: string;
+  public cache: CacheRequest;
 
   get model(): string {
     return this._model;
   }
 
-  get role(): RequestRole {
+  get role(): 'user' | 'model' {
     return this._role;
   }
 
   get context(): string {
     return this._context;
   }
+
   get query(): string {
     return this._query;
   }

@@ -2,12 +2,12 @@ import { GenerateContentResponse, GoogleGenAI } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppService } from '../../../app.service';
 
-import { SearchPromptusRequest } from './request/SearchPromptusRequest';
-import { EnrichPromptusRequest } from './request/EnrichPromptusRequest';
+import { SearchPromptusRequest } from './request/search.promptus.request';
+import { EnrichPromptusRequest } from './request/enrich-promptus.request';
 import { SearchPromptusResponse } from './response/SearchPromptusResponse';
 import { EnrichPromptusResponse } from './response/EnrichPromptusResponse';
-import { PromptusRequest } from './request/PromptusRequest';
-import { GetSourceIdPromptusRequest } from './request/GetSourceIdPromptusRequest';
+import { PromptusRequest } from './request/promptus.request';
+import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
 import { GetSourceIdPromptusResponse } from './response/GetSourceIdPromptusResponse';
 
 @Injectable()

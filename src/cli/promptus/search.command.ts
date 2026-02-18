@@ -1,6 +1,6 @@
 import { CommandRunner, SubCommand } from 'nest-commander';
 import { PromptusService } from '../../services/promptus/promptus/promptus.service';
-import { SearchPromptusRequest } from '../../services/promptus/promptus/request/SearchPromptusRequest';
+import { SearchPromptusRequest } from '../../services/promptus/promptus/request/search.promptus.request';
 import { MusicDbService } from '../../services/music-db/music-db.service';
 import { Logger } from '@nestjs/common';
 

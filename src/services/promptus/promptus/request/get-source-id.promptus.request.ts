@@ -1,5 +1,5 @@
 import { GenerateContentConfig } from '@google/genai';
-import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './PromptusRequest';
+import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { GetSourceIdPromptusResponse } from '../response/GetSourceIdPromptusResponse';
 
 export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromptusResponse> {
@@ -7,7 +7,7 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
   public cache?: CacheRequest;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/promptus/request/GetSourceIdPromptusRequest.md';
+  private readonly _context = 'src/services/promptus/promptus/request/get-source-id.promptus.request.md';
   private readonly _query: string;
 
   public structuredResponse: StructuredResponse = {
