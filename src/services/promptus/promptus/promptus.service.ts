@@ -8,7 +8,7 @@ import { SearchPromptusResponse } from './response/search.promptus.response';
 import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
-import { GetSourceIdPromptusResponse } from './response/getisource-id.promptus.response';
+import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
 
 @Injectable()
 export class PromptusService {

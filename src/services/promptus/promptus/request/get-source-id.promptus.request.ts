@@ -1,6 +1,6 @@
 import { GenerateContentConfig } from '@google/genai';
 import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
-import { GetSourceIdPromptusResponse } from '../response/getisource-id.promptus.response';
+import { GetSourceIdPromptusResponse } from '../response/get-source-id.promptus.response';
 
 export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromptusResponse> {
   public config: Partial<GenerateContentConfig>;
