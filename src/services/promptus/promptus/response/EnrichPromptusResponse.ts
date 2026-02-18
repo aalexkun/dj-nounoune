@@ -1,15 +1,19 @@
 import { GenerateContentResponse } from '@google/genai';
-import { PsvService } from '../../../transformation/psv.service';
 
 export class EnrichPromptusResponse {
-  private psv: string;
+  psv: string;
 
   constructor(raw: GenerateContentResponse) {
     const text = raw?.text || '';
-    const match = text.match(/```csv\s*([\s\S]*?)\s*```/);
+    const matchCsv = text.match(/```csv\s*([\s\S]*?)\s*```/);
+    const matchPsv = text.match(/```psv\s*([\s\S]*?)\s*```/);
 
-    this.psv = match ? match[1].trim() : '';
+    if (matchPsv) {
+      this.psv = matchPsv[1].trim() || '';
+    } else if (matchCsv) {
+      this.psv = matchCsv[1].trim() || '';
+    } else {
+      this.psv = text;
+    }
   }
-
-  public getParsedData() {}
 }

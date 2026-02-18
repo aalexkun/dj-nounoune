@@ -1,12 +1,14 @@
 import { GenerateContentConfig } from '@google/genai';
-import { PromptusRequest, RequestRole } from './PromptusRequest';
+import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './PromptusRequest';
 import { SearchPromptusResponse } from '../response/SearchPromptusResponse';
 
 export class SearchPromptusRequest extends PromptusRequest<SearchPromptusResponse> {
+  public structuredResponse?: StructuredResponse | undefined;
   public config: Partial<GenerateContentConfig>;
-  private _model = 'gemini-flash-lite-latest';
-  private _role: RequestRole = 'user';
-  private _context = 'src/services/promptus/promptus/contexts/search-prompt.md';
+  public cache?: CacheRequest;
+  private readonly _model = 'gemini-flash-lite-latest';
+  private readonly _role: RequestRole = 'user';
+  private readonly _context = 'src/services/promptus/promptus/contexts/search-prompt.md';
   private readonly _query: string;
 
   get model(): string {

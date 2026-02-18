@@ -7,6 +7,12 @@ import { Model } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
+
+export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
+  artist: Artist;
+  album: Album;
+};
+
 @Injectable()
 export class MusicDbService {
   private readonly logger = new Logger(MusicDbService.name);
@@ -18,6 +24,10 @@ export class MusicDbService {
 
   async getAllSongs(): Promise<SongDocument[]> {
     return await this.songModel.find().exec();
+  }
+
+  async getAllPopulatedSongs(): Promise<PopulatedSong[]> {
+    return (await this.songModel.find().populate('artist').populate('album').exec()) as any;
   }
 
   async upsertSong(song: SongDocument): Promise<SongDocument> {
@@ -46,66 +56,6 @@ export class MusicDbService {
     } else {
       throw new Error('Unsupported collection');
     }
-  }
-
-  getSourceIdFromAggregateResult(type: SourceType, documents: MusicDbAggregateResult[]): string[] {
-    let sourceIds: string[] = [];
-
-    this.logger.debug(`Getting source IDs for type ${type} from ${documents.length} documents`);
-    this.logger.debug(JSON.stringify(documents, null, 2));
-
-    if (Array.isArray(documents)) {
-      if (documents.length > 0) {
-        const firstDocument = documents[0];
-
-        if (this.isAlbum(firstDocument)) {
-          for (const document of documents) {
-            if (document['tracks_details']?.length > 0) {
-              for (const track of document['tracks_details']) {
-                const song = Object.assign(new Song(), track);
-                const sourceId = this.getSourceId(song, type);
-                if (sourceId) {
-                  sourceIds.push(sourceId);
-                }
-              }
-            }
-          }
-        } else if (this.isSong(firstDocument)) {
-          this.logger.debug(`Found ${documents.length} documents of type ${type}`);
-          for (const document of documents) {
-            const song = Object.assign(new Song(), document);
-            const sourceId = this.getSourceId(song, type);
-            if (sourceId) {
-              sourceIds.push(sourceId);
-            }
-          }
-        } else if (this.isArtist(firstDocument)) {
-          for (const document of documents) {
-            if (document['albums']?.length > 0) {
-              for (const album of document['albums']) {
-                if (album['tracks_details']?.length > 0) {
-                  for (const track of album['tracks_details']) {
-                    const song = Object.assign(new Song(), track);
-                    const sourceId = this.getSourceId(song, type);
-                    if (sourceId) {
-                      sourceIds.push(sourceId);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } else {
-          this.logger.error('Document could not match any type: ' + JSON.stringify(firstDocument, null, 2));
-        }
-      } else {
-        this.logger.warn('No documents found for aggregation');
-      }
-    } else {
-      this.logger.error('Unsupported documents type, must be an array of documents');
-    }
-
-    return sourceIds;
   }
 
   private getSourceId(song: Song, type: SourceType): string | null {

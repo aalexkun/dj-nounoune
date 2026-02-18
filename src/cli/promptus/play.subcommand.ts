@@ -8,6 +8,7 @@ import { ClearMpdRequest } from '../../services/mpd-client/requests/ClearMpdRequ
 import { AddMpdRequest } from '../../services/mpd-client/requests/AddMpdRequest';
 import { Song } from '../../schemas/song.schema';
 import { PlayMpdRequest } from '../../services/mpd-client/requests/PlayMpdRequest';
+import { GetSourceIdPromptusRequest } from '../../services/promptus/promptus/request/GetSourceIdPromptusRequest';
 
 @SubCommand({
   name: 'play',
@@ -34,15 +35,17 @@ export class PromptusPlaySubcommand extends CommandRunner {
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
 
       if (result.length > 0) {
-        const sourceIds = this.musicDbService.getSourceIdFromAggregateResult('file', result);
+        const sourceIdsResponse = await this.promptusService.generate(new GetSourceIdPromptusRequest(JSON.stringify(result)));
 
-        if (sourceIds.length > 0) {
+        this.logger.debug(sourceIdsResponse.sources);
+
+        if (sourceIdsResponse.sources.length > 0) {
           this.logger.log('Clearing the Queue');
           await this.mpdClientService.send(new ClearMpdRequest());
 
           await Promise.all(
-            sourceIds.map(async (sourceId) => {
-              const result = await this.mpdClientService.send(new AddMpdRequest(sourceId));
+            sourceIdsResponse.sources.map(async (source) => {
+              const result = await this.mpdClientService.send(new AddMpdRequest(source.sourceId));
               this.logger.debug(`Response: ${result.rawResponse.trim()}`);
             }),
           );

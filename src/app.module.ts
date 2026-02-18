@@ -12,6 +12,7 @@ import { PromptusService } from './services/promptus/promptus/promptus.service';
 import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 import { FfprobeService } from './services/ffprobe/ffprobe.service';
+import { FileService } from './services/file/file.service';
 
 @Module({
   imports: [
@@ -36,6 +37,6 @@ import { FfprobeService } from './services/ffprobe/ffprobe.service';
     MpdClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService, FfprobeService],
+  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService, FfprobeService, FileService],
 })
 export class AppModule {}

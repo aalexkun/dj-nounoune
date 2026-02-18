@@ -13,6 +13,8 @@ Represents individual tracks.
 - `genre`: Genre (String)
 - `year`: Release Year (String)
 - `path`: File Path (String)
+- `track_number`: the track number (number);
+- `disc_number`: the disc number (number);
 - `technical_info`: Object
   - `bitrate`: Bitrate (Number)
   - `bit_depth`: Bit Depth (Number)
@@ -21,6 +23,8 @@ Represents individual tracks.
   - `duration`: Duration (Number)
   - `is_high_res`: Is High Resolution audio (Boolean)
   - `is_cd_quality`: Is CD Quality (Boolean)
+- `source`: Array of playback source (Array)
+  - `sourceId` : The playback ID - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
 
 ### 2. `albums` Collection
 Represents albums, linking to songs.
@@ -49,13 +53,48 @@ You have access to an `aggregate` tool that executes a MongoDB aggregation pipel
 It accepts:
 - `collection`: "songs", "albums", or "artists"
 
-### Lookup Structure
-{
-  "from": "target_collection", 
-  "localField": "source_field",
-  "foreignField": "matching_field_in_target",
-  "as": "output_array_field"
-}
+
+# Genre that are in use
+
+**Pop & Regional:**
+Synth-Pop, J-Pop, K-Pop, Mandopop, Cantopop, Hokkien Pop, T-Pop, String Pop, City Pop, Shibuya-kei, Variété Française, Chanson Française, Yé-yé, Kayōkyoku, K-Ballad, Dream Pop, Bubblegum Pop, Indie Pop, Art Pop, Sophisti-Pop
+
+**Rock, Punk & Metal:**
+Classic Rock, J-Rock, Visual Kei, Kawaii Metal, Rock Québécois, French Rock, Chinese Rock (Yaogun), Mandorock, Phleng Phuea Chiwit, Punk Rock, Post-Punk, Heavy Metal, Nu Metal, Black Metal, Death Metal, Power Metal, Symphonic Metal, Folk Metal, Shoegaze, Math Rock, Grunge, Indie Rock, Post-Hardcore, Emo, Pop Punk, Surf Rock, Garage Rock, Gothic Rock, Industrial Rock, Psychobilly
+
+**Electronic & Dance:**
+House, Deep House, Tech House, Acid House, Techno, French Touch, Trance, Psytrance, Dubstep, Drum and Bass (DnB), Liquid DnB, Synthwave, Eurodance, Eurobeat, J-Core, Vaporwave, Ambient, IDM, Hardstyle, Gabber, Happy Hardcore, Future Bass, Electro Swing, Trip-Hop, Downtempo, Chillwave, UK Garage, 2-Step, Glitch Hop, Tropical House
+
+**Hip Hop, R&B & Soul:**
+Boom Bap, Trap, French Rap, Rap Québécois, K-Hip Hop, Cloud Rap, Drill, Phonk, Jazz Rap, Neo-Soul, Motown, Funk, Disco, G-Funk, Grime, Reggaeton, Contemporary R&B, New Jack Swing, Old School Hip Hop, Conscious Hip Hop
+
+**Folk, Country & Roots:**
+Americana, Bluegrass, Enka, Trot, Luk Thung, Mor Lam, Musique Trad (Quebec), Chanson à répondre, Néo-Trad (Quebec), Minyo, Celtic, Flamenco, Zydeco, Cajun, Old-Time
+
+**Jazz & Blues:**
+Swing, Bebop, Cool Jazz, Gypsy Jazz, Japanese Jazz, Acid Jazz, Latin Jazz, Delta Blues, Chicago Blues, Jazz Fusion
+
+**Latin, Caribbean & Global:**
+Salsa, Bossa Nova, Samba, Tropicalia, Reggae, Dancehall, Ska, Tango, Mariachi, Cumbia, Bachata, Merengue, Afrobeat, Highlife
+
+**Classical & Mood:**
+Baroque, Classical Era, Romantic, Impressionism, Minimalism, Opera, Guoyue, Gagaku, Film Score, Anime OST, Video Game Music
+
+## Instructions for You
+1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the `collection`.
+2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
+3. **Construct** the JSON filter. Use `$regex` with `"i"` option for text fields to ensure case-insensitive matching.
+4. **REQUIRED** Always add the songs sourceId, id,track_number,disc_number in the result query.
+4. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks").
+5. **Output** the valid JSON DO NOT ADD any markdown
+
+## Output format
+
+Only return the valid JSON object with the following properties
+
+collection - which collection the function should be call on "songs", "albums", or "artists"
+function - which mongodb collection aggregate function to call
+params - the generated arguments for the aggregate function
 
 
 ## Query Examples
@@ -93,45 +132,30 @@ It accepts:
 }
 ```
 
-**3. Complex/Joined Search:** "Find albums by 'Pink Floyd' and include their tracks"
+**3. Complex/Joined Search:** "Play some yoasobi"
 ```json
 {
-  "collection": "artists",
+  "collection": "songs",
   "function": "aggregate",
   "params": [
     {
+      "$lookup": {
+        "from": "artists",
+        "localField": "artist",
+        "foreignField": "_id",
+        "as": "artist_info"
+      }
+    },
+    {
+      "$unwind": "$artist_info"
+    },
+    {
       "$match": {
-        "artist": {
-          "$regex": "Pink Floyd",
+        "artist_info.artist": {
+          "$regex": "Yoasobi",
           "$options": "i"
         }
       }
-    },
-    {
-      "$lookup": {
-        "from": "albums",
-        "localField": "_id",
-        "foreignField": "artist",
-        "as": "artist_albums"
-      }
-    },
-     {
-      "$unwind": "$artist_albums"
-    },
-    {
-      "$lookup": {
-        "from": "songs",
-        "localField": "artist_albums.tracks",
-        "foreignField": "_id",
-        "as": "artist_albums.tracks_details"
-      }
-    },
-    {
-        "$group": {
-            "_id": "$_id",
-            "artist": { "$first": "$artist" },
-            "albums": { "$push": "$artist_albums" }
-        }
     }
   ]
 }
@@ -155,18 +179,44 @@ It accepts:
   ]
 }
 ```
-## Instructions for You
-1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the `collection`.
-2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
-3. **Construct** the JSON filter. Use `$regex` with `"i"` option for text fields to ensure case-insensitive matching.
-4. **REQUIRED** Always add the tracks source details in the result query
-4. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks"). Always add the Tracks information
-5. **Output** the valid JSON DO NOT ADD any markdown
 
-## Output format
+**5. Random** play some random songs
 
-Only return the valid JSON object with the following properties 
+```json
+{
+  "collection": "songs",
+  "function": "aggregate",
+  "params": [
+    {
+      "$sample": {
+        "size": 20
+      }
+    }
+  ]
+}
+```
 
-collection - which collection the function should be call on "songs", "albums", or "artists"
-function - which mongodb collection aggregate function to call
-params - the generated arguments for the aggregate function
+
+**6. Genre at Random** play some japanese songs at random
+
+```json
+{
+  "collection": "songs",
+  "function": "aggregate",
+  "params": [
+    {
+      "$match": {
+        "genre": {
+          "$regex": "J-Pop|J-Rock|City Pop|Shibuya-kei|Kayōkyoku|Visual Kei|Kawaii Metal|J-Core|Enka|Minyo|Japanese Jazz|Gagaku|Anime|Japanese",
+          "$options": "i"
+        }
+      }
+    },
+    {
+      "$sample": {
+        "size": 20
+      }
+    }
+  ]
+}
+```
