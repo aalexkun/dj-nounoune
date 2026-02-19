@@ -30,16 +30,14 @@ export class PromptusPlaySubcommand extends CommandRunner {
 
     const response = await this.promptusService.generate(new SearchPromptusRequest(searchText));
 
-    if (response?.parsed?.function === 'aggregate') {
+    if (!Array.isArray(response) && response?.parsed?.function === 'aggregate') {
       this.logger.debug(JSON.stringify(response.parsed, null, 2));
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
 
       if (result.length > 0) {
         const sourceIdsResponse = await this.promptusService.generate(new GetSourceIdPromptusRequest(JSON.stringify(result)));
 
-        this.logger.debug(sourceIdsResponse.sources);
-
-        if (sourceIdsResponse.sources.length > 0) {
+        if (!Array.isArray(sourceIdsResponse) && sourceIdsResponse.sources.length > 0) {
           this.logger.log('Clearing the Queue');
           await this.mpdClientService.send(new ClearMpdRequest());
 
