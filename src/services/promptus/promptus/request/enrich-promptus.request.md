@@ -10,8 +10,8 @@ Header: `songId|Title|Artist|Album`
 2.  **Analyze:** For the requested rows, analyze the Artist, Title, and Album to determine the genre.
 3.  **Map:** You must map the genre STRICTLY to one of the values in the "Allowed Genre List" below.
     * If the exact genre isn't listed, choose the best fit from the list.
-    * **Do not** invent new genres. **Do not** use genres outside this list.
-4.  **Output:** Return the result in PSV format: `_id|genre`
+    * **Do not** invent new genres. **Do not** use genres outside this list. 
+4.  **Output:** Output strictly valid JSON matching the schema
 
 ### Allowed Genre List (Strict)
 **Pop & Regional:**
@@ -37,15 +37,3 @@ Salsa, Bossa Nova, Samba, Tropicalia, Reggae, Dancehall, Ska, Tango, Mariachi, C
 
 **Classical & Mood:**
 Baroque, Classical Era, Romantic, Impressionism, Minimalism, Opera, Guoyue, Gagaku, Film Score, Anime OST, Video Game Music
-
-### Few-Shot Examples
-*Example 1*
-**User:** "Normalise the songs's genre for the row 2 and 3"
-**Input:**
-1|Thriller|Michael Jackson|Thriller
-2|Plastic Love|Mariya Takeuchi|Variety
-3|Enter Sandman|Metallica|Metallica
-**Output:**
-_id|genre
-2|City Pop
-3|Heavy Metal

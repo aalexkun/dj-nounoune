@@ -1,21 +1,18 @@
 import { GenerateContentResponse } from '@google/genai';
 import { PromptusResponse } from './promptus.response';
 
+export interface EnrichResponse {
+  id: string;
+  genre: string;
+}
+
 export class EnrichPromptusResponse extends PromptusResponse {
-  psv: string;
+  genre: EnrichResponse[];
 
   constructor(raw: GenerateContentResponse) {
     super(raw);
-    const text = raw?.text || '';
-    const matchCsv = text.match(/```csv\s*([\s\S]*?)\s*```/);
-    const matchPsv = text.match(/```psv\s*([\s\S]*?)\s*```/);
-
-    if (matchPsv) {
-      this.psv = matchPsv[1].trim() || '';
-    } else if (matchCsv) {
-      this.psv = matchCsv[1].trim() || '';
-    } else {
-      this.psv = text;
+    if (raw?.text) {
+      this.genre = JSON.parse(raw.text) as EnrichResponse[];
     }
   }
 }

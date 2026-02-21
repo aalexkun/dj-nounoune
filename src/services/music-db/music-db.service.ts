@@ -40,6 +40,7 @@ export class MusicDbService {
         {
           returnDocument: 'after', // Replaces 'new: true'
           upsert: true, // Create a new document if one doesn't exist
+          runValidators: true,
           setDefaultsOnInsert: true, // Apply schema defaults if a new one is created
         },
       )

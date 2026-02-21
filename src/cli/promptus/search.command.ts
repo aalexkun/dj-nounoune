@@ -23,7 +23,7 @@ export class PromptusSearchCommand extends CommandRunner {
 
     const response = await this.promptusService.generate(new SearchPromptusRequest(searchText));
 
-    if (!Array.isArray(response) && response?.parsed?.function === 'aggregate') {
+    if (response?.parsed?.function === 'aggregate') {
       console.log(response.parsed);
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
       this.logger.log(JSON.stringify(result, null, 2));

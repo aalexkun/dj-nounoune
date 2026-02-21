@@ -1,11 +1,11 @@
-import { GenerateContentConfig } from '@google/genai';
-import { CacheRequest, PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
+import { GenerateContentConfig, CachedContent } from '@google/genai';
+import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { SearchPromptusResponse } from '../response/search.promptus.response';
 
 export class SearchPromptusRequest extends PromptusRequest<SearchPromptusResponse> {
   public structuredResponse?: StructuredResponse | undefined;
   public config: Partial<GenerateContentConfig>;
-  public cache?: CacheRequest;
+  public cache?: CachedContent;
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context = 'src/services/promptus/promptus/request/search.promptus.request.md';

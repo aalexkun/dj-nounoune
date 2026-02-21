@@ -1,14 +1,8 @@
-import { GenerateContentConfig, GenerateContentParameters, SchemaUnion } from '@google/genai';
+import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent } from '@google/genai';
 import { promises as fs } from 'fs';
 import { PromptusStrategy } from '../promptus.type';
 
 export type RequestRole = 'user' | 'model';
-
-export interface CacheRequest {
-  file: string;
-  cacheName: string;
-  fileMineType: string;
-}
 
 export interface StructuredResponse {
   responseMimeType: string;
@@ -23,7 +17,7 @@ export abstract class PromptusRequest<TResponse> {
   public abstract context: string;
   public abstract query: string;
   public abstract role: RequestRole;
-  public abstract cache?: CacheRequest;
+  public abstract cache?: CachedContent;
   public abstract structuredResponse?: StructuredResponse;
   public abstract config: Partial<GenerateContentConfig>;
 
@@ -43,11 +37,7 @@ export abstract class PromptusRequest<TResponse> {
   public async getGeneratedContent(): Promise<GenerateContentParameters> {
     let request = {
       model: this.model,
-      config: {
-        systemInstruction: {
-          parts: [{ text: await this.getContext() }],
-        },
-      },
+      config: {},
       contents: [
         {
           role: this.role,
@@ -56,8 +46,12 @@ export abstract class PromptusRequest<TResponse> {
       ],
     };
 
-    if (this.cache?.cacheName) {
-      request.config['cached_content'] = this.cache.cacheName;
+    if (this.cache?.name) {
+      request.config['cachedContent'] = this.cache.name;
+    } else {
+      request.config['systemInstruction'] = {
+        parts: [{ text: await this.getContext() }],
+      };
     }
 
     if (this.structuredResponse) {

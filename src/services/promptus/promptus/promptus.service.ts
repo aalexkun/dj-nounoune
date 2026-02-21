@@ -1,4 +1,4 @@
-import { GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { GenerateContentResponse, GoogleGenAI, CachedContent, createUserContent, createPartFromUri } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppService } from '../../../app.service';
 
@@ -9,62 +9,59 @@ import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
 import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
-import { PromptusStrategy } from './promptus.type';
 
 @Injectable()
 export class PromptusService {
   private apiKey: string;
   private readonly client: GoogleGenAI;
   private readonly logger = new Logger('PromptusService');
+  private currentFileCache: string[] = [];
 
   constructor(appService: AppService) {
     this.apiKey = appService.getGenAiApiKey();
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
   }
 
-  async generate<ReqType>(request: PromptusRequest<ReqType | ReqType[]>): Promise<ReqType | ReqType[]> {
-    let strategy: PromptusStrategy = Array.isArray(request) ? request[0].strategy : request.strategy;
+  async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 20): Promise<ReqType[]> {
+    const results: ReqType[] = new Array(requests.length);
+    let currentIndex = 0;
 
-    const aiRequest = await request.getGeneratedContent();
+    const worker = async () => {
+      while (currentIndex < requests.length) {
+        const index = currentIndex++;
+        results[index] = await this.generate(requests[index]);
+      }
+    };
 
-    if (request.cache) {
-      await this.cache(request.cache.file, request.cache.cacheName, request.cache.fileMineType);
+    const workers: Promise<void>[] = [];
+    const actualConcurrency = Math.min(concurrencyLimit, requests.length);
+
+    for (let i = 0; i < actualConcurrency; i++) {
+      workers.push(worker());
     }
 
-    const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
+    await Promise.all(workers);
+    return results;
+  }
 
+  async generate<ReqType>(request: PromptusRequest<ReqType>): Promise<ReqType> {
+    const aiRequest = await request.getGeneratedContent();
+
+    const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
     return this.wrapResponse(request, response);
   }
 
-  private wrapResponse<ReqType>(request: PromptusRequest<ReqType | ReqType[]>, response: GenerateContentResponse): ReqType | ReqType[] {
-    if (Array.isArray(request)) {
-      if (request.length === 0) {
-        return [] as ReqType[];
-      }
+  private wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
+    if (request instanceof SearchPromptusRequest) {
+      return new SearchPromptusResponse(response) as ReqType;
+    }
 
-      if (request[0] instanceof SearchPromptusRequest) {
-        return request.map((r) => new SearchPromptusResponse(response)) as ReqType[];
-      }
+    if (request instanceof EnrichPromptusRequest) {
+      return new EnrichPromptusResponse(response) as ReqType;
+    }
 
-      if (request[0] instanceof EnrichPromptusRequest) {
-        return request.map((r) => new EnrichPromptusResponse(response)) as ReqType[];
-      }
-
-      if (request[0] instanceof GetSourceIdPromptusRequest) {
-        return request.map((r) => new GetSourceIdPromptusResponse(response)) as ReqType[];
-      }
-    } else {
-      if (request instanceof SearchPromptusRequest) {
-        return new SearchPromptusResponse(response) as ReqType;
-      }
-
-      if (request instanceof EnrichPromptusRequest) {
-        return new EnrichPromptusResponse(response) as ReqType;
-      }
-
-      if (request instanceof GetSourceIdPromptusRequest) {
-        return new GetSourceIdPromptusResponse(response) as ReqType;
-      }
+    if (request instanceof GetSourceIdPromptusRequest) {
+      return new GetSourceIdPromptusResponse(response) as ReqType;
     }
 
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);
@@ -75,19 +72,78 @@ export class PromptusService {
     return response.text || '';
   }
 
-  private async cache(file: string, cacheName: string, fileMineType: string): Promise<void> {
+  public async clearCache(cacheName: string): Promise<void> {
     const cachedFiles = await this.client.files.list();
-
-    if (cachedFiles) {
-      this.logger.log(cachedFiles);
+    const existingFiles = cachedFiles.page;
+    while (cachedFiles.hasNextPage()) {
+      let nextItems = await cachedFiles.nextPage();
+      existingFiles.push(...nextItems);
+    }
+    const filteredFiles = existingFiles.filter((file) => file.name?.includes(cacheName));
+    for (const file of filteredFiles) {
+      await this.client.files.delete({ name: file.name ?? '' });
     }
 
-    await this.client.files.upload({
-      file: file,
-      config: {
-        name: cacheName,
-        mimeType: fileMineType,
-      },
-    });
+    const cachedContents = await this.client.caches.list();
+    const existingCaches = cachedContents.page;
+    while (cachedContents.hasNextPage()) {
+      let nextItems = await cachedContents.nextPage();
+      existingCaches.push(...nextItems);
+    }
+    const filteredCaches = existingCaches.filter((cache) => cache.displayName?.includes(cacheName));
+    for (const cache of filteredCaches) {
+      await this.client.caches.delete({ name: cache.name ?? '' });
+    }
+  }
+
+  public async cache(
+    file: string,
+    cacheName: string,
+    fileMineType: string,
+    modelName: string,
+    systemInstruction: string,
+  ): Promise<CachedContent | undefined> {
+    let cachedFiles = await this.client.files.list();
+    let existingFiles = cachedFiles.page;
+    while (cachedFiles.hasNextPage()) {
+      let nextItems = await cachedFiles.nextPage();
+      existingFiles = [...existingFiles, ...nextItems];
+    }
+
+    let existingFile = cachedFiles.page.find((cachedFile) => cachedFile.name === file);
+
+    if (!existingFile) {
+      existingFile = await this.client.files.upload({
+        file: file,
+        config: {
+          name: cacheName,
+          mimeType: fileMineType,
+        },
+      });
+    }
+
+    const existingCache = await this.client.caches.list();
+    let cachedContents = existingCache.page;
+    while (existingCache.hasNextPage()) {
+      let nextItems = await existingCache.nextPage();
+      cachedContents = [...cachedContents, ...nextItems];
+    }
+
+    let existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheName);
+
+    if (existingCacheContent) {
+      return existingCacheContent;
+    } else if (existingFile && existingFile.uri && existingFile.mimeType) {
+      return await this.client.caches.create({
+        model: modelName,
+        config: {
+          displayName: cacheName,
+          contents: createUserContent(createPartFromUri(existingFile.uri, existingFile.mimeType)),
+          systemInstruction,
+        },
+      });
+    } else {
+      throw new Error('Failed to cache file');
+    }
   }
 }
