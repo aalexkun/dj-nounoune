@@ -9,17 +9,22 @@ import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
 import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
+import { CacheHandler } from './handler/cache.handler';
+import { ThrottleHandler } from './handler/throttle.handler';
 
 @Injectable()
 export class PromptusService {
   private apiKey: string;
   private readonly client: GoogleGenAI;
   private readonly logger = new Logger('PromptusService');
-  private currentFileCache: string[] = [];
+
+  public readonly cacheHandler: CacheHandler;
 
   constructor(appService: AppService) {
     this.apiKey = appService.getGenAiApiKey();
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
+    this.cacheHandler = new CacheHandler(this.client);
+    this.throttleHandler = new ThrottleHandler(this.client);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 20): Promise<ReqType[]> {
@@ -70,80 +75,5 @@ export class PromptusService {
   private parseResponse(response: GenerateContentResponse): string {
     // response.candidates[0].finishMessage === 'MAX_TOKENS'
     return response.text || '';
-  }
-
-  public async clearCache(cacheName: string): Promise<void> {
-    const cachedFiles = await this.client.files.list();
-    const existingFiles = cachedFiles.page;
-    while (cachedFiles.hasNextPage()) {
-      let nextItems = await cachedFiles.nextPage();
-      existingFiles.push(...nextItems);
-    }
-    const filteredFiles = existingFiles.filter((file) => file.name?.includes(cacheName));
-    for (const file of filteredFiles) {
-      await this.client.files.delete({ name: file.name ?? '' });
-    }
-
-    const cachedContents = await this.client.caches.list();
-    const existingCaches = cachedContents.page;
-    while (cachedContents.hasNextPage()) {
-      let nextItems = await cachedContents.nextPage();
-      existingCaches.push(...nextItems);
-    }
-    const filteredCaches = existingCaches.filter((cache) => cache.displayName?.includes(cacheName));
-    for (const cache of filteredCaches) {
-      await this.client.caches.delete({ name: cache.name ?? '' });
-    }
-  }
-
-  public async cache(
-    file: string,
-    cacheName: string,
-    fileMineType: string,
-    modelName: string,
-    systemInstruction: string,
-  ): Promise<CachedContent | undefined> {
-    let cachedFiles = await this.client.files.list();
-    let existingFiles = cachedFiles.page;
-    while (cachedFiles.hasNextPage()) {
-      let nextItems = await cachedFiles.nextPage();
-      existingFiles = [...existingFiles, ...nextItems];
-    }
-
-    let existingFile = cachedFiles.page.find((cachedFile) => cachedFile.name === file);
-
-    if (!existingFile) {
-      existingFile = await this.client.files.upload({
-        file: file,
-        config: {
-          name: cacheName,
-          mimeType: fileMineType,
-        },
-      });
-    }
-
-    const existingCache = await this.client.caches.list();
-    let cachedContents = existingCache.page;
-    while (existingCache.hasNextPage()) {
-      let nextItems = await existingCache.nextPage();
-      cachedContents = [...cachedContents, ...nextItems];
-    }
-
-    let existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheName);
-
-    if (existingCacheContent) {
-      return existingCacheContent;
-    } else if (existingFile && existingFile.uri && existingFile.mimeType) {
-      return await this.client.caches.create({
-        model: modelName,
-        config: {
-          displayName: cacheName,
-          contents: createUserContent(createPartFromUri(existingFile.uri, existingFile.mimeType)),
-          systemInstruction,
-        },
-      });
-    } else {
-      throw new Error('Failed to cache file');
-    }
   }
 }

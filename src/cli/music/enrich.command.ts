@@ -40,7 +40,7 @@ export class EnrichCommand extends CommandRunner {
     let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
-      await this.promptusService.clearCache(this.cacheName);
+      await this.promptusService.cacheHandler.clearCache(this.cacheName);
       return;
     }
 
@@ -131,7 +131,7 @@ export class EnrichCommand extends CommandRunner {
 
     const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
     const templateInstruction = await template.getContext();
-    const cache = await this.promptusService.cache(this.cacheFile, this.cacheName, 'text/plain', template.model, templateInstruction);
+    const cache = await this.promptusService.cacheHandler.cache(this.cacheFile, this.cacheName, 'text/plain', template.model, templateInstruction);
 
     if (cache) {
       for (const range of ranges) {
