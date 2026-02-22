@@ -17,7 +17,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_data1:/data/db
-      -  /opt/Workspace/dj-nounoune/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
+      -  /opt/Workspace/dj-nounoune/docker/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
     healthcheck:
       test: echo "try { rs.status() } catch (err) { rs.initiate() }" | mongosh --port 27017 --quiet
       interval: 10s
@@ -43,7 +43,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_data2:/data/db
-      -  /opt/Workspace/dj-nounoune/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
+      -  /opt/Workspace/dj-nounoune/docker/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
 
   mongo-arbiter:
     image: mongo:latest
@@ -63,7 +63,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_arbiter_data:/data/db
-      -  /opt/Workspace/dj-nounoune/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
+      -  /opt/Workspace/dj-nounoune/docker/keys/mongo-keyfile:/tmp/mongo-keyfile:ro
 
   mongo-init:
     image: mongo:latest

@@ -4,7 +4,7 @@ import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
 
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
   public config: Partial<GenerateContentConfig>;
-  private readonly _model = 'gemini-flash-lite-latest';
+  private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
   private readonly _context = 'src/services/promptus/promptus/request/enrich-promptus.request.md';
   private readonly _query: string;

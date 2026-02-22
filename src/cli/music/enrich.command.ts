@@ -37,15 +37,19 @@ export class EnrichCommand extends CommandRunner {
   }
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
+    this.logger.log(`Starting enrich command with options: ${JSON.stringify(options)}`);
     let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
+      this.logger.log('Clearing cache requested...');
       await this.promptusService.cacheHandler.clearCache(this.cacheName);
+      this.logger.log('Cache cleared successfully.');
       return;
     }
 
     // Generate the PSV file for batch processing.
     if (options.ai) {
+      this.logger.log('Fetching populated songs from MusicDbService for AI enrichment...');
       const populatedSong = await this.musicDbService.getAllPopulatedSongs();
       aiEnrichedSongs = await this.updateAi(populatedSong);
     }
@@ -127,7 +131,8 @@ export class EnrichCommand extends CommandRunner {
     await this.fileService.saveFile(this.cacheName, this.psvSerive.toPsv(songsForPromptus, true));
 
     const enrichRequests: EnrichPromptusRequest[] = [];
-    const ranges = getInclusivePaginationRanges(songsForPromptus.length, 800);
+    const ranges = getInclusivePaginationRanges(songsForPromptus.length, 1000);
+    //const ranges = getInclusivePaginationRanges(1204, 200);
 
     const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
     const templateInstruction = await template.getContext();

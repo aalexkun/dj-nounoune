@@ -69,7 +69,6 @@ export class CacheHandler {
         model: modelName,
         config: {
           displayName: cacheName,
-          ttl: '500s',
           contents: createUserContent(createPartFromUri(existingFile.uri, existingFile.mimeType)),
           systemInstruction,
         },

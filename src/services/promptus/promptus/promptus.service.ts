@@ -19,6 +19,7 @@ export class PromptusService {
   private readonly logger = new Logger('PromptusService');
 
   public readonly cacheHandler: CacheHandler;
+  private throttleHandler: ThrottleHandler;
 
   constructor(appService: AppService) {
     this.apiKey = appService.getGenAiApiKey();
@@ -27,14 +28,23 @@ export class PromptusService {
     this.throttleHandler = new ThrottleHandler(this.client);
   }
 
-  async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 20): Promise<ReqType[]> {
+  async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {
+    this.logger.log(`Starting parallel generation for ${requests.length} requests (Concurrency Limit: ${concurrencyLimit})...`);
+
     const results: ReqType[] = new Array(requests.length);
     let currentIndex = 0;
 
     const worker = async () => {
       while (currentIndex < requests.length) {
-        const index = currentIndex++;
-        results[index] = await this.generate(requests[index]);
+        try {
+          const index = currentIndex++;
+          const request = requests[index];
+          await this.throttleHandler.acquireTokens(request);
+          results[index] = await this.generate(request);
+          this.logger.log(`Completed request ${index + 1}/${requests.length}`);
+        } catch (e) {
+          this.logger.error(e);
+        }
       }
     };
 
@@ -46,6 +56,7 @@ export class PromptusService {
     }
 
     await Promise.all(workers);
+    this.logger.log('Parallel generation completed.');
     return results;
   }
 
