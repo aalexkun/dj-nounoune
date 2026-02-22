@@ -13,6 +13,10 @@ export class AppService {
     return this.configService.get<string>('IMPORT_LIBRARY_PATH') || 'undefined';
   }
 
+  getAuthXApiKey(): string | undefined {
+    return this.configService.get<string | undefined>('AUTHX_API_KEY');
+  }
+
   getImportLibraryRootPath(): string {
     return this.configService.get<string>('IMPORT_LIBRARY_PATH_ROOT') || 'Linux';
   }
