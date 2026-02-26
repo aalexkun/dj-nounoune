@@ -18,51 +18,12 @@ import { GetSourceIdPromptusRequest } from '../../services/promptus/promptus/req
 export class PromptusPlaySubcommand extends CommandRunner {
   private readonly logger = new Logger(PromptusPlaySubcommand.name);
 
-  constructor(
-    private promptusService: PromptusService,
-    private mpdClientService: MpdClientService,
-    private musicDbService: MusicDbService,
-  ) {
+  constructor(private promptusService: PromptusService) {
     super();
   }
   async run(passedParams: string[], options?: Record<string, any>): Promise<void> {
     const searchText = passedParams.join(' ');
 
-    const response = await this.promptusService.generate(new SearchPromptusRequest(searchText));
-
-    if (!Array.isArray(response) && response?.parsed?.function === 'aggregate') {
-      this.logger.debug(JSON.stringify(response.parsed, null, 2));
-      const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
-
-      if (result.length > 0) {
-        const sourceIdsResponse = await this.promptusService.generate(new GetSourceIdPromptusRequest(JSON.stringify(result)));
-
-        if (!Array.isArray(sourceIdsResponse) && sourceIdsResponse.sources.length > 0) {
-          this.logger.log('Clearing the Queue');
-          await this.mpdClientService.send(new ClearMpdRequest());
-
-          await Promise.all(
-            sourceIdsResponse.sources.map(async (source) => {
-              const result = await this.mpdClientService.send(new AddMpdRequest(source.sourceId));
-              this.logger.debug(`Response: ${result.rawResponse.trim()}`);
-            }),
-          );
-
-          this.logger.log('Playlist is Generated');
-
-          const playResult = await this.mpdClientService.send(new PlayMpdRequest());
-          this.logger.log('Playback started.');
-          this.logger.debug(playResult.rawResponse);
-        } else {
-          this.logger.warn('No files found for query: ' + searchText);
-        }
-      } else {
-        this.logger.warn('No results found for query: ' + searchText);
-        this.logger.debug(JSON.stringify(response?.parsed, null, 2));
-      }
-    } else {
-      this.logger.error(JSON.stringify(response, null, 2));
-      throw new Error('Unsupported response type');
-    }
+    await this.promptusService.play(searchText);
   }
 }
