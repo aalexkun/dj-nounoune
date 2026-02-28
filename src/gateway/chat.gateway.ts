@@ -17,7 +17,7 @@ import { Logger } from '@nestjs/common';
 import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
 
 type ClientId = string;
-type SubscriptionName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message`;
+type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message`;
 
 // Enable CORS if your client is on a different domain
 @WebSocketGateway({ cors: true })
@@ -28,9 +28,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly X_API_KEY: string;
   private readonly logger = new Logger('ChatGateway');
 
-  private channels: SubscriptionName[] = ['-chat-feedback', '-chat-message'];
-  private clientSubjects = new Map<SubscriptionName, Subject<string>>();
-  private clientSubscriptions = new Map<SubscriptionName, Subscription>();
+  private channels: ChannelName[] = ['-chat-feedback', '-chat-message'];
+  private clientSubjects = new Map<ChannelName, Subject<string>>();
+  private clientSubscriptions = new Map<ChannelName, Subscription>();
 
   constructor(
     @InjectModel(Session.name)
@@ -59,9 +59,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         status: 'active',
       });
       await newSession.save();
-
-      this.subscribeToFeedback(client);
-      this.subscribeToChat(client);
     } catch (error) {
       this.logger.error(`Error handleConnection session: ${error.message}`);
     }
@@ -96,13 +93,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // 1. Define the specific event name the client will emit
   @SubscribeMessage('chat-feedback')
   handleDataStream(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
-    this.clientSubjects.get(`${client.id}-chat-feedback`)?.next(payload);
+    if (this.clientSubjects.has(`${client.id}-chat-feedback`)) {
+      this.clientSubjects.get(`${client.id}-chat-feedback`)?.next(payload);
+    } else {
+      this.subscribeToFeedback(client).next(payload);
+    }
   }
 
-  private subscribeToFeedback(client: Socket) {
+  private subscribeToFeedback(client: Socket): Subject<string> {
     const subject = new Subject<string>();
     const subscription = subject
       .pipe(
@@ -116,14 +116,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.clientSubjects.set(`${client.id}-chat-feedback`, subject);
     this.clientSubscriptions.set(`${client.id}-chat-feedback`, subscription);
+    return subject;
   }
 
   @SubscribeMessage('chat-message')
   handleChatMessage(@MessageBody() payload: string, @ConnectedSocket() client: Socket) {
-    this.clientSubjects.get(`${client.id}-chat-message`)?.next(payload);
+    if (this.clientSubjects.has(`${client.id}-chat-message`)) {
+      this.clientSubjects.get(`${client.id}-chat-message`)?.next(payload);
+    } else {
+      this.subscribeToChat(client).next(payload);
+    }
   }
 
-  private subscribeToChat(client: Socket) {
+  private subscribeToChat(client: Socket): Subject<string> {
     const subject = new Subject<string>();
     const subscription = subject
       .pipe(
@@ -141,5 +146,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.clientSubjects.set(`${client.id}-chat-message`, subject);
     this.clientSubscriptions.set(`${client.id}-chat-message`, subscription);
+
+    return subject;
   }
 }
