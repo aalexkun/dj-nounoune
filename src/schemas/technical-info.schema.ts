@@ -14,10 +14,10 @@ export class TechnicalInfo {
   @Prop()
   sample_rate: number;
 
-  @Prop()
+  @Prop({ index: true })
   is_high_res: boolean;
 
-  @Prop()
+  @Prop({ index: true })
   is_cd_quality: boolean;
 
   @Prop()

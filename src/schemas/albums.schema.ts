@@ -10,13 +10,13 @@ export type AlbumDocument = HydratedDocument<Album>;
   versionKey: '__v',
 })
 export class Album {
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   title: string;
 
   @Prop({ type: Types.ObjectId, ref: 'Artist', required: true })
   artist: Types.ObjectId; // or Artist if you import the class
 
-  @Prop()
+  @Prop({ index: true })
   release_year: string;
 
   @Prop()

@@ -8,7 +8,7 @@ import { SearchPromptusResponse } from './response/search.promptus.response';
 import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 import { PromptusRequest } from './request/promptus.request';
 import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.request';
-import { GetSourceIdPromptusResponse, SourceId } from './response/get-source-id.promptus.response';
+import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
 import { CacheHandler } from './handler/cache.handler';
 import { ThrottleHandler } from './handler/throttle.handler';
 import { MpdClientService } from '../../mpd-client/mpd-client.service';
@@ -16,6 +16,7 @@ import { MusicDbService } from '../../music-db/music-db.service';
 import { ClearMpdRequest } from '../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../mpd-client/requests/PlayMpdRequest';
+import { JSONPath } from 'jsonpath-plus';
 
 @Injectable()
 export class PromptusService {
@@ -71,9 +72,12 @@ export class PromptusService {
   }
 
   async generate<ReqType>(request: PromptusRequest<ReqType>): Promise<ReqType> {
-    const aiRequest = await request.getGeneratedContent();
+    this.logger.log(`Starting: Request ${request.constructor.name}`);
 
+    const aiRequest = await request.getGeneratedContent();
     const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
+
+    this.logger.log(`End: Request ${request.constructor.name}`);
     return this.wrapResponse(request, response);
   }
 
@@ -98,7 +102,7 @@ export class PromptusService {
     return response.text || '';
   }
 
-  public async play(query: string): Promise<SourceId[]> {
+  public async play(query: string): Promise<string[]> {
     const response = await this.generate(new SearchPromptusRequest(query));
 
     if (!Array.isArray(response) && response?.parsed?.function === 'aggregate') {
@@ -106,29 +110,38 @@ export class PromptusService {
       const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
 
       if (result.length > 0) {
-        const sourceIdsResponse = await this.generate(new GetSourceIdPromptusRequest(JSON.stringify(result)));
+        const jsonPathMapping = await this.generate(new GetSourceIdPromptusRequest(JSON.stringify(result[0])));
 
-        if (!Array.isArray(sourceIdsResponse) && sourceIdsResponse.sources.length > 0) {
+        if (jsonPathMapping.mapping.sourceId) {
           this.logger.log('Clearing the Queue');
           await this.mpdClientService.send(new ClearMpdRequest());
 
+          const jsonPAth = jsonPathMapping.mapping.sourceId;
+          const songsAdd: string[] = [];
           await Promise.all(
-            sourceIdsResponse.sources.map(async (source) => {
+            result.map(async (song) => {
               try {
-                const result = await this.mpdClientService.send(new AddMpdRequest(source.sourceId));
+                const sourceId = JSONPath({ path: jsonPAth, json: song });
+                const playId = Array.isArray(sourceId) ? sourceId[0] : sourceId;
+                const result = await this.mpdClientService.send(new AddMpdRequest(playId));
+                songsAdd.push(sourceId);
                 this.logger.debug(`Response: ${result.rawResponse.trim()}`);
               } catch (error: any) {
-                this.logger.error(`Failed to add ${source.sourceId} to playlist: ${error.message}`);
+                this.logger.error(`Failed to add to playlist: ${error.message}`);
               }
             }),
           );
 
           this.logger.log('Playlist is Generated');
 
-          const playResult = await this.mpdClientService.send(new PlayMpdRequest());
-          this.logger.log('Playback started.');
-          this.logger.debug(playResult.rawResponse);
-          return sourceIdsResponse.sources;
+          try {
+            const playResult = await this.mpdClientService.send(new PlayMpdRequest());
+            this.logger.log('Playback started.');
+            this.logger.debug(playResult.rawResponse);
+            return songsAdd;
+          } catch (error: any) {
+            this.logger.error(`Failed to play: ${error.message}`);
+          }
         } else {
           this.logger.warn('No files found for query: ' + query);
         }

@@ -14,7 +14,7 @@ import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 import { FfprobeService } from './services/ffprobe/ffprobe.service';
 import { FileService } from './services/file/file.service';
-import { AppGateway } from './app.gateway';
+import { ChatGateway } from './gateway/chat.gateway';
 
 @Module({
   imports: [
@@ -39,6 +39,6 @@ import { AppGateway } from './app.gateway';
     MpdClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService, FfprobeService, FileService, AppGateway],
+  providers: [AppService, PsvService, ...CommandProviders, PromptusService, MusicDbService, FfprobeService, FileService, ChatGateway],
 })
 export class AppModule {}

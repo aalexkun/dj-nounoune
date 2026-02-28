@@ -9,7 +9,7 @@ export type ArtistDocument = HydratedDocument<Artist>;
   versionKey: '__v',
 })
 export class Artist {
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   artist: string;
 
   @Prop([String])

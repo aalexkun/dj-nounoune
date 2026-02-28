@@ -20,16 +20,16 @@ export class Song {
   @Prop({ type: Types.ObjectId, ref: 'Album', required: true })
   album: Types.ObjectId;
 
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   title: string;
 
   @Prop()
   composer: string;
 
-  @Prop()
+  @Prop({ index: true })
   genre: string;
 
-  @Prop()
+  @Prop({ index: true })
   year: string;
 
   @Prop()
@@ -38,10 +38,10 @@ export class Song {
   @Prop()
   disc_number: number;
 
-  @Prop()
+  @Prop({ index: true })
   bpm: number;
 
-  @Prop()
+  @Prop({ index: true })
   category: string;
 
   @Prop({ type: String, required: false })

@@ -84,9 +84,24 @@ Baroque, Classical Era, Romantic, Impressionism, Minimalism, Opera, Guoyue, Gaga
 1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the `collection`.
 2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
 3. **Construct** the JSON filter. Use `$regex` with `"i"` option for text fields to ensure case-insensitive matching.
-4. **REQUIRED** Always add the songs sourceId, id,track_number,disc_number in the result query.
-4. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks").
-5. **Output** the valid JSON DO NOT ADD any markdown
+4. **REQUIRED** Always add the songs `source.sourceId`, id, track_number,disc_number in the result query.
+
+Example: 
+```json
+    {
+  "$project": {
+    "source.sourceId": 1,
+    "track_number": 1,
+    "disc_number": 1
+  }
+}
+```
+
+
+5. **Determine** if a `$lookup` is needed (e.g. "Get album with tracks").
+6. **Output** the valid JSON DO NOT ADD any markdown
+
+
 
 ## Output format
 
