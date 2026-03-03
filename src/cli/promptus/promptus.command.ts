@@ -2,11 +2,12 @@ import { Command, CommandRunner } from 'nest-commander';
 import { Injectable } from '@nestjs/common';
 import { PromptusPlaySubcommand } from './play.subcommand';
 import { PromptusSearchCommand } from './search.command';
+import { PromptusChatSubcommand } from './chat.subcommand';
 
 @Command({
   name: 'promptus',
   description: 'Ai inquiry commands',
-  subCommands: [PromptusPlaySubcommand, PromptusSearchCommand],
+  subCommands: [PromptusPlaySubcommand, PromptusSearchCommand, PromptusChatSubcommand],
 })
 @Injectable()
 export class PromptusCommand extends CommandRunner {

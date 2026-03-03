@@ -1,8 +1,10 @@
 import { GenerateContentConfig, CachedContent } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { SearchPromptusResponse } from '../response/search.promptus.response';
+import { ToolDeclaration } from '../tools/tool.type';
 
 export class SearchPromptusRequest extends PromptusRequest<SearchPromptusResponse> {
+  public tools: ToolDeclaration[] = [];
   public structuredResponse?: StructuredResponse | undefined;
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;

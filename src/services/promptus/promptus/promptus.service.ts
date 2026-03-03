@@ -1,4 +1,4 @@
-import { GenerateContentResponse, GoogleGenAI, CachedContent, createUserContent, createPartFromUri } from '@google/genai';
+import { GenerateContentResponse, GoogleGenAI, CachedContent, createUserContent, createPartFromUri, FunctionCall, FinishReason } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppService } from '../../../app.service';
 
@@ -17,9 +17,16 @@ import { ClearMpdRequest } from '../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../mpd-client/requests/PlayMpdRequest';
 import { JSONPath } from 'jsonpath-plus';
+import { Subject } from 'rxjs';
+import { ChatPromptusRequest } from './request/chat.promptus.request';
+import { ChatPromptusResponse } from './response/chat.promptus.response';
+import { StopMpdRequest } from '../../mpd-client/requests/StopMpdRequest';
+import { CurrentSongMpdRequest } from '../../mpd-client/requests/CurrentSongMpdRequest';
+import { PlaylistMpdRequest } from '../../mpd-client/requests/PlaylistMpdRequest';
 
 @Injectable()
 export class PromptusService {
+  private maxThinkingLoop = 10;
   private apiKey: string;
   private readonly client: GoogleGenAI;
   private readonly logger = new Logger('PromptusService');
@@ -94,12 +101,65 @@ export class PromptusService {
       return new GetSourceIdPromptusResponse(response) as ReqType;
     }
 
+    if (request instanceof ChatPromptusRequest) {
+      return new ChatPromptusResponse(response) as ReqType;
+    }
+
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);
   }
 
-  private parseResponse(response: GenerateContentResponse): string {
-    // response.candidates[0].finishMessage === 'MAX_TOKENS'
-    return response.text || '';
+  public async chat(message: string, statusSubject: Subject<string>): Promise<string> {
+    let loop = 0;
+    let request = new ChatPromptusRequest(message);
+    let aiResponse = '';
+
+    while (loop < this.maxThinkingLoop) {
+      const response = await this.generate(request);
+
+      if (response.content) {
+        request.pushAiResponse(response.content);
+      }
+
+      if (response.functionCall) {
+        for (const fc of response.functionCall) {
+          let result = await this.proceedFunctionCall(fc);
+          if (result) {
+            request.pushFunctionResponse(result, fc);
+            statusSubject.next(result);
+          }
+        }
+      } else {
+        if (response.finishReason === FinishReason.STOP) {
+          loop = Number.MAX_SAFE_INTEGER;
+        } else {
+          loop++;
+        }
+        if (response.text) {
+          aiResponse = response.text;
+        } else {
+          this.logger.warn('No text found in response');
+          statusSubject.next('No text found in response');
+        }
+      }
+    }
+
+    return aiResponse;
+  }
+
+  private async proceedFunctionCall(fc: FunctionCall) {
+    if (fc.name === 'play_music' && fc.args && 'query' in fc.args && typeof fc.args.query === 'string') {
+      const result = await this.play(fc.args.query);
+      return 'Songs queued successfully.\n' + result.join('\n');
+    } else if (fc.name === 'stop_playback') {
+      const response = await this.mpdClientService.send(new StopMpdRequest());
+      return 'Playback stopped.';
+    } else if (fc.name === 'current_song') {
+      const result = await this.mpdClientService.send(new CurrentSongMpdRequest());
+      return JSON.stringify(result.song) || 'No song is currently playing.';
+    } else if (fc.name === 'current_playlist') {
+      const result = await this.mpdClientService.send(new PlaylistMpdRequest());
+      return JSON.stringify(result.tracks) || 'No playlist is currently playing.';
+    }
   }
 
   public async play(query: string): Promise<string[]> {

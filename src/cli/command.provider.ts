@@ -12,6 +12,7 @@ import { PromptusPlaySubcommand } from './promptus/play.subcommand';
 import { PromptusCommand } from './promptus/promptus.command';
 import { MusicCommand } from './music/music.command';
 import { EnrichCommand } from './music/enrich.command';
+import { PromptusChatSubcommand } from './promptus/chat.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -30,4 +31,5 @@ export const CommandProviders = [
   PromptusCommand,
   PromptusPlaySubcommand,
   PromptusSearchCommand,
+  PromptusChatSubcommand,
 ];

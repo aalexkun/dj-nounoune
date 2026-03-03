@@ -17,7 +17,7 @@ import { Logger } from '@nestjs/common';
 import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
 
 type ClientId = string;
-type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message`;
+type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message` | `${ClientId}-chat-message-status-response`;
 
 // Enable CORS if your client is on a different domain
 @WebSocketGateway({ cors: true })
@@ -28,7 +28,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly X_API_KEY: string;
   private readonly logger = new Logger('ChatGateway');
 
-  private channels: ChannelName[] = ['-chat-feedback', '-chat-message'];
+  private channels: ChannelName[] = ['-chat-feedback', '-chat-message', '-chat-message-status-response'];
   private clientSubjects = new Map<ChannelName, Subject<string>>();
   private clientSubscriptions = new Map<ChannelName, Subscription>();
 
@@ -129,19 +129,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private subscribeToChat(client: Socket): Subject<string> {
+    // Create a new subject and subscription for handling chat status messages
+    const statusSubject = new Subject<string>();
+    const statusSubscription = statusSubject.subscribe((status) => {
+      client.emit('chat-message-status-response', status);
+    });
+    this.clientSubjects.set(`${client.id}-chat-message-status-response`, statusSubject);
+    this.clientSubscriptions.set(`${client.id}-chat-message-status-response`, statusSubscription);
+
+    // Pass the statusSubject to the chat function so it can dispatch status messages
     const subject = new Subject<string>();
     const subscription = subject
       .pipe(
-        tap((payload) => {
-          this.logger.debug(`Message from ${client.id}: ${payload}`);
-          client.emit('chat-message-response', 'Creating Playlist...');
-        }),
-        concatMap((payload) => from(this.promptusService.play(payload))),
+        // tap((payload) => {
+        //   this.logger.debug(`Message from ${client.id}: ${payload}`);
+        //   client.emit('chat-message-response', 'Creating Playlist...');
+        // }),
+        concatMap((payload) => from(this.promptusService.chat(payload, statusSubject))),
       )
-      .subscribe((playQueue) => {
-        playQueue.forEach((songId) => {
-          client.emit('chat-message-response', 'Queued: ' + songId);
-        });
+      .subscribe((message) => {
+        client.emit('chat-message-response', message);
       });
 
     this.clientSubjects.set(`${client.id}-chat-message`, subject);

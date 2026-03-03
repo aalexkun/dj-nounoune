@@ -1,7 +1,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { MpdClientService } from './mpd-client.service';
-import { AppService } from '../../../app.service';
+import { AppService } from '../../app.service';
 
 describe('MpdClientService', () => {
   let service: MpdClientService;

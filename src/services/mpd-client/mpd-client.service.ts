@@ -1,6 +1,16 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import * as net from 'net';
 import { MpdRequest } from './requests/MpdRequest';
+import { NextMpdRequest } from './requests/NextMpdRequest';
+import { PauseMpdRequest } from './requests/PauseMpdRequest';
+import { PlayMpdRequest } from './requests/PlayMpdRequest';
+import { PlayIdMpdRequest } from './requests/PlayIdMpdRequest';
+import { PreviousMpdRequest } from './requests/PreviousMpdRequest';
+import { SeekMpdRequest } from './requests/SeekMpdRequest';
+import { SeekIdMpdRequest } from './requests/SeekIdMpdRequest';
+import { SeekCurMpdRequest } from './requests/SeekCurMpdRequest';
+import { StopMpdRequest } from './requests/StopMpdRequest';
+import { CurrentSongMpdRequest } from './requests/CurrentSongMpdRequest';
 import { AppService } from '../../app.service';
 
 @Injectable()
@@ -93,6 +103,46 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
       this.requestQueue.push({ request, resolve, reject });
       this.processQueue();
     });
+  }
+
+  async next() {
+    return this.send(new NextMpdRequest());
+  }
+
+  async pause(state?: 0 | 1) {
+    return this.send(new PauseMpdRequest(state));
+  }
+
+  async play(songPos?: number) {
+    return this.send(new PlayMpdRequest(songPos));
+  }
+
+  async playid(songId?: number) {
+    return this.send(new PlayIdMpdRequest(songId));
+  }
+
+  async previous() {
+    return this.send(new PreviousMpdRequest());
+  }
+
+  async seek(songPos: number, time: number | string) {
+    return this.send(new SeekMpdRequest(songPos, time));
+  }
+
+  async seekid(songId: number, time: number | string) {
+    return this.send(new SeekIdMpdRequest(songId, time));
+  }
+
+  async seekcur(time: number | string) {
+    return this.send(new SeekCurMpdRequest(time));
+  }
+
+  async stop() {
+    return this.send(new StopMpdRequest());
+  }
+
+  async currentsong() {
+    return this.send(new CurrentSongMpdRequest());
   }
 
   private processQueue() {

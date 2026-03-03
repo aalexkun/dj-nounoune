@@ -1,6 +1,7 @@
-import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent } from '@google/genai';
+import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent, ContentListUnion, FunctionCall, Content } from '@google/genai';
 import { promises as fs } from 'fs';
 import { PromptusStrategy } from '../promptus.type';
+import { ToolDeclaration } from '../tools/tool.type';
 
 export type RequestRole = 'user' | 'model';
 
@@ -13,6 +14,7 @@ export interface StructuredResponse {
 export abstract class PromptusRequest<TResponse> {
   declare readonly _responseType: TResponse;
 
+  private genaiRequest: GenerateContentParameters;
   public abstract model: string;
   public abstract context: string;
   public abstract query: string;
@@ -20,6 +22,7 @@ export abstract class PromptusRequest<TResponse> {
   public abstract cache?: CachedContent;
   public abstract structuredResponse?: StructuredResponse;
   public abstract config: Partial<GenerateContentConfig>;
+  public abstract tools: ToolDeclaration[];
 
   public async getContext(): Promise<string> {
     try {
@@ -34,8 +37,38 @@ export abstract class PromptusRequest<TResponse> {
     return 'sequential';
   }
 
-  public async getGeneratedContent(): Promise<GenerateContentParameters> {
-    let request = {
+  public pushAiResponse(history: ContentListUnion): void {
+    if (Array.isArray(this.genaiRequest.contents)) {
+      if (typeof history === 'object' && history !== null && 'role' in history && 'parts' in history) {
+        this.genaiRequest.contents.push(history);
+      }
+    }
+  }
+
+  public pushFunctionResponse(fnResult: string, fc: FunctionCall): void {
+    if (Array.isArray(this.genaiRequest.contents)) {
+      const responseContent: Content = {
+        role: 'tool',
+        parts: [
+          {
+            functionResponse: {
+              willContinue: false,
+              name: fc.name,
+              response: {
+                output: fnResult,
+                error: null,
+              },
+            },
+          },
+        ],
+      };
+
+      this.genaiRequest.contents.push(responseContent);
+    }
+  }
+
+  private async initialiseGenAiRequest() {
+    this.genaiRequest = {
       model: this.model,
       config: {},
       contents: [
@@ -46,18 +79,37 @@ export abstract class PromptusRequest<TResponse> {
       ],
     };
 
-    if (this.cache?.name) {
-      request.config['cachedContent'] = this.cache.name;
-    } else {
-      request.config['systemInstruction'] = {
-        parts: [{ text: await this.getContext() }],
-      };
+    if (this.genaiRequest.config) {
+      // If cache is provided, systemInstruction can't be set
+      if (this.cache?.name) {
+        this.genaiRequest.config['cachedContent'] = this.cache.name;
+      } else {
+        // set systemInstruction
+        this.genaiRequest.config['systemInstruction'] = {
+          parts: [{ text: await this.getContext() }],
+        };
+
+        // set tools
+        if (this.tools.length > 0) {
+          this.genaiRequest.config['tools'] = [
+            {
+              functionDeclarations: this.tools,
+            },
+          ];
+        }
+      }
     }
 
     if (this.structuredResponse) {
-      request.config = { ...request.config, ...this.structuredResponse };
+      this.genaiRequest.config = { ...this.genaiRequest.config, ...this.structuredResponse };
+    }
+  }
+
+  public async getGeneratedContent(): Promise<GenerateContentParameters> {
+    if (!this.genaiRequest) {
+      await this.initialiseGenAiRequest();
     }
 
-    return request;
+    return this.genaiRequest;
   }
 }

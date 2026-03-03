@@ -1,8 +1,10 @@
 import { GenerateContentConfig, CachedContent } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
+import { ToolDeclaration } from '../tools/tool.type';
 
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
+  public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';

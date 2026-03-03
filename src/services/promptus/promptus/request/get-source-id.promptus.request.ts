@@ -1,8 +1,10 @@
 import { GenerateContentConfig, CachedContent } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { GetSourceIdPromptusResponse } from '../response/get-source-id.promptus.response';
+import { ToolDeclaration } from '../tools/tool.type';
 
 export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromptusResponse> {
+  public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   private readonly _model = 'gemini-flash-lite-latest';

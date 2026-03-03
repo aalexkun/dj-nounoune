@@ -1,12 +1,18 @@
-import { FinishReason, GenerateContentResponse } from '@google/genai';
+import { Content, FinishReason, FunctionCall, GenerateContentResponse } from '@google/genai';
 
 export class PromptusResponse {
   public readonly finishReason: FinishReason;
+  public readonly content: Content | undefined;
+  public readonly functionCall: FunctionCall[] | undefined;
+  public text: string | undefined;
 
   constructor(public readonly raw: GenerateContentResponse) {
     // Safely access the first candidate
     const candidate = raw.candidates?.[0];
     // Store the reason on the instance
+    this.content = candidate?.content ?? undefined;
+    this.functionCall = raw.functionCalls ?? undefined;
+    this.text = raw.text ?? undefined;
 
     switch (candidate?.finishReason) {
       case FinishReason.STOP:
@@ -38,6 +44,9 @@ export class PromptusResponse {
         this.finishReason = candidate?.finishReason;
         console.warn('⚠️ Warning: Finish reason is unspecified or undefined.');
         break;
+
+      case FinishReason.MALFORMED_FUNCTION_CALL:
+        throw new Error('Generation halted: An unknown system error occurred (MALFORMED_FUNCTION_CALL).');
 
       case undefined:
       default:
