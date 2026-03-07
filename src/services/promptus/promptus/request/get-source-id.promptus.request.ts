@@ -1,4 +1,4 @@
-import { GenerateContentConfig, CachedContent } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { GetSourceIdPromptusResponse } from '../response/get-source-id.promptus.response';
 import { ToolDeclaration } from '../tools/tool.type';
@@ -7,6 +7,7 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
   public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
+  public history: Content[] = [];
   private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context = 'src/services/promptus/promptus/request/get-source-id.promptus.request.md';

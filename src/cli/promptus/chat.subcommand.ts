@@ -22,6 +22,12 @@ export class PromptusChatSubcommand extends CommandRunner {
       this.logger.log(text);
     });
 
-    await this.promptusService.chat(searchText, subject);
+    await this.promptusService.chat(
+      {
+        chatId: 'cli',
+        message: searchText,
+      },
+      subject,
+    );
   }
 }

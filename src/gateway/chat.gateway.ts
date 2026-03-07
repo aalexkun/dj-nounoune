@@ -11,7 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Session, SessionDocument } from '../schemas/session.schema';
-import { AppService } from '../app.service';
+import { AuthService } from '../services/auth/auth.service';
 import { PromptusService } from '../services/promptus/promptus/promptus.service';
 import { Logger } from '@nestjs/common';
 import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
@@ -25,29 +25,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private readonly X_API_KEY: string;
   private readonly logger = new Logger('ChatGateway');
 
   private channels: ChannelName[] = ['-chat-feedback', '-chat-message', '-chat-message-status-response'];
-  private clientSubjects = new Map<ChannelName, Subject<string>>();
+  private clientSubjects = new Map<ChannelName, Subject<any>>();
   private clientSubscriptions = new Map<ChannelName, Subscription>();
 
   constructor(
     @InjectModel(Session.name)
     private sessionModel: Model<SessionDocument>,
-    private readonly appService: AppService,
     private readonly promptusService: PromptusService,
-  ) {
-    const apiKey = this.appService.getAuthXApiKey();
-    if (!apiKey) {
-      throw new Error('AuthX API Key not found. Please set the AUTHX_API_KEY environment variable to a valid API Key.');
-    }
-    this.X_API_KEY = apiKey;
-  }
+    private readonly authService: AuthService,
+  ) {}
 
   async handleConnection(client: Socket) {
     const apiKey = client.handshake.headers['x-api-key'] || client.handshake.auth['apiKey'];
-    if (apiKey !== this.X_API_KEY) {
+    if (!this.authService.validateApiKey(apiKey as string | undefined)) {
       this.logger.warn(`Unauthorised connection attempt from ${client.id}`);
       client.disconnect();
       return;
@@ -120,7 +113,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat-message')
-  handleChatMessage(@MessageBody() payload: string, @ConnectedSocket() client: Socket) {
+  handleChatMessage(@MessageBody() payload: { chatId: string; message: string }, @ConnectedSocket() client: Socket) {
     if (this.clientSubjects.has(`${client.id}-chat-message`)) {
       this.clientSubjects.get(`${client.id}-chat-message`)?.next(payload);
     } else {
@@ -128,7 +121,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private subscribeToChat(client: Socket): Subject<string> {
+  private subscribeToChat(client: Socket): Subject<{ chatId: string; message: string }> {
     // Create a new subject and subscription for handling chat status messages
     const statusSubject = new Subject<string>();
     const statusSubscription = statusSubject.subscribe((status) => {
@@ -138,13 +131,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.clientSubscriptions.set(`${client.id}-chat-message-status-response`, statusSubscription);
 
     // Pass the statusSubject to the chat function so it can dispatch status messages
-    const subject = new Subject<string>();
+    const subject = new Subject<{ chatId: string; message: string }>();
     const subscription = subject
       .pipe(
-        // tap((payload) => {
-        //   this.logger.debug(`Message from ${client.id}: ${payload}`);
-        //   client.emit('chat-message-response', 'Creating Playlist...');
-        // }),
+        //   concatMap((payload) => from(this.chatController..chat(payload, statusSubject))),
         concatMap((payload) => from(this.promptusService.chat(payload, statusSubject))),
       )
       .subscribe((message) => {

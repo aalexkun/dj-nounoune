@@ -23,6 +23,7 @@ import { ChatPromptusResponse } from './response/chat.promptus.response';
 import { StopMpdRequest } from '../../mpd-client/requests/StopMpdRequest';
 import { CurrentSongMpdRequest } from '../../mpd-client/requests/CurrentSongMpdRequest';
 import { PlaylistMpdRequest } from '../../mpd-client/requests/PlaylistMpdRequest';
+import { ChatService } from '../../chat/chat.service';
 
 @Injectable()
 export class PromptusService {
@@ -39,6 +40,7 @@ export class PromptusService {
     appService: AppService,
     private mpdClientService: MpdClientService,
     private musicDbService: MusicDbService,
+    private chatService: ChatService,
   ) {
     this.apiKey = appService.getGenAiApiKey();
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
@@ -108,10 +110,12 @@ export class PromptusService {
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);
   }
 
-  public async chat(message: string, statusSubject: Subject<string>): Promise<string> {
+  public async chat(payload: { chatId: string; message: string }, statusSubject: Subject<string>): Promise<string> {
     let loop = 0;
-    let request = new ChatPromptusRequest(message);
     let aiResponse = '';
+
+    const history = await this.chatService.getHistory(payload.chatId);
+    const request = new ChatPromptusRequest(payload.message, history);
 
     while (loop < this.maxThinkingLoop) {
       const response = await this.generate(request);
@@ -142,6 +146,14 @@ export class PromptusService {
         }
       }
     }
+
+    const reply = {
+      role: 'model',
+      parts: [{ text: aiResponse }],
+    };
+    request.history.push(reply);
+
+    await this.chatService.saveHistory(payload.chatId, request.history);
 
     return aiResponse;
   }

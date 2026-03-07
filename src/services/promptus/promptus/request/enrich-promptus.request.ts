@@ -1,4 +1,4 @@
-import { GenerateContentConfig, CachedContent } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
 import { ToolDeclaration } from '../tools/tool.type';
@@ -11,6 +11,7 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
   private readonly _context = 'src/services/promptus/promptus/request/enrich-promptus.request.md';
   private readonly _query: string;
   public cache: CachedContent;
+  public history: Content[] = [];
 
   public readonly structuredResponse: StructuredResponse = {
     responseMimeType: 'application/json',

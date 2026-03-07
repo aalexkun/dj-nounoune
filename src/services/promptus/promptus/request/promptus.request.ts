@@ -23,6 +23,7 @@ export abstract class PromptusRequest<TResponse> {
   public abstract structuredResponse?: StructuredResponse;
   public abstract config: Partial<GenerateContentConfig>;
   public abstract tools: ToolDeclaration[];
+  public abstract history: Content[];
 
   public async getContext(): Promise<string> {
     try {
@@ -40,7 +41,7 @@ export abstract class PromptusRequest<TResponse> {
   public pushAiResponse(history: ContentListUnion): void {
     if (Array.isArray(this.genaiRequest.contents)) {
       if (typeof history === 'object' && history !== null && 'role' in history && 'parts' in history) {
-        this.genaiRequest.contents.push(history);
+        this.history.push(history);
       }
     }
   }
@@ -62,8 +63,7 @@ export abstract class PromptusRequest<TResponse> {
           },
         ],
       };
-
-      this.genaiRequest.contents.push(responseContent);
+      this.history.push(responseContent);
     }
   }
 
@@ -72,10 +72,12 @@ export abstract class PromptusRequest<TResponse> {
       model: this.model,
       config: {},
       contents: [
-        {
-          role: this.role,
-          parts: [{ text: this.query }],
-        },
+        ...(this.history || [
+          {
+            role: this.role,
+            parts: [{ text: this.query }],
+          },
+        ]),
       ],
     };
 
@@ -106,10 +108,7 @@ export abstract class PromptusRequest<TResponse> {
   }
 
   public async getGeneratedContent(): Promise<GenerateContentParameters> {
-    if (!this.genaiRequest) {
-      await this.initialiseGenAiRequest();
-    }
-
+    await this.initialiseGenAiRequest();
     return this.genaiRequest;
   }
 }

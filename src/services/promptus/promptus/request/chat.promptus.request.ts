@@ -1,8 +1,9 @@
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { ChatPromptusResponse } from '../response/chat.promptus.response';
-import { CachedContent, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
 import { MpdTools } from '../tools/mpd.tools';
 import { ToolDeclaration } from '../tools/tool.type';
+import { ChatMessage } from '../../../../schemas/chat.schema';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public tools: ToolDeclaration[] = [MpdTools.playMpdCommand, MpdTools.stopMpdCommand, MpdTools.currentMpdCommand, MpdTools.playlistMpdCommand];
@@ -30,8 +31,19 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     return this._query;
   }
 
-  constructor(query: string) {
+  public history: Content[] = [];
+
+  constructor(query: string, history: ChatMessage[]) {
     super();
+
+    this.history = [
+      ...history,
+      {
+        role: 'user',
+        parts: [{ text: query }],
+      },
+    ];
+
     this._query = query;
   }
 }
