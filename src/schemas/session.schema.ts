@@ -8,6 +8,9 @@ export class Session {
   @Prop({ required: true })
   socketId: string;
 
+  @Prop({ required: false })
+  userId?: string;
+
   @Prop({ required: true, default: 'active' })
   status: string;
 

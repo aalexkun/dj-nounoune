@@ -17,14 +17,19 @@ The Chat REST API requires the `x-api-key` header for authentication. Make sure 
 ### 1. Create a Chatroom
 
 ```bash
-curl -X PUT http://localhost:3000/chatroom \
-  -H "x-api-key: your-secure-api-key"
+curl -X POST http://localhost:3000/chatroom \
+  -H "x-api-key: your-secure-api-key" \
+  -d '{
+    "topic": "My first chatroom",
+    "userId": "Alexis-le-Trotteur"
+  }'
 ```
 
 **Response:**
 ```json
 {
   "userId": "Alexis-le-Trotteur",
+  "topic": "My first chatroom",
   "history": [],
   "_id": "64a2b1c3e4d5f6g7h8i9j0k1",
   "createdAt": "2023-10-27T10:00:00.000Z",

@@ -176,12 +176,6 @@ export class PromptusService {
       }
     }
 
-    const reply = {
-      role: 'model',
-      parts: [{ text: aiResponse }],
-    };
-    request.history.push(reply);
-
     await this.chatService.saveHistory(payload.chatId, request.history);
 
     return aiResponse;
@@ -190,7 +184,8 @@ export class PromptusService {
   private async proceedFunctionCall(fc: FunctionCall) {
     if (fc.name === 'play_music' && fc.args && 'query' in fc.args && typeof fc.args.query === 'string') {
       const result = await this.play(fc.args.query);
-      return 'Songs queued successfully.\n' + result.join('\n');
+      const markdownList = result.map((item) => `- ${item}`).join('\n');
+      return `Songs queued successfully:\n\n${markdownList}`;
     } else if (fc.name === 'stop_playback') {
       const response = await this.mpdClientService.send(new StopMpdRequest());
       return 'Playback stopped.';

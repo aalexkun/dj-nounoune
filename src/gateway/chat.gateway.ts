@@ -46,6 +46,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     const apiKey = client.handshake.headers['x-api-key'] || client.handshake.auth['apiKey'];
+    const userId = client.handshake.headers['x-user-id'] || client.handshake.auth['userId'];
+
     if (!this.authService.validateApiKey(apiKey as string | undefined)) {
       this.logger.warn(`Unauthorised connection attempt from ${client.id}`);
       client.disconnect();
@@ -56,6 +58,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const newSession = new this.sessionModel({
         socketId: client.id,
         status: 'active',
+        ...(userId ? { userId: userId as string } : {}),
       });
       await newSession.save();
     } catch (error) {
@@ -106,9 +109,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const subscription = subject
       .pipe(
         bufferTime(5000),
-        tap(() => {
-          this.logger.log('Buffering messages for 5 seconds...');
-        }),
         filter((bufferedMessages) => bufferedMessages?.length > 0),
         map((bufferedMessages) => {
           // 2. Reduce the array into an object that counts each feedback type

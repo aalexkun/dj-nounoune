@@ -11,7 +11,13 @@ export class ApiAuthGuard implements CanActivate {
     ): boolean | Promise<boolean> | Observable<boolean> {
         const request = context.switchToHttp().getRequest();
         const apiKey = request.headers['x-api-key'];
+        const userId = request.headers['x-user-id'];
         this.authService.checkApiKey(apiKey);
+
+        if (userId) {
+            request.userId = userId;
+        }
+
         return true;
     }
 }
