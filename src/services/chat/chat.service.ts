@@ -6,7 +6,10 @@ import { Content } from '@google/genai';
 
 @Injectable()
 export class ChatService {
-  constructor(@InjectModel(Chat.name) private readonly chatModel: Model<ChatDocument>) {}
+  constructor(
+    @InjectModel(Chat.name)
+    private readonly chatModel: Model<ChatDocument>,
+  ) {}
 
   async findAll(): Promise<Chat[]> {
     return await this.chatModel.find().exec();
@@ -18,6 +21,15 @@ export class ChatService {
       throw new NotFoundException(`Chat with ID ${id} not found`);
     }
     return chat;
+  }
+
+  async update(id: string, updateChatDto: Partial<Chat>): Promise<Chat> {
+    const chat = await this.chatModel.findById(new Types.ObjectId(id)).exec();
+    if (!chat) {
+      throw new NotFoundException(`Chat with ID ${id} not found`);
+    }
+    Object.assign(chat, updateChatDto);
+    return chat.save();
   }
 
   async create(topic: string, userId: string): Promise<Chat> {

@@ -71,36 +71,40 @@ export abstract class PromptusRequest<TResponse> {
     this.genaiRequest = {
       model: this.model,
       config: {},
+      // Get the histo or the query if no history is provided
       contents: [
-        ...(this.history || [
-          {
-            role: this.role,
-            parts: [{ text: this.query }],
-          },
-        ]),
+        ...(this.history?.length > 0
+          ? this.history
+          : [
+              {
+                role: this.role,
+                parts: [{ text: this.query }],
+              },
+            ]),
       ],
     };
 
-    if (this.genaiRequest.config) {
-      // If cache is provided, systemInstruction can't be set
-      if (this.cache?.name) {
-        this.genaiRequest.config['cachedContent'] = this.cache.name;
-      } else {
-        // set systemInstruction
-        this.genaiRequest.config['systemInstruction'] = {
-          parts: [{ text: await this.getContext() }],
-        };
+    if (this.history)
+      if (this.genaiRequest.config) {
+        // If cache is provided, systemInstruction can't be set
+        if (this.cache?.name) {
+          this.genaiRequest.config['cachedContent'] = this.cache.name;
+        } else {
+          // set systemInstruction
+          this.genaiRequest.config['systemInstruction'] = {
+            parts: [{ text: await this.getContext() }],
+          };
 
-        // set tools
-        if (this.tools.length > 0) {
-          this.genaiRequest.config['tools'] = [
-            {
-              functionDeclarations: this.tools,
-            },
-          ];
+          // set tools
+          if (this.tools?.length > 0) {
+            this.genaiRequest.config['tools'] = [
+              {
+                functionDeclarations: this.tools,
+              },
+            ];
+          }
         }
       }
-    }
 
     if (this.structuredResponse) {
       this.genaiRequest.config = { ...this.genaiRequest.config, ...this.structuredResponse };

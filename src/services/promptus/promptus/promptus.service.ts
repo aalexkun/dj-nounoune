@@ -1,4 +1,4 @@
-import { GenerateContentResponse, GoogleGenAI, CachedContent, createUserContent, createPartFromUri, FunctionCall, FinishReason } from '@google/genai';
+import { GenerateContentResponse, GoogleGenAI, CountTokensParameters, FunctionCall, FinishReason } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppService } from '../../../app.service';
 
@@ -24,6 +24,9 @@ import { StopMpdRequest } from '../../mpd-client/requests/StopMpdRequest';
 import { CurrentSongMpdRequest } from '../../mpd-client/requests/CurrentSongMpdRequest';
 import { PlaylistMpdRequest } from '../../mpd-client/requests/PlaylistMpdRequest';
 import { ChatService } from '../../chat/chat.service';
+import { ChatTitlePromptusRequest } from './request/chat-title.promptus.request';
+import * as chatGatewayTypes from '../../../gateway/chat.gateway.types';
+import { ChatTitleHandler } from './handler/chat-title.handler';
 
 @Injectable()
 export class PromptusService {
@@ -35,6 +38,7 @@ export class PromptusService {
   public readonly cacheHandler: CacheHandler;
 
   private throttleHandler: ThrottleHandler;
+  private chatTitleHandler: ChatTitleHandler;
 
   constructor(
     appService: AppService,
@@ -46,6 +50,7 @@ export class PromptusService {
     this.client = new GoogleGenAI({ apiKey: this.apiKey });
     this.cacheHandler = new CacheHandler(this.client);
     this.throttleHandler = new ThrottleHandler(this.client);
+    this.chatTitleHandler = new ChatTitleHandler(this, this.chatService);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {
@@ -84,6 +89,13 @@ export class PromptusService {
     this.logger.log(`Starting: Request ${request.constructor.name}`);
 
     const aiRequest = await request.getGeneratedContent();
+
+    const tokenCount = await this.client.models.countTokens({
+      model: request.model,
+      contents: aiRequest.contents,
+    });
+    this.logger.debug(`Token Count: ${tokenCount.totalTokens} (Model: ${request.model})`);
+
     const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
 
     this.logger.log(`End: Request ${request.constructor.name}`);
@@ -107,15 +119,24 @@ export class PromptusService {
       return new ChatPromptusResponse(response) as ReqType;
     }
 
+    if (request instanceof ChatTitlePromptusRequest) {
+      return new ChatPromptusResponse(response) as ReqType;
+    }
+
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);
   }
 
-  public async chat(payload: { chatId: string; message: string }, statusSubject: Subject<string>): Promise<string> {
+  public async chat(payload: chatGatewayTypes.ChatMessage, statusSubject: Subject<chatGatewayTypes.ChatStatusMessage>): Promise<string> {
     let loop = 0;
     let aiResponse = '';
 
     const history = await this.chatService.getHistory(payload.chatId);
     const request = new ChatPromptusRequest(payload.message, history);
+
+    // Rename the chat with the first prompt.
+    if (history.length == 0) {
+      this.chatTitleHandler.updateChatTopic(payload.chatId, payload.message, statusSubject);
+    }
 
     while (loop < this.maxThinkingLoop) {
       const response = await this.generate(request);
@@ -129,7 +150,11 @@ export class PromptusService {
           let result = await this.proceedFunctionCall(fc);
           if (result) {
             request.pushFunctionResponse(result, fc);
-            statusSubject.next(result);
+            statusSubject.next({
+              chatId: payload.chatId,
+              message: result,
+              type: 'process_update',
+            });
           }
         }
       } else {
@@ -142,7 +167,11 @@ export class PromptusService {
           aiResponse = response.text;
         } else {
           this.logger.warn('No text found in response');
-          statusSubject.next('No text found in response');
+          statusSubject.next({
+            chatId: payload.chatId,
+            message: 'No text found in response',
+            type: 'process_update',
+          });
         }
       }
     }

@@ -6,13 +6,14 @@ import { ToolDeclaration } from '../tools/tool.type';
 import { ChatMessage } from '../../../../schemas/chat.schema';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
+  public query: string;
   public tools: ToolDeclaration[] = [MpdTools.playMpdCommand, MpdTools.stopMpdCommand, MpdTools.currentMpdCommand, MpdTools.playlistMpdCommand];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
   private readonly _context = 'src/services/promptus/promptus/request/chat-promptus.request.md';
-  private readonly _query: string;
+
   public cache: CachedContent;
 
   get model(): string {
@@ -25,10 +26,6 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
 
   get context(): string {
     return this._context;
-  }
-
-  get query(): string {
-    return this._query;
   }
 
   public history: Content[] = [];
@@ -44,6 +41,6 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
       },
     ];
 
-    this._query = query;
+    this.query = query;
   }
 }

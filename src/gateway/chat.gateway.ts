@@ -15,9 +15,12 @@ import { AuthService } from '../services/auth/auth.service';
 import { PromptusService } from '../services/promptus/promptus/promptus.service';
 import { Logger } from '@nestjs/common';
 import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
+import * as chatGatewayTypes from './chat.gateway.types';
+import { ChatFeedbackMessage } from './chat.gateway.types';
 
 type ClientId = string;
 type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message` | `${ClientId}-chat-message-status-response`;
+type FeedbackCounts = Partial<Record<ChatFeedbackMessage['feedback'], number>>;
 
 // Enable CORS if your client is on a different domain
 @WebSocketGateway({ cors: true })
@@ -28,7 +31,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger('ChatGateway');
 
   private channels: ChannelName[] = ['-chat-feedback', '-chat-message', '-chat-message-status-response'];
-  private clientSubjects = new Map<ChannelName, Subject<any>>();
+  private clientSubjects = new Map<
+    ChannelName,
+    Subject<chatGatewayTypes.ChatStatusMessage | chatGatewayTypes.ChatMessage | chatGatewayTypes.ChatFeedbackMessage>
+  >();
   private clientSubscriptions = new Map<ChannelName, Subscription>();
 
   constructor(
@@ -95,16 +101,31 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private subscribeToFeedback(client: Socket): Subject<string> {
-    const subject = new Subject<string>();
+  private subscribeToFeedback(client: Socket): Subject<ChatFeedbackMessage> {
+    const subject = new Subject<ChatFeedbackMessage>();
     const subscription = subject
       .pipe(
         bufferTime(5000),
+        tap(() => {
+          this.logger.log('Buffering messages for 5 seconds...');
+        }),
         filter((bufferedMessages) => bufferedMessages?.length > 0),
-        map((bufferedMessages) => bufferedMessages.reduce((count, message) => count + message.length, 0)),
+        map((bufferedMessages) => {
+          // 2. Reduce the array into an object that counts each feedback type
+          return bufferedMessages.reduce((acc, message) => {
+            const type = message.feedback;
+            // Initialise at 0 if it doesn't exist, then increment by 1
+            acc[type] = (acc[type] || 0) + 1;
+            return acc;
+          }, {} as FeedbackCounts);
+        }),
       )
-      .subscribe((totalSum) => {
-        this.logger.log(`Count of reaction over the last 5 seconds: ${totalSum}`);
+      .subscribe((groupedCounts) => {
+        // 3. The output will now be an object instead of a single integer
+        this.logger.log('Count of reactions over the last 5 seconds:', groupedCounts);
+
+        // Example output in your logs:
+        // { awesome: 4, wtf: 1, great: 2 }
       });
 
     this.clientSubjects.set(`${client.id}-chat-feedback`, subject);
@@ -113,7 +134,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat-message')
-  handleChatMessage(@MessageBody() payload: { chatId: string; message: string }, @ConnectedSocket() client: Socket) {
+  handleChatMessage(@MessageBody() payload: chatGatewayTypes.ChatMessage, @ConnectedSocket() client: Socket) {
     if (this.clientSubjects.has(`${client.id}-chat-message`)) {
       this.clientSubjects.get(`${client.id}-chat-message`)?.next(payload);
     } else {
@@ -121,9 +142,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private subscribeToChat(client: Socket): Subject<{ chatId: string; message: string }> {
+  private subscribeToChat(client: Socket): Subject<chatGatewayTypes.ChatMessage> {
     // Create a new subject and subscription for handling chat status messages
-    const statusSubject = new Subject<string>();
+    const statusSubject = new Subject<chatGatewayTypes.ChatStatusMessage>();
     const statusSubscription = statusSubject.subscribe((status) => {
       client.emit('chat-message-status-response', status);
     });
@@ -131,15 +152,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.clientSubscriptions.set(`${client.id}-chat-message-status-response`, statusSubscription);
 
     // Pass the statusSubject to the chat function so it can dispatch status messages
-    const subject = new Subject<{ chatId: string; message: string }>();
-    const subscription = subject
-      .pipe(
-        //   concatMap((payload) => from(this.chatController..chat(payload, statusSubject))),
-        concatMap((payload) => from(this.promptusService.chat(payload, statusSubject))),
-      )
-      .subscribe((message) => {
-        client.emit('chat-message-response', message);
-      });
+    const subject = new Subject<chatGatewayTypes.ChatMessage>();
+    const subscription = subject.pipe(concatMap((payload) => from(this.promptusService.chat(payload, statusSubject)))).subscribe((message) => {
+      client.emit('chat-message-response', message);
+    });
 
     this.clientSubjects.set(`${client.id}-chat-message`, subject);
     this.clientSubscriptions.set(`${client.id}-chat-message`, subscription);

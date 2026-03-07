@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CommandRunner, SubCommand } from 'nest-commander';
 import { PromptusService } from '../../services/promptus/promptus/promptus.service';
 import { Subject } from 'rxjs';
+import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
 
 @SubCommand({
   name: 'chat',
@@ -17,10 +18,7 @@ export class PromptusChatSubcommand extends CommandRunner {
   async run(passedParams: string[], options?: Record<string, any>): Promise<void> {
     const searchText = passedParams.join(' ');
 
-    const subject = new Subject<string>();
-    subject.subscribe((text: string) => {
-      this.logger.log(text);
-    });
+    const subject = new Subject<chatGatewayTypes.ChatStatusMessage>();
 
     await this.promptusService.chat(
       {
