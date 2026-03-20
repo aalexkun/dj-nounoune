@@ -23,7 +23,7 @@ export interface FFProbeOutput {
 }
 
 @Injectable()
-export class FfprobeService {
+export class ShellService {
   public async getTechnicalInfo(filePath: string): Promise<FFProbeOutput> {
     // Sanitize file path (Validation check)
     if (typeof filePath !== 'string' || filePath.trim() === '') {
@@ -69,6 +69,51 @@ export class FfprobeService {
           resolve(parsedOutput);
         } catch (e) {
           reject(new Error(`Failed to parse ffprobe output: ${e instanceof Error ? e.message : String(e)}`));
+        }
+      });
+    });
+  }
+
+  public async executeBpmTag(filePath: string): Promise<number> {
+    if (typeof filePath !== 'string' || filePath.trim() === '') {
+      throw new Error('Invalid file path provided to bpm-tag');
+    }
+
+    const args = ['tempo', filePath];
+
+    return new Promise((resolve, reject) => {
+      const process = spawn('aubio', args);
+
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+
+      process.stdout.on('data', (chunk) => stdoutChunks.push(chunk));
+      process.stderr.on('data', (chunk) => stderrChunks.push(chunk));
+
+      process.on('error', (err) => {
+        reject(new Error(`Failed to start bpm-tag process: ${err.message}`));
+      });
+
+      process.on('close', (code) => {
+        const output = Buffer.concat(stdoutChunks).toString('utf-8');
+        const errorOutput = Buffer.concat(stderrChunks).toString('utf-8');
+
+        if (code !== 0) {
+          reject(new Error(`bpm-tag failed with code ${code}: ${errorOutput || output}`));
+          return;
+        }
+
+        const match = output.match(/\d+\.\d+(?=\s+bpm)/);
+        if (match) {
+          resolve(parseFloat(match[0]));
+        } else {
+          // If stdout doesn't have it, bpm-tag might output to stderr
+          const errMatch = errorOutput.match(/\d+\.\d+(?=\s+bpm)/);
+          if (errMatch) {
+            resolve(parseFloat(errMatch[0]));
+          } else {
+            resolve(0);
+          }
         }
       });
     });

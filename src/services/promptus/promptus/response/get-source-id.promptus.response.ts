@@ -6,6 +6,9 @@ export interface JsonPathSourceId {
   sourceId: string | null;
   discNumber: string | null;
   trackNumber: string | null;
+  albumName: string | null;
+  artistName: string | null;
+  title: string | null;
 }
 
 export class GetSourceIdPromptusResponse extends PromptusResponse {
@@ -14,6 +17,9 @@ export class GetSourceIdPromptusResponse extends PromptusResponse {
     sourceId: null,
     discNumber: null,
     trackNumber: null,
+    albumName: null,
+    artistName: null,
+    title: null,
   };
 
   constructor(raw: GenerateContentResponse) {
@@ -25,6 +31,9 @@ export class GetSourceIdPromptusResponse extends PromptusResponse {
       this.mapping.sourceId = mapping.sourceId ?? null;
       this.mapping.discNumber = mapping.discNumber ?? null;
       this.mapping.trackNumber = mapping.trackNumber ?? null;
+      this.mapping.albumName = mapping.albumName ?? null;
+      this.mapping.artistName = mapping.artistName ?? null;
+      this.mapping.title = mapping.title ?? null;
     }
   }
 }

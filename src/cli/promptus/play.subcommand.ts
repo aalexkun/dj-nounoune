@@ -24,6 +24,6 @@ export class PromptusPlaySubcommand extends CommandRunner {
   async run(passedParams: string[], options?: Record<string, any>): Promise<void> {
     const searchText = passedParams.join(' ');
 
-    await this.promptusService.play(searchText);
+    //
   }
 }

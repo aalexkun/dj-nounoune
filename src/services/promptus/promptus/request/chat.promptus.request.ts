@@ -4,10 +4,20 @@ import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
 import { MpdTools } from '../tools/mpd.tools';
 import { ToolDeclaration } from '../tools/tool.type';
 import { ChatMessage } from '../../../../schemas/chat.schema';
+import { MongoTools } from '../tools/mongo.tools';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public query: string;
-  public tools: ToolDeclaration[] = [MpdTools.playMpdCommand, MpdTools.stopMpdCommand, MpdTools.currentMpdCommand, MpdTools.playlistMpdCommand];
+  public tools: ToolDeclaration[] = [
+    MpdTools.playMpdCommand,
+    MpdTools.stopMpdCommand,
+    MpdTools.currentMpdCommand,
+    MpdTools.playlistMpdCommand,
+    MongoTools.queryMusicDatabase,
+    MongoTools.artistDistribution,
+    MongoTools.bpmDistribution,
+    MongoTools.genreDistribution,
+  ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;
   private readonly _model = 'gemini-3-flash-preview';

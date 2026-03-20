@@ -16,7 +16,6 @@ import { MusicDbService } from '../../music-db/music-db.service';
 import { ClearMpdRequest } from '../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../mpd-client/requests/PlayMpdRequest';
-import { JSONPath } from 'jsonpath-plus';
 import { Subject } from 'rxjs';
 import { ChatPromptusRequest } from './request/chat.promptus.request';
 import { ChatPromptusResponse } from './response/chat.promptus.response';
@@ -27,6 +26,7 @@ import { ChatService } from '../../chat/chat.service';
 import { ChatTitlePromptusRequest } from './request/chat-title.promptus.request';
 import * as chatGatewayTypes from '../../../gateway/chat.gateway.types';
 import { ChatTitleHandler } from './handler/chat-title.handler';
+import { MusicSearchHandler, MusicSearchResult } from './handler/music-search.handler';
 
 @Injectable()
 export class PromptusService {
@@ -39,6 +39,7 @@ export class PromptusService {
 
   private throttleHandler: ThrottleHandler;
   private chatTitleHandler: ChatTitleHandler;
+  private musicSearchHandler: MusicSearchHandler;
 
   constructor(
     appService: AppService,
@@ -51,6 +52,7 @@ export class PromptusService {
     this.cacheHandler = new CacheHandler(this.client);
     this.throttleHandler = new ThrottleHandler(this.client);
     this.chatTitleHandler = new ChatTitleHandler(this, this.chatService);
+    this.musicSearchHandler = new MusicSearchHandler(this, this.musicDbService);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {
@@ -182,8 +184,14 @@ export class PromptusService {
   }
 
   private async proceedFunctionCall(fc: FunctionCall) {
-    if (fc.name === 'play_music' && fc.args && 'query' in fc.args && typeof fc.args.query === 'string') {
-      const result = await this.play(fc.args.query);
+    if (
+      fc.name === 'play_music' &&
+      fc.args &&
+      'songs' in fc.args &&
+      Array.isArray(fc.args.songs) &&
+      fc.args.songs.every((song: any) => song && typeof song === 'object' && typeof song.sourceId === 'string')
+    ) {
+      const result = await this.play(fc.args.songs);
       const markdownList = result.map((item) => `- ${item}`).join('\n');
       return `Songs queued successfully:\n\n${markdownList}`;
     } else if (fc.name === 'stop_playback') {
@@ -195,61 +203,69 @@ export class PromptusService {
     } else if (fc.name === 'current_playlist') {
       const result = await this.mpdClientService.send(new PlaylistMpdRequest());
       return JSON.stringify(result.tracks) || 'No playlist is currently playing.';
+    } else if (
+      fc.name === 'query_music_database' &&
+      fc.args &&
+      'natural_language_request' in fc.args &&
+      typeof fc.args.natural_language_request === 'string'
+    ) {
+      const musicSearchResult = await this.musicSearchHandler.search(fc.args.natural_language_request);
+      return JSON.stringify({
+        functionResponses: [
+          {
+            name: 'query_music_database',
+            response: {
+              results: musicSearchResult,
+            },
+          },
+        ],
+      });
+    } else if (fc.name === 'genre_distribution') {
+      return JSON.stringify(await this.musicDbService.getGenreDistribution());
+    } else if (fc.name === 'artist_distribution') {
+      return JSON.stringify(await this.musicDbService.getArtistDistribution());
+    } else if (fc.name === 'bpm_distribution') {
+      return JSON.stringify(await this.musicDbService.getBPMDistribution());
     }
+
+    throw new Error(`Unsupported function call: ${fc.name}`);
   }
 
-  public async play(query: string): Promise<string[]> {
-    const response = await this.generate(new SearchPromptusRequest(query));
+  public async play(songs: Partial<MusicSearchResult>[]): Promise<string[]> {
+    let songsQueued: string[] = [];
+    if (songs?.length > 0) {
+      this.logger.log('Generating new Playlist');
 
-    if (!Array.isArray(response) && response?.parsed?.function === 'aggregate') {
-      this.logger.debug(JSON.stringify(response.parsed, null, 2));
-      const result = await this.musicDbService.aggregate(response.parsed.collection, response.parsed.params);
-
-      if (result.length > 0) {
-        const jsonPathMapping = await this.generate(new GetSourceIdPromptusRequest(JSON.stringify(result[0])));
-
-        if (jsonPathMapping.mapping.sourceId) {
-          this.logger.log('Clearing the Queue');
-          await this.mpdClientService.send(new ClearMpdRequest());
-
-          const jsonPAth = jsonPathMapping.mapping.sourceId;
-          const songsAdd: string[] = [];
-          await Promise.all(
-            result.map(async (song) => {
-              try {
-                const sourceId = JSONPath({ path: jsonPAth, json: song });
-                const playId = Array.isArray(sourceId) ? sourceId[0] : sourceId;
-                const result = await this.mpdClientService.send(new AddMpdRequest(playId));
-                songsAdd.push(sourceId);
-                this.logger.debug(`Response: ${result.rawResponse.trim()}`);
-              } catch (error: any) {
-                this.logger.error(`Failed to add to playlist: ${error.message}`);
-              }
-            }),
-          );
-
-          this.logger.log('Playlist is Generated');
-
-          try {
-            const playResult = await this.mpdClientService.send(new PlayMpdRequest());
-            this.logger.log('Playback started.');
-            this.logger.debug(playResult.rawResponse);
-            return songsAdd;
-          } catch (error: any) {
-            this.logger.error(`Failed to play: ${error.message}`);
-          }
-        } else {
-          this.logger.warn('No files found for query: ' + query);
-        }
-      } else {
-        this.logger.warn('No results found for query: ' + query);
-        this.logger.debug(JSON.stringify(response?.parsed, null, 2));
+      try {
+        await this.mpdClientService.send(new ClearMpdRequest());
+      } catch (e) {
+        this.logger.error(e);
+        this.logger.error('Failed to clear MPD playlist');
       }
-    } else {
-      this.logger.error(JSON.stringify(response, null, 2));
-      throw new Error('Unsupported response type');
+
+      for (const song of songs) {
+        if (song.sourceId === undefined) {
+          this.logger.error(`SourceId is undefined for song: ${JSON.stringify(song)}`);
+          continue;
+        }
+
+        try {
+          await this.mpdClientService.send(new AddMpdRequest(song.sourceId));
+          songsQueued.push(`${song.artist} - ${song.album} - ${song.title}`);
+        } catch (e) {
+          this.logger.debug(`Could not added to playlist: ${song.title} - ${song.artist} - ${song.album} - ${song.sourceId}`);
+        }
+      }
+
+      try {
+        await this.mpdClientService.send(new PlayMpdRequest());
+        this.logger.log('Playback started.');
+      } catch (e) {
+        this.logger.error(e);
+        this.logger.error('Failed to start playback');
+      }
     }
 
-    return [];
+    return songsQueued;
   }
 }

@@ -1,16 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FfprobeService } from './ffprobe.service';
+import { ShellService } from './shell.service';
 
-describe('FfprobeService', () => {
-  let service: FfprobeService;
+describe('ShellService', () => {
+  let service: ShellService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [FfprobeService],
+      providers: [ShellService],
     }).compile();
 
-    service = module.get<FfprobeService>(FfprobeService);
+    service = module.get<ShellService>(ShellService);
   });
+
 
   it('should be defined', () => {
     expect(service).toBeDefined();

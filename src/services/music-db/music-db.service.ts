@@ -26,6 +26,86 @@ export class MusicDbService {
     return await this.songModel.find().exec();
   }
 
+  async getArtistDistribution(): Promise<{ artist: string; count: number }[]> {
+    return await this.songModel
+      .aggregate([
+        {
+          $group: {
+            _id: '$artist',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: 'artists', // The name of the target collection
+            localField: '_id', // The grouped _id (the artist's ObjectId)
+            foreignField: '_id', // The _id field in the artists collection
+            as: 'artist_info', // The new array field to store the joined data
+          },
+        },
+        {
+          $unwind: '$artist_info',
+        },
+        {
+          $project: {
+            _id: 0,
+            artistName: '$artist_info.artist',
+            count: 1,
+          },
+        },
+        {
+          $sort: { count: -1 },
+        },
+      ])
+      .exec();
+  }
+
+  async getGenreDistribution(): Promise<{ genre: string; count: number }[]> {
+    return await this.songModel
+      .aggregate([
+        {
+          $group: {
+            _id: '$genre',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            genre: '$_id',
+            count: 1,
+          },
+        },
+        {
+          $sort: { count: -1 },
+        },
+      ])
+      .exec();
+  }
+
+  async getBPMDistribution(): Promise<{ bpm: number; count: number }[]> {
+    return this.songModel
+      .aggregate([
+        {
+          $group: {
+            _id: '$technical_info.bpm',
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            bpm: '$_id',
+            count: 1,
+          },
+        },
+        {
+          $sort: { count: -1 },
+        },
+      ])
+      .exec();
+  }
+
   async getAllPopulatedSongs(): Promise<PopulatedSong[]> {
     return (await this.songModel.find().populate('artist').populate('album').exec()) as any;
   }

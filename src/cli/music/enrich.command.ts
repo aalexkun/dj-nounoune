@@ -1,6 +1,6 @@
 import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { Logger } from '@nestjs/common';
-import { FfprobeService } from '../../services/ffprobe/ffprobe.service';
+import { ShellService } from '../../services/shell/shell.service';
 import { MusicDbService, PopulatedSong } from '../../services/music-db/music-db.service';
 import { AppService } from '../../app.service';
 import { extname } from 'path';
@@ -15,6 +15,7 @@ interface EnrichCommandOptions {
   ai?: boolean;
   clearCache?: boolean;
   Ffprobe?: boolean;
+  bpm?: boolean;
 }
 
 @SubCommand({
@@ -26,7 +27,7 @@ export class EnrichCommand extends CommandRunner {
   private readonly cacheName = 'enrich-songs-library-psv';
   private readonly cacheFile = 'files/enrich-songs-library-psv';
   constructor(
-    private ffprobeService: FfprobeService,
+    private shellService: ShellService,
     private musicDbService: MusicDbService,
     private appService: AppService,
     private promptusService: PromptusService,
@@ -51,7 +52,7 @@ export class EnrichCommand extends CommandRunner {
     if (options.ai) {
       this.logger.log('Fetching populated songs from MusicDbService for AI enrichment...');
       const populatedSong = await this.musicDbService.getAllPopulatedSongs();
-      aiEnrichedSongs = await this.updateAi(populatedSong);
+      // aiEnrichedSongs = await this.updateAi(populatedSong);
     }
 
     const songs = await this.musicDbService.getAllSongs();
@@ -65,6 +66,10 @@ export class EnrichCommand extends CommandRunner {
         song.genre = aiEnrichedSong?.genre || song.genre;
       }
 
+      if (options.bpm) {
+        song = await this.updateBpm(song);
+      }
+
       try {
         const dbResult = await this.musicDbService.upsertSong(song);
         this.logger.log(`Updated song ${dbResult.title} (${dbResult._id}) ${dbResult.genre}`);
@@ -74,10 +79,27 @@ export class EnrichCommand extends CommandRunner {
     }
   }
 
+  private async updateBpm(song: SongDocument): Promise<SongDocument> {
+    const rootPath = this.appService.getLibraryRootPath();
+    const filePath = song.source.find((s) => s.name === 'file')?.sourceId;
+    if (filePath) {
+      try {
+        const bpm = await this.shellService.executeBpmTag(`${rootPath}${filePath}`);
+        if (bpm > 0) {
+          song.technical_info.bpm = Math.round(bpm);
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Failed to execute bpm-tag for ${song.title}: ${errorMessage}`);
+      }
+    }
+    return song;
+  }
+
   private async updateFfprobe(song: SongDocument): Promise<SongDocument> {
     const rootPath = this.appService.getLibraryRootPath();
     const filePath = song.source.find((s) => s.name === 'file')?.sourceId;
-    const probeData = await this.ffprobeService.getTechnicalInfo(`${rootPath}${filePath}`);
+    const probeData = await this.shellService.getTechnicalInfo(`${rootPath}${filePath}`);
 
     const audioStream = probeData.streams.find((s) => s.codec_type === 'audio');
     if (!audioStream) {
@@ -165,6 +187,15 @@ export class EnrichCommand extends CommandRunner {
     defaultValue: false,
   })
   parseAi(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: ', --bpm',
+    description: 'Run enrich to get songs bpm',
+    defaultValue: false,
+  })
+  parseBpm(): boolean {
     return true;
   }
 

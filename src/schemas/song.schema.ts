@@ -39,9 +39,6 @@ export class Song {
   disc_number: number;
 
   @Prop({ index: true })
-  bpm: number;
-
-  @Prop({ index: true })
   category: string;
 
   @Prop({ type: String, required: false })

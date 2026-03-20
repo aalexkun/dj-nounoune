@@ -28,6 +28,9 @@ export class TechnicalInfo {
 
   @Prop()
   extension: string;
+
+  @Prop()
+  bpm: number;
 }
 
 export const TechnicalInfoSchema = SchemaFactory.createForClass(TechnicalInfo);

@@ -11,7 +11,7 @@ import { Session, SessionSchema } from './schemas/session.schema';
 import { PromptusService } from './services/promptus/promptus/promptus.service';
 import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
-import { FfprobeService } from './services/ffprobe/ffprobe.service';
+import { ShellService } from './services/shell/shell.service';
 import { FileService } from './services/file/file.service';
 import { ChatGateway } from './gateway/chat.gateway';
 import { Chat, ChatSchema } from './schemas/chat.schema';
@@ -49,8 +49,8 @@ import { ApiAuthGuard } from './services/auth/api-auth.guard';
     PsvService,
     ...CommandProviders,
     PromptusService,
+    ShellService,
     MusicDbService,
-    FfprobeService,
     FileService,
     ChatGateway,
     ChatService,
@@ -58,4 +58,4 @@ import { ApiAuthGuard } from './services/auth/api-auth.guard';
     ApiAuthGuard,
   ],
 })
-export class AppModule {}
+export class AppModule { }

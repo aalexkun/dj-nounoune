@@ -8,7 +8,7 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-flash-lite-latest';
+  private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
   private readonly _context = 'src/services/promptus/promptus/request/get-source-id.promptus.request.md';
   private readonly _query: string;
@@ -33,6 +33,18 @@ export class GetSourceIdPromptusRequest extends PromptusRequest<GetSourceIdPromp
         diskNumber: {
           type: 'NUMBER',
           description: 'The disk number for the item (mapped from disk_number).',
+        },
+        artist: {
+          type: 'STRING',
+          description: 'The artist name (mapped from artist name).',
+        },
+        title: {
+          type: 'STRING',
+          description: 'The title of the item (mapped from title).',
+        },
+        album: {
+          type: 'STRING',
+          description: 'The album of the item (mapped from album name).',
         },
       },
       required: ['sourceId', 'id'],

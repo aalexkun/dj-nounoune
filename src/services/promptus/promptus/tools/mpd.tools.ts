@@ -6,16 +6,27 @@ export class MpdTools {
 
   public static readonly playMpdCommand: ToolDeclaration = {
     name: 'play_music',
-    description: 'Use this tool when the user asks to play music, an artist, a genre, or a specific song.',
+    description: 'Send a list of songs to the MPD music server to start playback.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        query: {
-          type: Type.STRING,
-          description: 'The search query, artist name, song title, or genre requested by the user (e.g., "The Beatles", "jazz", "lo-fi beats").',
+        songs: {
+          type: Type.ARRAY,
+          description: 'The array of song objects to play. Pass the exact results array returned by the query_music_database tool.',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              sourceId: { type: Type.STRING },
+              title: { type: Type.STRING },
+              artist: { type: Type.STRING },
+              album: { type: Type.STRING },
+            },
+            required: ['sourceId'], // sourceId is usually the most critical for playback
+          },
         },
       },
-      required: ['query'],
+      required: ['songs'],
     },
   };
 
@@ -40,6 +51,15 @@ export class MpdTools {
   public static readonly playlistMpdCommand: ToolDeclaration = {
     name: 'current_playlist',
     description: 'Retrieve the current playlist on the MPD music Server',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+    },
+  };
+
+  public static readonly createPlaylistMpdCommand: ToolDeclaration = {
+    name: 'create_playlist',
+    description: 'Create a new playlist on the MPD music Server',
     parameters: {
       type: Type.OBJECT,
       properties: {},
