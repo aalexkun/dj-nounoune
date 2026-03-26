@@ -11,40 +11,29 @@ import { GetSourceIdPromptusRequest } from './request/get-source-id.promptus.req
 import { GetSourceIdPromptusResponse } from './response/get-source-id.promptus.response';
 import { CacheHandler } from './handler/cache.handler';
 import { ThrottleHandler } from './handler/throttle.handler';
-import { MpdClientService } from '../../mpd-client/mpd-client.service';
-import { MusicDbService } from '../../music-db/music-db.service';
-import { ClearMpdRequest } from '../../mpd-client/requests/ClearMpdRequest';
-import { AddMpdRequest } from '../../mpd-client/requests/AddMpdRequest';
-import { PlayMpdRequest } from '../../mpd-client/requests/PlayMpdRequest';
 import { Subject } from 'rxjs';
 import { ChatPromptusRequest } from './request/chat.promptus.request';
 import { ChatPromptusResponse } from './response/chat.promptus.response';
-import { StopMpdRequest } from '../../mpd-client/requests/StopMpdRequest';
-import { CurrentSongMpdRequest } from '../../mpd-client/requests/CurrentSongMpdRequest';
-import { PlaylistMpdRequest } from '../../mpd-client/requests/PlaylistMpdRequest';
 import { ChatService } from '../../chat/chat.service';
 import { ChatTitlePromptusRequest } from './request/chat-title.promptus.request';
 import * as chatGatewayTypes from '../../../gateway/chat.gateway.types';
+import { ToolsService } from './tools/tools.service';
 import { ChatTitleHandler } from './handler/chat-title.handler';
-import { MusicSearchHandler, MusicSearchResult } from './handler/music-search.handler';
 
 @Injectable()
 export class PromptusService {
   private maxThinkingLoop = 10;
-  private apiKey: string;
+  private readonly apiKey: string;
   private readonly client: GoogleGenAI;
   private readonly logger = new Logger('PromptusService');
 
   public readonly cacheHandler: CacheHandler;
-
-  private throttleHandler: ThrottleHandler;
-  private chatTitleHandler: ChatTitleHandler;
-  private musicSearchHandler: MusicSearchHandler;
+  private readonly throttleHandler: ThrottleHandler;
+  private readonly chatTitleHandler: ChatTitleHandler;
 
   constructor(
     appService: AppService,
-    private mpdClientService: MpdClientService,
-    private musicDbService: MusicDbService,
+    private toolService: ToolsService,
     private chatService: ChatService,
   ) {
     this.apiKey = appService.getGenAiApiKey();
@@ -52,7 +41,7 @@ export class PromptusService {
     this.cacheHandler = new CacheHandler(this.client);
     this.throttleHandler = new ThrottleHandler(this.client);
     this.chatTitleHandler = new ChatTitleHandler(this, this.chatService);
-    this.musicSearchHandler = new MusicSearchHandler(this, this.musicDbService);
+    this.toolService.initialiseAgentTool(this);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {
@@ -183,89 +172,13 @@ export class PromptusService {
     return aiResponse;
   }
 
-  private async proceedFunctionCall(fc: FunctionCall) {
-    if (
-      fc.name === 'play_music' &&
-      fc.args &&
-      'songs' in fc.args &&
-      Array.isArray(fc.args.songs) &&
-      fc.args.songs.every((song: any) => song && typeof song === 'object' && typeof song.sourceId === 'string')
-    ) {
-      const result = await this.play(fc.args.songs);
-      const markdownList = result.map((item) => `- ${item}`).join('\n');
-      return `Songs queued successfully:\n\n${markdownList}`;
-    } else if (fc.name === 'stop_playback') {
-      const response = await this.mpdClientService.send(new StopMpdRequest());
-      return 'Playback stopped.';
-    } else if (fc.name === 'current_song') {
-      const result = await this.mpdClientService.send(new CurrentSongMpdRequest());
-      return JSON.stringify(result.song) || 'No song is currently playing.';
-    } else if (fc.name === 'current_playlist') {
-      const result = await this.mpdClientService.send(new PlaylistMpdRequest());
-      return JSON.stringify(result.tracks) || 'No playlist is currently playing.';
-    } else if (
-      fc.name === 'query_music_database' &&
-      fc.args &&
-      'natural_language_request' in fc.args &&
-      typeof fc.args.natural_language_request === 'string'
-    ) {
-      const musicSearchResult = await this.musicSearchHandler.search(fc.args.natural_language_request);
-      return JSON.stringify({
-        functionResponses: [
-          {
-            name: 'query_music_database',
-            response: {
-              results: musicSearchResult,
-            },
-          },
-        ],
-      });
-    } else if (fc.name === 'genre_distribution') {
-      return JSON.stringify(await this.musicDbService.getGenreDistribution());
-    } else if (fc.name === 'artist_distribution') {
-      return JSON.stringify(await this.musicDbService.getArtistDistribution());
-    } else if (fc.name === 'bpm_distribution') {
-      return JSON.stringify(await this.musicDbService.getBPMDistribution());
+  private async proceedFunctionCall(fc: FunctionCall): Promise<string> {
+    try {
+      const result = await this.toolService.proceedFunctionCall(fc);
+      return result.message;
+    } catch (e) {
+      this.logger.error(e);
+      return 'An error occurred while processing the function call.' + e.message;
     }
-
-    throw new Error(`Unsupported function call: ${fc.name}`);
-  }
-
-  public async play(songs: Partial<MusicSearchResult>[]): Promise<string[]> {
-    let songsQueued: string[] = [];
-    if (songs?.length > 0) {
-      this.logger.log('Generating new Playlist');
-
-      try {
-        await this.mpdClientService.send(new ClearMpdRequest());
-      } catch (e) {
-        this.logger.error(e);
-        this.logger.error('Failed to clear MPD playlist');
-      }
-
-      for (const song of songs) {
-        if (song.sourceId === undefined) {
-          this.logger.error(`SourceId is undefined for song: ${JSON.stringify(song)}`);
-          continue;
-        }
-
-        try {
-          await this.mpdClientService.send(new AddMpdRequest(song.sourceId));
-          songsQueued.push(`${song.artist} - ${song.album} - ${song.title}`);
-        } catch (e) {
-          this.logger.debug(`Could not added to playlist: ${song.title} - ${song.artist} - ${song.album} - ${song.sourceId}`);
-        }
-      }
-
-      try {
-        await this.mpdClientService.send(new PlayMpdRequest());
-        this.logger.log('Playback started.');
-      } catch (e) {
-        this.logger.error(e);
-        this.logger.error('Failed to start playback');
-      }
-    }
-
-    return songsQueued;
   }
 }

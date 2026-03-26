@@ -34,10 +34,6 @@ export abstract class PromptusRequest<TResponse> {
     }
   }
 
-  get strategy(): PromptusStrategy {
-    return 'sequential';
-  }
-
   public pushAiResponse(history: ContentListUnion): void {
     if (Array.isArray(this.genaiRequest.contents)) {
       if (typeof history === 'object' && history !== null && 'role' in history && 'parts' in history) {

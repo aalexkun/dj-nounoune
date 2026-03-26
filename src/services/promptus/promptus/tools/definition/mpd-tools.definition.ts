@@ -1,7 +1,7 @@
-import { ToolDeclaration } from './tool.type';
+import { ToolDeclaration } from '../tool.type';
 import { Type } from '@google/genai';
 
-export class MpdTools {
+export class MpdToolsDefinition {
   private constructor() {}
 
   public static readonly playMpdCommand: ToolDeclaration = {
@@ -62,7 +62,24 @@ export class MpdTools {
     description: 'Create a new playlist on the MPD music Server',
     parameters: {
       type: Type.OBJECT,
-      properties: {},
+      properties: {
+        songs: {
+          type: Type.ARRAY,
+          description: 'The array of song objects to add to the playlist.',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              sourceId: { type: Type.STRING },
+              title: { type: Type.STRING },
+              artist: { type: Type.STRING },
+              album: { type: Type.STRING },
+            },
+            required: ['sourceId'], // sourceId is usually the most critical for playback
+          },
+        },
+      },
+      required: ['songs'],
     },
   };
 }

@@ -1,22 +1,22 @@
 import { PromptusRequest, RequestRole, StructuredResponse } from './promptus.request';
 import { ChatPromptusResponse } from '../response/chat.promptus.response';
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
-import { MpdTools } from '../tools/mpd.tools';
 import { ToolDeclaration } from '../tools/tool.type';
 import { ChatMessage } from '../../../../schemas/chat.schema';
-import { MongoTools } from '../tools/mongo.tools';
+import { MpdToolsDefinition } from '../tools/definition/mpd-tools.definition';
+import { MongoToolsDefinition } from '../tools/definition/mongo-tools.definition';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public query: string;
   public tools: ToolDeclaration[] = [
-    MpdTools.playMpdCommand,
-    MpdTools.stopMpdCommand,
-    MpdTools.currentMpdCommand,
-    MpdTools.playlistMpdCommand,
-    MongoTools.queryMusicDatabase,
-    MongoTools.artistDistribution,
-    MongoTools.bpmDistribution,
-    MongoTools.genreDistribution,
+    MpdToolsDefinition.playMpdCommand,
+    MpdToolsDefinition.stopMpdCommand,
+    MpdToolsDefinition.currentMpdCommand,
+    MpdToolsDefinition.playlistMpdCommand,
+    MongoToolsDefinition.queryMusicDatabase,
+    MongoToolsDefinition.artistDistribution,
+    MongoToolsDefinition.bpmDistribution,
+    MongoToolsDefinition.genreDistribution,
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;

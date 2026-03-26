@@ -3,7 +3,6 @@ import { GetSourceIdPromptusRequest } from '../request/get-source-id.promptus.re
 import { PromptusService } from '../promptus.service';
 import { MusicDbAggregateResult, MusicDbService } from '../../../music-db/music-db.service';
 import { JSONPath } from 'jsonpath-plus';
-import { AddMpdRequest } from '../../../mpd-client/requests/AddMpdRequest';
 
 export type MusicSearchResult = {
   id: string;

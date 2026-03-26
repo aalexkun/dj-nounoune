@@ -9,6 +9,7 @@ import { Album, AlbumSchema } from './schemas/albums.schema';
 import { Song, SongSchema } from './schemas/song.schema';
 import { Session, SessionSchema } from './schemas/session.schema';
 import { PromptusService } from './services/promptus/promptus/promptus.service';
+import { ToolsService } from './services/promptus/promptus/tools/tools.service';
 import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 import { ShellService } from './services/shell/shell.service';
@@ -19,6 +20,7 @@ import { ChatService } from './services/chat/chat.service';
 import { ChatController } from './controller/chat.controller';
 import { AuthService } from './services/auth/auth.service';
 import { ApiAuthGuard } from './services/auth/api-auth.guard';
+import { MpdClientService } from './services/mpd-client/mpd-client.service';
 
 @Module({
   imports: [
@@ -51,11 +53,13 @@ import { ApiAuthGuard } from './services/auth/api-auth.guard';
     PromptusService,
     ShellService,
     MusicDbService,
+    MpdClientService,
     FileService,
     ChatGateway,
     ChatService,
+    ToolsService,
     AuthService,
     ApiAuthGuard,
   ],
 })
-export class AppModule { }
+export class AppModule {}
