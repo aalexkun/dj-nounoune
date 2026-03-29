@@ -5,7 +5,7 @@ export class AgentToolsDefinition {
   private constructor() {}
 
   public static readonly searchMusicDatabase: ToolDeclaration = {
-    name: 'searchMusicDatabase',
+    name: 'search_music_database',
     description: 'Use this tool to search songs in the music database using a natural language request',
     parameters: {
       type: Type.OBJECT,
@@ -22,7 +22,7 @@ export class AgentToolsDefinition {
 
   public static readonly discJockeyCreatePlaylist: ToolDeclaration = {
     name: 'disc_jockey_create_playlist',
-    description: 'Use this tool to create playlist using natural language request',
+    description: 'Use this tool to retrieve the songs list for create playlist using natural language request',
     parameters: {
       type: Type.OBJECT,
       properties: {

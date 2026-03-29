@@ -19,9 +19,7 @@ Before pulling songs, understand the current state of the music collection.
 Utilise artistDistribution, bpmDistribution, and genreDistribution to analyse what is actually available in the library that fits the criteria identified in Step 1.
 
 ### Step 3: Sampling & Retrieval
-Retrieve a broad selection of potential tracks based on your analysis.
-
-Use the MongoQueryBuilderAgent to translate your Step 1 analysis into database queries.
+Retrieve a broad selection of potential tracks based on your analysis. using the search_music_database tool
 
 Iterative Querying: If a request yields zero results, pivot your approach and query from a different angle. Keep querying until you have a solid foundation.
 

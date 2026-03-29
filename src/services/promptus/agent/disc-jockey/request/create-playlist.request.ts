@@ -3,12 +3,14 @@ import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promp
 import { CreatePlaylistResponse } from '../response/create-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { MongoToolsDefinition } from '../../../tools/definition/mongo-tools.definition';
+import { AgentToolsDefinition } from '../../../tools/definition/agent-tools.definition';
 
 export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistResponse> {
   public tools: ToolDeclaration[] = [
     MongoToolsDefinition.artistDistribution,
     MongoToolsDefinition.bpmDistribution,
     MongoToolsDefinition.genreDistribution,
+    AgentToolsDefinition.searchMusicDatabase,
   ];
   public structuredResponse?: StructuredResponse | undefined;
   public config: Partial<GenerateContentConfig>;

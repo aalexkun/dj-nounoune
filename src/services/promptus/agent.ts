@@ -30,6 +30,10 @@ export abstract class Agent {
       await this.printTokenUsage(request.model, aiRequest.contents);
       const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
 
+      if (Array.isArray(response.candidates)) {
+        response.candidates.forEach((candidate) => (candidate.content ? request.pushAiResponse(candidate.content) : null));
+      }
+
       const functionCall = response.functionCalls;
 
       if (functionCall) {
