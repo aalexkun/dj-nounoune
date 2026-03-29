@@ -1,14 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CommandRunner, SubCommand } from 'nest-commander';
-import { PromptusService } from '../../services/promptus/promptus/promptus.service';
-import { MusicDbService } from '../../services/music-db/music-db.service';
-import { SearchPromptusRequest } from '../../services/promptus/promptus/request/search.promptus.request';
-import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
-import { ClearMpdRequest } from '../../services/mpd-client/requests/ClearMpdRequest';
-import { AddMpdRequest } from '../../services/mpd-client/requests/AddMpdRequest';
-import { Song } from '../../schemas/song.schema';
-import { PlayMpdRequest } from '../../services/mpd-client/requests/PlayMpdRequest';
-import { GetSourceIdPromptusRequest } from '../../services/promptus/promptus/request/get-source-id.promptus.request';
+import { PromptusService } from '../../services/promptus/promptus.service';
 
 @SubCommand({
   name: 'play',

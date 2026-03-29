@@ -12,11 +12,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Session, SessionDocument } from '../schemas/session.schema';
 import { AuthService } from '../services/auth/auth.service';
-import { PromptusService } from '../services/promptus/promptus/promptus.service';
 import { Logger } from '@nestjs/common';
 import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
 import * as chatGatewayTypes from './chat.gateway.types';
 import { ChatFeedbackMessage } from './chat.gateway.types';
+import { PromptusService } from '../services/promptus/promptus.service';
 
 type ClientId = string;
 type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message` | `${ClientId}-chat-message-status-response`;

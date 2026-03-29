@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CommandRunner, SubCommand } from 'nest-commander';
-import { PromptusService } from '../../services/promptus/promptus/promptus.service';
 import { Subject } from 'rxjs';
 import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
+import { PromptusService } from '../../services/promptus/promptus.service';
 
 @SubCommand({
   name: 'chat',

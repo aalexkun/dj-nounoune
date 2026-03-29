@@ -5,11 +5,12 @@ import { MusicDbService, PopulatedSong } from '../../services/music-db/music-db.
 import { AppService } from '../../app.service';
 import { extname } from 'path';
 import { SongDocument } from '../../schemas/song.schema';
-import { PromptusService } from '../../services/promptus/promptus/promptus.service';
-import { EnrichPromptusRequest } from '../../services/promptus/promptus/request/enrich-promptus.request';
+
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { FileService } from '../../services/file/file.service';
 import { getInclusivePaginationRanges } from '../../utils/array.utils';
+import { PromptusService } from '../../services/promptus/promptus.service';
+import { EnrichPromptusRequest } from '../../services/promptus/request/enrich-promptus.request';
 
 interface EnrichCommandOptions {
   ai?: boolean;
