@@ -5,14 +5,15 @@ export class MpdToolsDefinition {
   private constructor() {}
 
   public static readonly playMpdCommand: ToolDeclaration = {
-    name: 'play_music',
-    description: 'Send a list of songs to the MPD music server to start playback.',
+    name: 'start_playback',
+    description:
+      'Send a list of songs to the MPD music server to begin playback. You must provide an array of song objects, exactly as returned by the disc_jockey_create_playlist tool.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         songs: {
           type: Type.ARRAY,
-          description: 'The array of song objects to play. Pass the exact results array returned by the disc_jockey_create_playlist tool.',
+          description: 'The array of song objects to play. Must contain the sourceId.',
           items: {
             type: Type.OBJECT,
             properties: {
@@ -32,7 +33,7 @@ export class MpdToolsDefinition {
 
   public static readonly stopMpdCommand: ToolDeclaration = {
     name: 'stop_playback',
-    description: 'Send the stop command to MPD music Server',
+    description: 'Send a command to the MPD music server to immediately halt all playback.',
     parameters: {
       type: Type.OBJECT,
       properties: {},

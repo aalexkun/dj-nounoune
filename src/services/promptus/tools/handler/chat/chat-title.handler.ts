@@ -23,6 +23,7 @@ export class ChatTitleHandler implements ToolHandler {
       return {
         message: err,
         name: this.name,
+        type: 'string',
       };
     }
 
@@ -30,6 +31,7 @@ export class ChatTitleHandler implements ToolHandler {
     return {
       message: `Chat title update initiated to: ${args.title}`,
       name: this.name,
+      type: 'string',
     };
   }
 

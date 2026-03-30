@@ -10,6 +10,7 @@ import { ChatService } from '../chat/chat.service';
 import { GenerateContentResponse } from '@google/genai';
 import { PromptusRequest } from './promptus.request';
 import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
+import { ChatPromptusResponse } from './response/chat.promptus.response';
 
 @Injectable()
 export class PromptusService extends Agent {
@@ -29,7 +30,10 @@ export class PromptusService extends Agent {
   }
 
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
-    throw new Error('Method not implemented.');
+    if (request instanceof ChatPromptusRequest) {
+      return new ChatPromptusResponse(response) as ReqType;
+    }
+    throw new Error('Method not implemented. PromptusService::wrapResponse ');
   }
 
   public async chat(payload: chatGatewayTypes.ChatMessage, statusSubject: Subject<chatGatewayTypes.ChatStatusMessage>): Promise<string> {
@@ -37,6 +41,14 @@ export class PromptusService extends Agent {
 
     const history = await this.chatService.getHistory(payload.chatId);
     const request = new ChatPromptusRequest(payload.message, history);
+
+    const messageUpdateCallBack = (message: string) => {
+      statusSubject.next({
+        chatId: payload.chatId,
+        message: message,
+        type: 'process_update',
+      });
+    };
 
     // Rename the chat with the first prompt.
     if (history.length == 0) {
@@ -57,10 +69,10 @@ export class PromptusService extends Agent {
         });
     }
 
-    const response = await this.generate(request);
+    const response = await this.generate(request, messageUpdateCallBack);
 
     if (response.content) {
-      request.pushAiResponse(response.content);
+      request.addHistory(response.content);
     }
 
     if (response.text) {
@@ -75,6 +87,12 @@ export class PromptusService extends Agent {
     }
 
     await this.chatService.saveHistory(payload.chatId, request.history);
+
+    statusSubject.next({
+      chatId: payload.chatId,
+      message: aiResponse,
+      type: 'process_update',
+    });
 
     return aiResponse;
   }

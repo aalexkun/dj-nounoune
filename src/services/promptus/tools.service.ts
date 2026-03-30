@@ -18,6 +18,7 @@ import { DiscJockeyAgent } from './agent/disc-jockey/disc-jockey.agent';
 import { DiscJockeyCreatePlaylistHandler } from './tools/handler/agent/disc-jockey-create-playlist.handler';
 import { QueryDatabaseAgent } from './agent/query-database/query-database.agent';
 import { QueryDatabaseHandler } from './tools/handler/agent/query-database.handler';
+import { DiscJockeyWhatIsPlayingHandler } from './tools/handler/agent/disc-jockey-what-is-playing.handler';
 
 @Injectable()
 export class ToolsService {
@@ -44,6 +45,7 @@ export class ToolsService {
 
     const discJokeyAgent = new DiscJockeyAgent(apiKey, this);
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
+    this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
 
     const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, this.musicDbService);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));

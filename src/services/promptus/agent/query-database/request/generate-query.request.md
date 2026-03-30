@@ -58,7 +58,7 @@ It accepts:
 1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the `collection`.
 2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
 3. **Construct** the JSON filter. Use `$regex` with `"i"` option for text fields to ensure case-insensitive matching.
-4. **REQUIRED** Always add the songs `source.sourceId`, `id`, `track_number`,`disc_number`, `Artist Name`, `Album Name`, and `song title` in the result query.
+   4. **REQUIRED** Always add the songs `source.sourceId`, `id`, `track_number`,`disc_number`. Also add the  `artists.artist` as `ArtistName`, `albums.title` as `AlbumName`, and `songs.title` as `title` in the result query.
 
 Example:
 ```json

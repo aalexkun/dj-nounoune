@@ -12,7 +12,50 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
     MongoToolsDefinition.genreDistribution,
     AgentToolsDefinition.searchMusicDatabase,
   ];
-  public structuredResponse?: StructuredResponse | undefined;
+  public readonly structuredResponse: StructuredResponse = {
+    responseMimeType: 'application/json',
+    responseSchema: {
+      type: 'OBJECT',
+      description: 'An object containing a description and a list of songs.',
+      properties: {
+        description: {
+          type: 'STRING',
+          description: 'A description of the returned data',
+        },
+        items: {
+          type: 'ARRAY',
+          description: 'A list of songs.',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              id: {
+                type: 'STRING',
+                description: 'The identifier of the song',
+              },
+              sourceId: {
+                type: 'STRING',
+                description: 'The source identifier of the song',
+              },
+              title: {
+                type: 'STRING',
+                description: 'The title of the song',
+              },
+              artist: {
+                type: 'STRING',
+                description: 'The artist of the song',
+              },
+              album: {
+                type: 'STRING',
+                description: 'The album the song belongs to',
+              },
+            },
+            required: ['id', 'sourceId', 'title', 'artist', 'album'],
+          },
+        },
+      },
+      required: ['description', 'items'],
+    },
+  };
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];

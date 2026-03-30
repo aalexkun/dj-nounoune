@@ -22,13 +22,14 @@ export class AgentToolsDefinition {
 
   public static readonly discJockeyCreatePlaylist: ToolDeclaration = {
     name: 'disc_jockey_create_playlist',
-    description: 'Use this tool to retrieve the songs list for create playlist using natural language request',
+    description:
+      'Use this tool to request a curated list of songs from the music expert agent based on a natural language prompt. Pass the resulting array of songs directly to the start_playback tool.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         natural_language_request: {
           type: Type.STRING,
-          description: "The user's exact natural language intent.",
+          description: "The user's exact natural language intent for the type of music they want to hear.",
         },
       },
       required: ['natural_language_request'],
@@ -37,13 +38,14 @@ export class AgentToolsDefinition {
 
   public static readonly discJockeyWhatIsPlaying: ToolDeclaration = {
     name: 'disc_jockey_what_is_playing',
-    description: 'Use this tool to give information on the current playing songs. ',
+    description:
+      'Use this tool to ask the music expert agent for information about the currently playing song or playlist. Use this when the user asks "what is this song?" or similar questions.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         request: {
           type: Type.STRING,
-          description: 'The user information request',
+          description: "The user's specific question about the current music.",
         },
       },
       required: ['request'],

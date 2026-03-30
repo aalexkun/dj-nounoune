@@ -13,6 +13,7 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
       return {
         message: 'No natural_language_request provided.',
         name: this.name,
+        type: 'string',
       };
     }
 
@@ -20,22 +21,16 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
       const djResult = await this.djAgent.createPlaylist(query);
 
       return {
-        message: JSON.stringify({
-          functionResponses: [
-            {
-              name: this.name,
-              response: {
-                results: djResult,
-              },
-            },
-          ],
-        }),
-        name: this.name,
+        description: djResult.description,
+        items: djResult.items,
+        type: 'playlist',
       };
     } catch (error) {
+      console.error('Error executing query:', error);
       return {
         message: `Error executing query: ${error.message}`,
         name: this.name,
+        type: 'string',
       };
     }
   }

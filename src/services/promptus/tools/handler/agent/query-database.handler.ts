@@ -64,6 +64,7 @@ export class QueryDatabaseHandler implements ToolHandler {
       return {
         message: 'No natural_language_request provided.',
         name: this.name,
+        type: 'string',
       };
     }
 
@@ -72,22 +73,15 @@ export class QueryDatabaseHandler implements ToolHandler {
       const musicSearchResults = await this.castResult(dbResult);
 
       return {
-        message: JSON.stringify({
-          functionResponses: [
-            {
-              name: this.name,
-              response: {
-                results: musicSearchResults,
-              },
-            },
-          ],
-        }),
+        message: JSON.stringify(musicSearchResults),
         name: this.name,
+        type: 'string',
       };
     } catch (error) {
       return {
         message: `Error executing query: ${error.message}`,
         name: this.name,
+        type: 'string',
       };
     }
   }

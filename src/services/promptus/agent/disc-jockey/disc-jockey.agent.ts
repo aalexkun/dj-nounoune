@@ -16,6 +16,25 @@ export type MusicSearchResult = {
   album: string;
 };
 
+export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
+  // Check if it's a non-null object
+  if (typeof obj !== 'object' || obj === null) {
+    return false;
+  }
+
+  // Cast to a record to check properties safely
+  const record = obj as Record<string, unknown>;
+
+  // Validate that all required properties exist and are strings
+  return (
+    typeof record.id === 'string' &&
+    typeof record.sourceId === 'string' &&
+    typeof record.title === 'string' &&
+    typeof record.artist === 'string' &&
+    typeof record.album === 'string'
+  );
+}
+
 export class DiscJockeyAgent extends Agent {
   name = 'MusicSearchAgent';
   protected readonly logger = new Logger(this.name);

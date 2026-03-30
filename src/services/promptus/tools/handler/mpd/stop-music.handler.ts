@@ -16,6 +16,7 @@ export class StopPlaybackHandler implements ToolHandler {
       return {
         message: 'Playback stopped.',
         name: this.name,
+        type: 'string',
       };
     } catch (e) {
       const msg = 'StopMpdRequest failled ' + e.message;
@@ -23,6 +24,7 @@ export class StopPlaybackHandler implements ToolHandler {
       return {
         message: msg,
         name: this.name,
+        type: 'string',
       };
     }
   }

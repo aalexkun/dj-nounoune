@@ -34,7 +34,7 @@ export class GetJsonpathRequest extends PromptusRequest<GetJsonpathResponse> {
           type: 'NUMBER',
           description: 'The disk number for the item (mapped from disk_number).',
         },
-        artist: {
+        artistName: {
           type: 'STRING',
           description: 'The artist name (mapped from artist name).',
         },
@@ -42,7 +42,7 @@ export class GetJsonpathRequest extends PromptusRequest<GetJsonpathResponse> {
           type: 'STRING',
           description: 'The title of the item (mapped from title).',
         },
-        album: {
+        albumName: {
           type: 'STRING',
           description: 'The album of the item (mapped from album name).',
         },

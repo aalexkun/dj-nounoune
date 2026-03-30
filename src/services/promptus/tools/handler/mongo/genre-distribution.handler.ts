@@ -16,6 +16,7 @@ export class GenreDistributionHandler implements ToolHandler {
       return {
         message: generatePsv(result),
         name: this.name,
+        type: 'string',
       };
     } catch (e: any) {
       const msg = 'Function call failed with error: ' + e.message;
@@ -23,6 +24,7 @@ export class GenreDistributionHandler implements ToolHandler {
       return {
         message: msg,
         name: this.name,
+        type: 'string',
       };
     }
   }

@@ -1,9 +1,14 @@
-import { FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { Content, ContentListUnion, FinishReason, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import { ThrottleHandler } from './handler/throttle.handler';
 import { ToolsService } from './tools.service';
 import { PromptusRequest } from './promptus.request';
+import { PromptusResponse } from './promptus.response';
+import { FunctionCallResult } from './tools/tool.type';
+import { Subject } from 'rxjs';
+import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
+import { MessageUpdateCallback } from './promptus.type';
 
 export abstract class Agent {
   public readonly name: string;
@@ -21,7 +26,7 @@ export abstract class Agent {
     this.throttleHandler = new ThrottleHandler(this.client);
   }
 
-  async generate<ReqType>(request: PromptusRequest<ReqType>): Promise<ReqType> {
+  async generate<ReqType>(request: PromptusRequest<ReqType>, statusUpdate?: MessageUpdateCallback): Promise<ReqType> {
     this.logger.log(`Starting: Request ${request.constructor.name}`);
 
     let loop = 0;
@@ -31,29 +36,54 @@ export abstract class Agent {
       const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
 
       if (Array.isArray(response.candidates)) {
-        response.candidates.forEach((candidate) => (candidate.content ? request.pushAiResponse(candidate.content) : null));
+        this.logger.debug(response?.candidates[0].content);
+        response.candidates.forEach((candidate) => (candidate.content ? request.addHistory(candidate.content) : null));
       }
 
-      const functionCall = response.functionCalls;
+      if (response.functionCalls) {
+        const responseContent: any = {
+          role: 'tool',
+          parts: [],
+        };
 
-      if (functionCall) {
-        for (const fc of functionCall) {
+        for (const fc of response.functionCalls) {
+          if (typeof statusUpdate === 'function') {
+            statusUpdate(`Calling ${fc.name}`);
+          }
+
           let result = await this.proceedFunctionCall(fc);
           if (result) {
-            request.pushFunctionResponse(result, fc);
+            const fnResult = {
+              functionResponse: {
+                id: fc.id,
+                name: fc.name,
+                response: {
+                  output: result.type === 'string' ? result.message : result,
+                },
+              },
+            };
+            responseContent.parts?.push(fnResult);
+
+            // Move that somewhere elese
+            // if (typeof statusUpdate === 'function' && fc.name === 'disc_jockey_what_is_playing' && result.type === 'string') {
+            //   statusUpdate(result.message);
+            // }
+          } else {
+            this.logger.error(`${fc} did not return any result`);
           }
         }
+        request.pushFunctionResponse(responseContent);
         loop++;
       } else {
-        this.logger.log(`End: Request ${request.constructor.name}`);
         return this.wrapResponse(request, response);
       }
     }
+
     this.logger.error(JSON.stringify(request));
     throw new Error('generate maxThinkingLoop');
   }
 
-  protected async printTokenUsage(model, contents) {
+  protected async printTokenUsage(model: string, contents: ContentListUnion) {
     const tokenCount = await this.client.models.countTokens({
       model: model,
       contents: contents,
@@ -61,14 +91,8 @@ export abstract class Agent {
     this.logger.debug(`Token Count: ${tokenCount.totalTokens} (Model: ${model})`);
   }
 
-  protected async proceedFunctionCall(fc: FunctionCall): Promise<string> {
-    try {
-      const result = await this.toolService.proceedFunctionCall(fc);
-      return result.message;
-    } catch (e) {
-      this.logger.error(e);
-      return 'An error occurred while processing the function call.' + e.message;
-    }
+  protected async proceedFunctionCall(fc: FunctionCall): Promise<FunctionCallResult> {
+    return await this.toolService.proceedFunctionCall(fc);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {

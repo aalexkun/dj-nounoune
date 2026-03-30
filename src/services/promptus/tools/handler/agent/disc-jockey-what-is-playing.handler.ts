@@ -13,29 +13,23 @@ export class DiscJockeyWhatIsPlayingHandler implements ToolHandler {
       return {
         message: 'No request provided.',
         name: this.name,
+        type: 'string',
       };
     }
 
     try {
-      const djResult = this.djAgent.whatIsPlaying(request);
+      const djResult = await this.djAgent.whatIsPlaying(request);
 
       return {
-        message: JSON.stringify({
-          functionResponses: [
-            {
-              name: this.name,
-              response: {
-                results: djResult,
-              },
-            },
-          ],
-        }),
+        message: JSON.stringify(djResult) || '',
         name: this.name,
+        type: 'string',
       };
     } catch (error) {
       return {
         message: `Error executing query: ${error.message}`,
         name: this.name,
+        type: 'string',
       };
     }
   }

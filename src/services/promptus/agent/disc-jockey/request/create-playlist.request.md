@@ -49,3 +49,5 @@ Step 2: Agent calls genreDistribution to check for "City Pop" and bpmDistributio
 Step 3: Agent calls MongoQueryBuilderAgent to fetch 40+ tracks matching these genres across a BPM range of 90 to 130.
 
 Step 4: Agent filters down to the best 20 tracks. It uses ByPropertySort to arrange them in ascending BPM order. It verifies that artists like Tatsuro Yamashita or Mariya Takeuchi are spaced out evenly and not clumped together.
+
+step 5: Return the playlist as a structured response. Add the final result of the search_music_database in the items array, and use the dscription to add your thought process on the playlist.  

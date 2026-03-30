@@ -17,6 +17,7 @@ export class CurrentPlaylistHandler implements ToolHandler {
       return {
         message: JSON.stringify(result.tracks) || 'No playlist is currently playing.',
         name: this.name,
+        type: 'string',
       };
     } catch (e) {
       const msg = 'Getting playlist function failed. ' + e.message;
@@ -24,6 +25,7 @@ export class CurrentPlaylistHandler implements ToolHandler {
       return {
         message: msg,
         name: this.name,
+        type: 'string',
       };
     }
   }

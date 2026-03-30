@@ -20,6 +20,7 @@ export class CurrentSongHandler implements ToolHandler {
       return {
         message: JSON.stringify(result.song) || 'No song is currently playing.',
         name: this.name,
+        type: 'string',
       };
     } catch (e) {
       const msg = 'Function call failed with error: ' + e.message;
@@ -27,6 +28,7 @@ export class CurrentSongHandler implements ToolHandler {
       return {
         message: msg,
         name: this.name,
+        type: 'string',
       };
     }
   }

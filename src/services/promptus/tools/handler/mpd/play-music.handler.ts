@@ -80,6 +80,7 @@ export class PlayMusicHandler implements ToolHandler {
     return {
       message: `Songs queued successfully:\n\n${markdownList}`,
       name: 'play_music',
+      type: 'string',
     };
   }
 }

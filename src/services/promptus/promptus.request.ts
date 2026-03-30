@@ -1,6 +1,5 @@
 import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent, ContentListUnion, FunctionCall, Content } from '@google/genai';
 import { promises as fs } from 'fs';
-import { randomUUID } from 'node:crypto';
 import { ToolDeclaration } from './tools/tool.type';
 
 export type RequestRole = 'user' | 'model';
@@ -34,56 +33,35 @@ export abstract class PromptusRequest<TResponse> {
     }
   }
 
-  public pushAiResponse(history: ContentListUnion): void {
-    if (Array.isArray(this.genaiRequest.contents)) {
-      if (typeof history === 'object' && history !== null && 'role' in history && 'parts' in history) {
-        this.history.push(history);
-      }
+  public addHistory(history: ContentListUnion): void {
+    if (typeof history === 'object' && history !== null && 'role' in history && 'parts' in history) {
+      this.history.push(history);
+    } else {
+      console.error('Could not add history ');
     }
   }
 
-  public pushFunctionResponse(fnResult: string, fc: FunctionCall): void {
+  public pushFunctionResponse(responseContent: Content): void {
     if (Array.isArray(this.genaiRequest.contents)) {
-      const responseContent: Content = {
-        role: 'tool',
-        parts: [
-          {
-            functionResponse: {
-              willContinue: false,
-              name: fc.name,
-              response: {
-                output: fnResult,
-                error: null,
-              },
-            },
-          },
-        ],
-      };
       this.history.push(responseContent);
     }
   }
 
   private async initialiseGenAiRequest() {
+    if (!this.history || this.history?.length == 0) {
+      this.history = [
+        {
+          role: this.role,
+          parts: [{ text: this.query }],
+        },
+      ];
+    }
+
     this.genaiRequest = {
       model: this.model,
-      config: {
-        httpOptions: {
-          headers: {
-            'x-request-id': randomUUID(),
-          },
-        },
-      },
+      config: {},
       // Get the histo or the query if no history is provided
-      contents: [
-        ...(this.history?.length > 0
-          ? this.history
-          : [
-              {
-                role: this.role,
-                parts: [{ text: this.query }],
-              },
-            ]),
-      ],
+      contents: this.history,
     };
 
     if (this.history)
