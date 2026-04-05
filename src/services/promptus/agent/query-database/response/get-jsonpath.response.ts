@@ -24,6 +24,8 @@ export class GetJsonpathResponse extends PromptusResponse {
     if (raw?.text) {
       const mapping = JSON.parse(raw.text);
 
+      console.log(JSON.stringify(mapping, null, 2));
+
       this.mapping = {
         id: mapping.id ?? null,
         sourceId: mapping.sourceId ?? null,

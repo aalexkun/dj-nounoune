@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Connection, ConnectionDocument } from '../../schemas/connection.schema';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
@@ -19,19 +19,32 @@ export type NounouneSession = {
 };
 
 @Injectable()
-export class SessionService {
+export class SessionService implements OnModuleInit {
   private logger = new Logger('SessionService');
   private sessions = new Map<SessionId, NounouneSession>();
   private pendingLogouts = new Map<SessionId, Subscription>();
 
-  constructor(@InjectModel(Connection.name) private sessionModel: Model<ConnectionDocument>) {}
+  constructor(@InjectModel(Connection.name) private connectionModel: Model<ConnectionDocument>) {}
+
+  async onModuleInit() {
+    this.logger.log('Server starting: Clearing stale WebSocket connections...');
+
+    try {
+      // Deletes all documents in the collection
+      const result = await this.connectionModel.deleteMany({});
+
+      this.logger.log(`Successfully cleared ${result.deletedCount} stale connections.`);
+    } catch (error) {
+      this.logger.error(`Failed to clear connections: ${error.message}`);
+    }
+  }
 
   getSessionId(clientId: string) {
     return this.sessions.get(clientId);
   }
 
   async retrieveUserSession(userId: string, client: Socket) {
-    const existingSessionDoc = await this.sessionModel
+    const existingSessionDoc = await this.connectionModel
       .findOne({
         userId: userId,
         status: 'disconnected',
@@ -41,7 +54,6 @@ export class SessionService {
     if (existingSessionDoc) {
       const oldSocketId = existingSessionDoc?.socketId || null;
       await existingSessionDoc.updateOne({ socketId: client.id, status: 'active' }).exec();
-      const userSessionId = existingSessionDoc.sessionId;
       const connectionId = existingSessionDoc.id.toString();
 
       // Cleanup any pending logout
@@ -53,13 +65,11 @@ export class SessionService {
         if (nounouneSession) {
           this.sessions.set(client.id, nounouneSession);
           this.sessions.delete(oldSocketId);
-          nounouneSession.status.next('active');
+          return nounouneSession;
         }
       } else {
         return await this.createSession(userId, client);
       }
-
-      return userSessionId;
     }
 
     return null;
@@ -93,14 +103,14 @@ export class SessionService {
     });
 
     this.pendingLogouts.set(deviceSessionId, logoutSubscription);
-    await this.sessionModel.updateOne({ socketId: client.id }, { status: 'disconnected' }).exec();
+    await this.connectionModel.updateOne({ socketId: client.id }, { status: 'disconnected' }).exec();
     this.sessions.get(clientId)?.status?.next('disconnected');
 
     this.logger.log(`[Session logout scheduled in ${FIVE_MIN_IN_MS}ms]: Session id ${sessionInfo.id} `);
   }
 
   private async logoutDevice(nounouneSession: NounouneSession): Promise<boolean> {
-    await this.sessionModel.updateOne(
+    await this.connectionModel.updateOne(
       { socketId: nounouneSession.socketId },
       {
         status: 'expired',
@@ -108,12 +118,12 @@ export class SessionService {
       },
     );
 
-    const activeDevice = await this.sessionModel.countDocuments({ sessionId: nounouneSession.id, status: { $ne: 'expired' } });
+    const activeDevice = await this.connectionModel.countDocuments({ sessionId: nounouneSession.id, status: { $ne: 'expired' } });
     return activeDevice.valueOf() === 0;
   }
 
   async createSession(userId: string, client: Socket) {
-    const newSession = new this.sessionModel({
+    const newSession = new this.connectionModel({
       socketId: client.id,
       sessionId: randomUUID(),
       status: 'active',
@@ -132,7 +142,7 @@ export class SessionService {
       };
       this.sessions.set(client.id, nounouneSession);
 
-      return nounouneSession.id;
+      return nounouneSession;
     }
 
     return null;

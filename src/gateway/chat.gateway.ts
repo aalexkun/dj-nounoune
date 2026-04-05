@@ -23,7 +23,13 @@ type ChannelName =
   | `${SessionId}-user-status`;
 type FeedbackCounts = Partial<Record<ChatFeedbackMessage['feedback'], number>>;
 
-@WebSocketGateway({ cors: true })
+@WebSocketGateway({
+  cors: true,
+  pingInterval: 1000, // 10 seconds (Default is 25000)
+
+  // 2. How long the server waits for a pong before dropping the client
+  pingTimeout: 2000, // 5 seconds (Default is 20000)
+})
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -60,17 +66,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const sessionId = await this.sessionService.retrieveUserSession(userId, client);
+      const session = await this.sessionService.retrieveUserSession(userId, client);
 
-      if (sessionId) {
-        client.join(sessionId);
-        this.logger.log(`Reconnecting client ${sessionId} |=| ${client.id}`);
+      if (session) {
+        client.join(session.id);
+        this.logger.log(`Reconnecting client ${session.id} |=| ${client.id}`);
+        session.status.next('active');
       } else {
-        const sessionId = await this.sessionService.createSession(userId, client);
-        if (sessionId) {
-          client.join(sessionId);
+        const session = await this.sessionService.createSession(userId, client);
+        if (session) {
+          client.join(session.id);
+          this.logger.log(`Creating session for user ${userId} |+| ${session.id} `);
         }
-        this.logger.log(`Creating session for user ${userId} |+| ${sessionId} `);
       }
     } catch (error) {
       this.logger.error(`Error handleConnection session: ${error.message}`);
@@ -172,7 +179,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         delayWhen(waitForActiveConnection), // Apply the pause logic
       )
       .subscribe((status) => {
-        this.server.to(persistentId).emit('chat-message-response', status);
+        this.logger.debug(`chat-message-status-response to ${persistentId}`);
+        this.server.to(persistentId).emit('chat-message-status-response', status);
       });
 
     // Track by persistent ID
@@ -189,6 +197,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         delayWhen(waitForActiveConnection),
       )
       .subscribe((message) => {
+        this.logger.debug(`chat-message-response to ${persistentId}`);
+        const socketsInRoom = this.server.sockets.adapter.rooms.get(persistentId);
+        if (socketsInRoom) {
+          // 2. Convert the Set to an Array so it logs nicely
+          this.logger.debug(`Room ${persistentId} has ${socketsInRoom.size} client(s):`, Array.from(socketsInRoom));
+        } else {
+          this.logger.warn(`Room ${persistentId} is completely empty! The broadcast will go nowhere.`);
+        }
+
         this.server.to(persistentId).emit('chat-message-response', message);
       });
 

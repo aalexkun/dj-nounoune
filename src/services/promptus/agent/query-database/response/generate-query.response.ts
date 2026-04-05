@@ -16,6 +16,8 @@ export class GenerateQueryResponse extends PromptusResponse {
         this.function = parsed?.function || null;
         // Type type TYPE_UNSPECIFIED may have serialised the json as a string. in the first object
         this.params = this.parseMixedJsonArray(parsed?.params);
+
+        console.log(JSON.stringify(this.params, null, 2));
       } catch (e: any) {
         throw new Error(`Failed to parse GenAI GenerateQueryResponse: ${e.message}. Raw: ${raw}`);
       }

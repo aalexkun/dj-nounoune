@@ -22,11 +22,45 @@ export class QueryDatabaseHandler implements ToolHandler {
 
   private extractProperty(jsonPath: string | null, song: MusicDbAggregateResult): string {
     if (!jsonPath) return '';
-    const property = JSONPath({ path: jsonPath, json: song });
+    const property = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false });
     return Array.isArray(property) ? property[0] : property;
   }
 
-  private async castResult(dbResult: MusicDbAggregateResult[]): Promise<MusicSearchResult[]> {
+  private castWithProbableResult(dbResult: MusicDbAggregateResult[]): MusicSearchResult[] {
+    const musicSearchResults: MusicSearchResult[] = [];
+
+    if (dbResult.length > 0) {
+      const candidateJSON = {
+        sourceId: '$.source[0].sourceId',
+        id: '$._id',
+        albumName: '$.AlbumName',
+        artistName: '$.ArtistName',
+        title: '$.title',
+        trackNumber: '$.track_number',
+        discNumber: '$.disc_number',
+      };
+
+      for (const rawSong of dbResult) {
+        const song: MusicSearchResult = {
+          id: this.extractProperty(candidateJSON.id, rawSong),
+          sourceId: this.extractProperty(candidateJSON.sourceId, rawSong),
+          title: this.extractProperty(candidateJSON.title, rawSong),
+          artist: this.extractProperty(candidateJSON.artistName, rawSong),
+          album: this.extractProperty(candidateJSON.albumName, rawSong),
+        };
+
+        if (song.id === undefined || song.sourceId === undefined) {
+          throw new Error('Invalid casting');
+        } else {
+          musicSearchResults.push(song);
+        }
+      }
+    }
+
+    return musicSearchResults;
+  }
+
+  private async castUsinGeminiResult(dbResult: MusicDbAggregateResult[]): Promise<MusicSearchResult[]> {
     const musicSearchResults: MusicSearchResult[] = [];
 
     if (dbResult.length > 0) {
@@ -70,7 +104,12 @@ export class QueryDatabaseHandler implements ToolHandler {
 
     try {
       const dbResult = await this.queryDatabaseAgent.generateQuery(query);
-      const musicSearchResults = await this.castResult(dbResult);
+      let musicSearchResults: MusicSearchResult[] = [];
+      try {
+        musicSearchResults = this.castWithProbableResult(dbResult);
+      } catch (e) {
+        musicSearchResults = await this.castUsinGeminiResult(dbResult);
+      }
 
       return {
         message: JSON.stringify(musicSearchResults),

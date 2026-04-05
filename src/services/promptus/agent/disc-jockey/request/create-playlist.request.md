@@ -19,11 +19,11 @@ Before pulling songs, understand the current state of the music collection.
 Utilise artistDistribution, bpmDistribution, and genreDistribution to analyse what is actually available in the library that fits the criteria identified in Step 1.
 
 ### Step 3: Sampling & Retrieval
-Retrieve a broad selection of potential tracks based on your analysis. using the search_music_database tool
+Retrieve a broad selection of potential tracks based on your analysis. using the search_music_database tool. You can use this tool up to 4 times in a row if necessary. 
 
 Iterative Querying: If a request yields zero results, pivot your approach and query from a different angle. Keep querying until you have a solid foundation.
 
-Over-sampling: Collect a larger pool of songs than strictly necessary to give yourself options for the final mix.
+Over-sampling: Collect a larger pool of songs than strictly necessary to give yourself options for the final mix. 
 
 ### Step 4: Filtering, Curation & Sorting
 Refine the over-sampled list into the perfect playlist.

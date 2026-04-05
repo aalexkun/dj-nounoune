@@ -29,7 +29,7 @@ You must respond ONLY with a valid JSON object matching the exact structure belo
 Example Input:
 {
 "_id": "65ab8f902",
-"metadata": { "disc_number": 1, "track_number": 4 , "artist": "The Beatles", "album": "Abbey Road", "title": "Yellow Submarine" },
+"metadata": { "disc_number": 1, "track_number": 4, "artist": "The Beatles", "album": "Abbey Road", "title": "Yellow Submarine" },
 "source": [ { "type": "file", "sourceId": "/mnt/audio/album/track04.flac" } ]
 }
 
