@@ -8,21 +8,21 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Session, SessionDocument } from '../schemas/session.schema';
 import { AuthService } from '../services/auth/auth.service';
 import { Logger } from '@nestjs/common';
-import { bufferTime, concatMap, filter, from, map, Observable, Subject, Subscription, tap } from 'rxjs';
+import { BehaviorSubject, bufferTime, concatMap, delayWhen, filter, from, map, of, Subject, Subscription, take, timer } from 'rxjs';
 import * as chatGatewayTypes from './chat.gateway.types';
 import { ChatFeedbackMessage } from './chat.gateway.types';
 import { PromptusService } from '../services/promptus/promptus.service';
+import { NounouneSession, SessionId, SessionService } from '../services/session/session.service';
 
-type ClientId = string;
-type ChannelName = `${ClientId}-chat-feedback` | `${ClientId}-chat-message` | `${ClientId}-chat-message-status-response`;
+type ChannelName =
+  | `${SessionId}-chat-feedback`
+  | `${SessionId}-chat-message`
+  | `${SessionId}-chat-message-status-response`
+  | `${SessionId}-user-status`;
 type FeedbackCounts = Partial<Record<ChatFeedbackMessage['feedback'], number>>;
 
-// Enable CORS if your client is on a different domain
 @WebSocketGateway({ cors: true })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -38,10 +38,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private clientSubscriptions = new Map<ChannelName, Subscription>();
 
   constructor(
-    @InjectModel(Session.name)
-    private sessionModel: Model<SessionDocument>,
     private readonly promptusService: PromptusService,
     private readonly authService: AuthService,
+    private readonly sessionService: SessionService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -54,57 +53,60 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    try {
-      const newSession = new this.sessionModel({
-        socketId: client.id,
-        status: 'active',
-        ...(userId ? { userId: userId as string } : {}),
-      });
-      await newSession.save();
-    } catch (error) {
-      this.logger.error(`Error handleConnection session: ${error.message}`);
+    if (!userId) {
+      this.logger.warn(`Unauthorised connection attempt from ${client.id}`);
+      client.disconnect();
+      return;
     }
 
-    this.logger.log(`Client connected: ${client.id}`);
+    try {
+      const sessionId = await this.sessionService.retrieveUserSession(userId, client);
+
+      if (sessionId) {
+        client.join(sessionId);
+        this.logger.log(`Reconnecting client ${sessionId} |=| ${client.id}`);
+      } else {
+        const sessionId = await this.sessionService.createSession(userId, client);
+        if (sessionId) {
+          client.join(sessionId);
+        }
+        this.logger.log(`Creating session for user ${userId} |+| ${sessionId} `);
+      }
+    } catch (error) {
+      this.logger.error(`Error handleConnection session: ${error.message}`);
+      client.disconnect();
+      return;
+    }
   }
 
   async handleDisconnect(client: Socket) {
-    try {
-      this.unSubscribeClient(client.id);
-
-      await this.sessionModel.updateOne(
-        { socketId: client.id, status: 'active' },
-        {
-          status: 'disconnected',
-          disconnectedAt: new Date(),
-        },
-      );
-    } catch (error) {
-      this.logger.error(`Error handleDisconnect session: ${error.message}`);
-    }
-
+    await this.sessionService.disconnected(client, (sessionId: string) => this.unSubscribeClient(sessionId));
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  private unSubscribeClient(clientId: string) {
+  private unSubscribeClient(sessionId: string) {
     for (const channel of this.channels) {
-      this.clientSubjects.get(`${clientId}${channel}`)?.complete();
-      this.clientSubscriptions.get(`${clientId}${channel}`)?.unsubscribe();
-      this.clientSubjects.delete(`${clientId}${channel}`);
-      this.clientSubscriptions.delete(`${clientId}${channel}`);
+      this.clientSubjects.get(`${sessionId}${channel}`)?.complete();
+      this.clientSubscriptions.get(`${sessionId}${channel}`)?.unsubscribe();
+      this.clientSubjects.delete(`${sessionId}${channel}`);
+      this.clientSubscriptions.delete(`${sessionId}${channel}`);
     }
   }
 
   @SubscribeMessage('chat-feedback')
   handleDataStream(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
-    if (this.clientSubjects.has(`${client.id}-chat-feedback`)) {
-      this.clientSubjects.get(`${client.id}-chat-feedback`)?.next(payload);
+    const sessionId = this.sessionService.getSessionId(client.id)?.id;
+
+    if (this.clientSubjects.has(`${sessionId}-chat-feedback`)) {
+      this.clientSubjects.get(`${sessionId}-chat-feedback`)?.next(payload);
+    } else if (sessionId) {
+      this.subscribeToFeedback(client, sessionId).next(payload);
     } else {
-      this.subscribeToFeedback(client).next(payload);
+      throw new Error('No session id found chat-feedback');
     }
   }
 
-  private subscribeToFeedback(client: Socket): Subject<ChatFeedbackMessage> {
+  private subscribeToFeedback(client: Socket, sessionId: SessionId): Subject<ChatFeedbackMessage> {
     const subject = new Subject<ChatFeedbackMessage>();
     const subscription = subject
       .pipe(
@@ -128,37 +130,70 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         // { awesome: 4, wtf: 1, great: 2 }
       });
 
-    this.clientSubjects.set(`${client.id}-chat-feedback`, subject);
-    this.clientSubscriptions.set(`${client.id}-chat-feedback`, subscription);
+    this.clientSubjects.set(`${sessionId}-chat-feedback`, subject);
+    this.clientSubscriptions.set(`${sessionId}-chat-feedback`, subscription);
     return subject;
   }
 
   @SubscribeMessage('chat-message')
   handleChatMessage(@MessageBody() payload: chatGatewayTypes.ChatMessage, @ConnectedSocket() client: Socket) {
-    if (this.clientSubjects.has(`${client.id}-chat-message`)) {
-      this.clientSubjects.get(`${client.id}-chat-message`)?.next(payload);
+    const session = this.sessionService.getSessionId(client.id);
+
+    if (this.clientSubjects.has(`${session?.id}-chat-message`)) {
+      this.clientSubjects.get(`${session?.id}-chat-message`)?.next(payload);
+    } else if (session) {
+      this.subscribeToChat(client, session).next(payload);
     } else {
-      this.subscribeToChat(client).next(payload);
+      throw new Error('No session id found chat-message');
     }
   }
 
-  private subscribeToChat(client: Socket): Subject<chatGatewayTypes.ChatMessage> {
-    // Create a new subject and subscription for handling chat status messages
+  private subscribeToChat(client: Socket, session: NounouneSession): Subject<chatGatewayTypes.ChatMessage> {
+    const persistentId = session.id;
+
+    // Create a reusable delay function to keep the code DRY
+    const waitForActiveConnection = () => {
+      // If there is no tracker, assume they are connected and let it pass instantly
+      if (!session.status) {
+        return of(true);
+      }
+
+      // If the tracker exists, wait for the behaviour subject to emit 'active'
+      return session.status.pipe(
+        filter((status) => status === 'active'),
+        take(1),
+      );
+    };
+
+    // --- 1. Setup Status Stream ---
     const statusSubject = new Subject<chatGatewayTypes.ChatStatusMessage>();
-    const statusSubscription = statusSubject.subscribe((status) => {
-      client.emit('chat-message-status-response', status);
-    });
-    this.clientSubjects.set(`${client.id}-chat-message-status-response`, statusSubject);
-    this.clientSubscriptions.set(`${client.id}-chat-message-status-response`, statusSubscription);
+    const statusSubscription = statusSubject
+      .pipe(
+        delayWhen(waitForActiveConnection), // Apply the pause logic
+      )
+      .subscribe((status) => {
+        this.server.to(persistentId).emit('chat-message-response', status);
+      });
 
-    // Pass the statusSubject to the chat function so it can dispatch status messages
+    // Track by persistent ID
+    this.clientSubjects.set(`${persistentId}-chat-status` as ChannelName, statusSubject);
+    this.clientSubscriptions.set(`${persistentId}-chat-status` as ChannelName, statusSubscription);
+
+    // --- 2. Setup Main Chat Stream ---
     const subject = new Subject<chatGatewayTypes.ChatMessage>();
-    const subscription = subject.pipe(concatMap((payload) => from(this.promptusService.chat(payload, statusSubject)))).subscribe((message) => {
-      client.emit('chat-message-response', message);
-    });
+    const subscription = subject
+      .pipe(
+        // Process the heavy AI lifting instantly
+        concatMap((payload) => from(this.promptusService.chat(payload, statusSubject))),
+        // 3. CRITICAL: Apply the exact same pause logic to the final message delivery
+        delayWhen(waitForActiveConnection),
+      )
+      .subscribe((message) => {
+        this.server.to(persistentId).emit('chat-message-response', message);
+      });
 
-    this.clientSubjects.set(`${client.id}-chat-message`, subject);
-    this.clientSubscriptions.set(`${client.id}-chat-message`, subscription);
+    this.clientSubjects.set(`${persistentId}-chat-message`, subject);
+    this.clientSubscriptions.set(`${persistentId}-chat-message`, subscription);
 
     return subject;
   }

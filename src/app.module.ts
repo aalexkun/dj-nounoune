@@ -7,7 +7,7 @@ import { PsvService } from './services/transformation/psv.service';
 import { Artist, ArtistSchema } from './schemas/artist.schema';
 import { Album, AlbumSchema } from './schemas/albums.schema';
 import { Song, SongSchema } from './schemas/song.schema';
-import { Session, SessionSchema } from './schemas/session.schema';
+import { Connection, ConnectionSchema } from './schemas/connection.schema';
 import { MusicDbService } from './services/music-db/music-db.service';
 import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 import { ShellService } from './services/shell/shell.service';
@@ -22,6 +22,7 @@ import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
+import { SessionService } from './services/session/session.service';
 
 @Module({
   imports: [
@@ -41,7 +42,7 @@ import { ToolsService } from './services/promptus/tools.service';
       { name: Artist.name, schema: ArtistSchema },
       { name: Album.name, schema: AlbumSchema },
       { name: Song.name, schema: SongSchema },
-      { name: Session.name, schema: SessionSchema },
+      { name: Connection.name, schema: ConnectionSchema },
       { name: Chat.name, schema: ChatSchema },
     ]),
     MpdClientModule,
@@ -62,6 +63,7 @@ import { ToolsService } from './services/promptus/tools.service';
     ToolsService,
     AuthService,
     ApiAuthGuard,
+    SessionService,
   ],
 })
 export class AppModule {}
