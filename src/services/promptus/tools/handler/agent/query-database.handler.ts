@@ -1,9 +1,10 @@
-import { FunctionCallResult, ToolHandler } from '../../tool.type';
+import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
 import { QueryDatabaseAgent } from '../../../agent/query-database/query-database.agent';
 import { MusicSearchResult } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { JSONPath } from 'jsonpath-plus';
 import { MusicDbAggregateResult } from '../../../../music-db/music-db.service';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
+import { Logger } from '@nestjs/common';
 
 const MusicResultExpected: MusicSearchResult = {
   id: 'string',
@@ -16,6 +17,7 @@ const MusicResultExpected: MusicSearchResult = {
 const validMusicSearchResultKeys: (keyof MusicSearchResult)[] = ['id', 'sourceId', 'title', 'artist', 'album'];
 
 export class QueryDatabaseHandler implements ToolHandler {
+  private readonly logger = new Logger('QueryDatabaseHandler');
   readonly name = AgentToolsDefinition.searchMusicDatabase.name;
 
   constructor(private readonly queryDatabaseAgent: QueryDatabaseAgent) {}
@@ -26,7 +28,7 @@ export class QueryDatabaseHandler implements ToolHandler {
     return Array.isArray(property) ? property[0] : property;
   }
 
-  private castWithProbableResult(dbResult: MusicDbAggregateResult[]): MusicSearchResult[] {
+  private castWithProbableStructure(dbResult: MusicDbAggregateResult[]): MusicSearchResult[] {
     const musicSearchResults: MusicSearchResult[] = [];
 
     if (dbResult.length > 0) {
@@ -60,7 +62,7 @@ export class QueryDatabaseHandler implements ToolHandler {
     return musicSearchResults;
   }
 
-  private async castUsinGeminiResult(dbResult: MusicDbAggregateResult[]): Promise<MusicSearchResult[]> {
+  private async castWithAgenticModel(dbResult: MusicDbAggregateResult[]): Promise<MusicSearchResult[]> {
     const musicSearchResults: MusicSearchResult[] = [];
 
     if (dbResult.length > 0) {
@@ -92,23 +94,23 @@ export class QueryDatabaseHandler implements ToolHandler {
     return (validMusicSearchResultKeys as string[]).includes(key);
   }
 
-  async execute(args: any): Promise<FunctionCallResult> {
-    const query = args.natural_language_request;
-    if (!query) {
+  async execute(args: unknown, sessionId?: string): Promise<FunctionCallResult> {
+    if (!isNaturalLanguageRequest(args)) {
       return {
-        message: 'No natural_language_request provided.',
+        message: `Invalid arguments provided to ${this.name}. Expected parameter natural_language_request to be a string.`,
         name: this.name,
         type: 'string',
       };
     }
 
     try {
-      const dbResult = await this.queryDatabaseAgent.generateQuery(query);
+      const dbResult = await this.queryDatabaseAgent.generateQuery(args.natural_language_request, sessionId);
       let musicSearchResults: MusicSearchResult[] = [];
       try {
-        musicSearchResults = this.castWithProbableResult(dbResult);
+        musicSearchResults = this.castWithProbableStructure(dbResult);
       } catch (e) {
-        musicSearchResults = await this.castUsinGeminiResult(dbResult);
+        this.logger.error('Casting with assumed returned structure failed. Trying with agentic model.');
+        musicSearchResults = await this.castWithAgenticModel(dbResult);
       }
 
       return {

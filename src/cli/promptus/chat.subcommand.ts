@@ -17,15 +17,5 @@ export class PromptusChatSubcommand extends CommandRunner {
   }
   async run(passedParams: string[], options?: Record<string, any>): Promise<void> {
     const searchText = passedParams.join(' ');
-
-    const subject = new Subject<chatGatewayTypes.ChatStatusMessage>();
-
-    await this.promptusService.chat(
-      {
-        chatId: 'cli',
-        message: searchText,
-      },
-      subject,
-    );
   }
 }

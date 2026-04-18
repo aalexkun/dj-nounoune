@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 
 import { FunctionCallResult, ToolHandler } from './tools/tool.type';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
-import { ChatService } from '../chat/chat.service';
 import { MusicDbService } from '../music-db/music-db.service';
 import { PlayMusicHandler } from './tools/handler/mpd/play-music.handler';
 import { StopPlaybackHandler } from './tools/handler/mpd/stop-music.handler';
@@ -12,13 +11,12 @@ import { CurrentPlaylistHandler } from './tools/handler/mpd/current-playlist.han
 import { GenreDistributionHandler } from './tools/handler/mongo/genre-distribution.handler';
 import { ArtistDistributionHandler } from './tools/handler/mongo/artist-distribution.handler';
 import { BPMDistributionHandler } from './tools/handler/mongo/bpm-distribution.handler';
-import { ChatTitleAgent } from './agent/chat-title/chat-title.agent';
-import { ChatTitleHandler } from './tools/handler/chat/chat-title.handler';
 import { DiscJockeyAgent } from './agent/disc-jockey/disc-jockey.agent';
 import { DiscJockeyCreatePlaylistHandler } from './tools/handler/agent/disc-jockey-create-playlist.handler';
 import { QueryDatabaseAgent } from './agent/query-database/query-database.agent';
 import { QueryDatabaseHandler } from './tools/handler/agent/query-database.handler';
 import { DiscJockeyWhatIsPlayingHandler } from './tools/handler/agent/disc-jockey-what-is-playing.handler';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class ToolsService {
@@ -27,7 +25,6 @@ export class ToolsService {
   constructor(
     private mpdClientService: MpdClientService,
     private musicDbService: MusicDbService,
-    private chatService: ChatService,
   ) {
     // Generic and global accessible Tool and function
     this.registerTool(new PlayMusicHandler(this.mpdClientService));
@@ -39,15 +36,15 @@ export class ToolsService {
     this.registerTool(new BPMDistributionHandler(this.musicDbService));
   }
 
-  initialiseAgent(apiKey: string) {
-    const chatTitleAgent = new ChatTitleAgent(apiKey, this, this.chatService);
-    this.registerTool(new ChatTitleHandler(chatTitleAgent));
+  initialiseAgent(apiKey: string, eventEmitter: EventEmitter2) {
+    // const chatTitleAgent = new ChatTitleAgent(apiKey, this, this.chatService);
+    // this.registerTool(new ChatTitleHandler(chatTitleAgent));
 
-    const discJokeyAgent = new DiscJockeyAgent(apiKey, this);
+    const discJokeyAgent = new DiscJockeyAgent(apiKey, this, eventEmitter);
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
 
-    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, this.musicDbService);
+    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));
   }
 
@@ -55,7 +52,7 @@ export class ToolsService {
     this.toolRegistry.set(handler.name, handler);
   }
 
-  public async proceedFunctionCall(fc: FunctionCall): Promise<FunctionCallResult> {
+  public async proceedFunctionCall(fc: FunctionCall, sessionId?: string): Promise<FunctionCallResult> {
     if (!fc.name) {
       throw new Error(`Unsupported function call: ${fc}`);
     }
@@ -66,6 +63,6 @@ export class ToolsService {
       throw new Error(`Unsupported function call: ${fc.name}`);
     }
 
-    return await handler.execute(fc.args);
+    return await handler.execute(fc.args, sessionId);
   }
 }

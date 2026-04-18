@@ -16,6 +16,7 @@ export type NounouneSession = {
   socketId: string;
   userId: string;
   deviceName?: string;
+  connectionId: string;
 };
 
 @Injectable()
@@ -39,15 +40,17 @@ export class SessionService implements OnModuleInit {
     }
   }
 
-  getSessionId(clientId: string) {
-    return this.sessions.get(clientId);
+  getSession(socketId: string) {
+    return this.sessions.get(socketId);
   }
 
   async retrieveUserSession(userId: string, client: Socket) {
+    const deviceName = client.handshake.headers['user-agent'] || client.handshake.headers['User-Agent'] || 'Unknown Device';
     const existingSessionDoc = await this.connectionModel
       .findOne({
         userId: userId,
-        status: 'disconnected',
+        status: { $ne: 'expired' },
+        deviceName,
       })
       .exec();
 
@@ -57,15 +60,19 @@ export class SessionService implements OnModuleInit {
       const connectionId = existingSessionDoc.id.toString();
 
       // Cleanup any pending logout
+      this.pendingLogouts.get(connectionId)?.unsubscribe();
       this.pendingLogouts.delete(connectionId);
 
       // Remap client id with NounouneSession behaviorSubject
       if (oldSocketId && this.sessions.has(oldSocketId)) {
         const nounouneSession = this.sessions.get(oldSocketId);
         if (nounouneSession) {
-          this.sessions.set(client.id, nounouneSession);
+          this.sessions.set(client.id, {
+            ...nounouneSession,
+            connectionId: connectionId,
+          });
           this.sessions.delete(oldSocketId);
-          return nounouneSession;
+          return this.sessions.get(client.id);
         }
       } else {
         return await this.createSession(userId, client);
@@ -79,30 +86,30 @@ export class SessionService implements OnModuleInit {
     const clientId = client.id;
     const sessionInfo = this.sessions.get(clientId);
 
-    if (!sessionInfo?.id) {
+    if (!sessionInfo?.connectionId) {
       this.logger.error('Could not find session id for client: ' + clientId);
       return;
     }
 
-    const deviceSessionId = sessionInfo.id;
+    const deviceConnectionId = sessionInfo.connectionId;
 
     const logoutSubscription = timer(FIVE_MIN_IN_MS).subscribe(async () => {
       try {
-        this.logger.log(`[Session Disconnected for ${FIVE_MIN_IN_MS}ms] Logout session: ${deviceSessionId}`);
+        this.logger.log(`[Session Disconnected for ${FIVE_MIN_IN_MS}ms] Logout session: ${deviceConnectionId}`);
         const lastDevice = await this.logoutDevice(sessionInfo);
-        sessionInfo.status.complete();
-        this.sessions.delete(clientId);
+
         if (lastDevice) {
           sessionCleanupCallback(sessionInfo.id);
         }
       } catch (err) {
         this.logger.error(`Failed to logout user ${clientId}: ${err.message}`);
       } finally {
-        this.pendingLogouts.delete(deviceSessionId);
+        this.pendingLogouts.get(deviceConnectionId)?.unsubscribe();
+        this.pendingLogouts.delete(deviceConnectionId);
       }
     });
 
-    this.pendingLogouts.set(deviceSessionId, logoutSubscription);
+    this.pendingLogouts.set(deviceConnectionId, logoutSubscription);
     await this.connectionModel.updateOne({ socketId: client.id }, { status: 'disconnected' }).exec();
     this.sessions.get(clientId)?.status?.next('disconnected');
 
@@ -111,12 +118,15 @@ export class SessionService implements OnModuleInit {
 
   private async logoutDevice(nounouneSession: NounouneSession): Promise<boolean> {
     await this.connectionModel.updateOne(
-      { socketId: nounouneSession.socketId },
+      { _id: nounouneSession.connectionId },
       {
         status: 'expired',
         logoutAt: new Date(),
       },
     );
+
+    nounouneSession.status.complete();
+    this.sessions.delete(nounouneSession.socketId);
 
     const activeDevice = await this.connectionModel.countDocuments({ sessionId: nounouneSession.id, status: { $ne: 'expired' } });
     return activeDevice.valueOf() === 0;
@@ -127,7 +137,7 @@ export class SessionService implements OnModuleInit {
       socketId: client.id,
       sessionId: randomUUID(),
       status: 'active',
-      deviceName: client.handshake.headers['user-agent'],
+      deviceName: client.handshake.headers['user-agent'] || client.handshake.headers['User-Agent'] || 'Unknown Device',
       ...(userId ? { userId: userId as string } : {}),
     });
     const session = await newSession.save();
@@ -139,6 +149,7 @@ export class SessionService implements OnModuleInit {
         userId: session.userId,
         status: new BehaviorSubject<SessionStatus>('active'),
         deviceName: session.deviceName,
+        connectionId: session.id.toString(),
       };
       this.sessions.set(client.id, nounouneSession);
 

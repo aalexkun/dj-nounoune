@@ -39,16 +39,16 @@ export class AgentToolsDefinition {
   public static readonly discJockeyWhatIsPlaying: ToolDeclaration = {
     name: 'disc_jockey_what_is_playing',
     description:
-      'Use this tool to ask the music expert agent for information about the currently playing song or playlist. Use this when the user asks "what is this song?" or similar questions.',
+      "Use this tool to ask the music expert agent for information about the currently playing song or playlist. Use this when the user asks 'what is this song?' or similar questions. You can simply wrap the response and relay the DJ's answer directly back to the user",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        request: {
+        natural_language_request: {
           type: Type.STRING,
           description: "The user's specific question about the current music.",
         },
       },
-      required: ['request'],
+      required: ['natural_language_request'],
     },
   };
 }

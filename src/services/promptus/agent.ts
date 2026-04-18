@@ -9,6 +9,8 @@ import { FunctionCallResult } from './tools/tool.type';
 import { Subject } from 'rxjs';
 import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
 import { MessageUpdateCallback } from './promptus.type';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ChatMessageResponseEvent, ChatMessageResponseEventName, ChatStatusResponseEvent, ChatStatusResponseEventName } from '../chat/chat.event';
 
 export abstract class Agent {
   public readonly name: string;
@@ -16,18 +18,23 @@ export abstract class Agent {
   private maxThinkingLoop = 10;
   protected client: GoogleGenAI;
   protected toolService: ToolsService;
+  protected eventEmitter: EventEmitter2;
   private throttleHandler: ThrottleHandler;
 
   protected abstract wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType;
 
-  initialiseAgent(apiKey: string, toolService: ToolsService) {
+  initialiseAgent(apiKey: string, toolService: ToolsService, eventEmitter: EventEmitter2) {
     this.client = new GoogleGenAI({ apiKey });
     this.toolService = toolService;
+    this.eventEmitter = eventEmitter;
     this.throttleHandler = new ThrottleHandler(this.client);
   }
 
-  async generate<ReqType>(request: PromptusRequest<ReqType>, statusUpdate?: MessageUpdateCallback): Promise<ReqType> {
+  async generate<ReqType>(request: PromptusRequest<ReqType>, sessionId?: string): Promise<ReqType> {
     this.logger.log(`Starting: Request ${request.constructor.name}`);
+    if (sessionId) {
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(`${this.name}: ${request.query}`, sessionId));
+    }
 
     let loop = 0;
     while (loop < this.maxThinkingLoop) {
@@ -47,11 +54,11 @@ export abstract class Agent {
         };
 
         for (const fc of response.functionCalls) {
-          if (typeof statusUpdate === 'function') {
-            statusUpdate(`Calling ${fc.name}`);
+          if (sessionId) {
+            this.eventEmitter.emit(ChatMessageResponseEventName, new ChatMessageResponseEvent(`Calling: ${fc.name}`, sessionId));
           }
 
-          let result = await this.proceedFunctionCall(fc);
+          let result = await this.proceedFunctionCall(fc, sessionId);
           if (result) {
             const fnResult = {
               functionResponse: {
@@ -63,11 +70,6 @@ export abstract class Agent {
               },
             };
             responseContent.parts?.push(fnResult);
-
-            // Move that somewhere elese
-            // if (typeof statusUpdate === 'function' && fc.name === 'disc_jockey_what_is_playing' && result.type === 'string') {
-            //   statusUpdate(result.message);
-            // }
           } else {
             this.logger.error(`${fc} did not return any result`);
           }
@@ -91,8 +93,8 @@ export abstract class Agent {
     this.logger.debug(`Token Count: ${tokenCount.totalTokens} (Model: ${model})`);
   }
 
-  protected async proceedFunctionCall(fc: FunctionCall): Promise<FunctionCallResult> {
-    return await this.toolService.proceedFunctionCall(fc);
+  protected async proceedFunctionCall(fc: FunctionCall, sessionId?: string): Promise<FunctionCallResult> {
+    return await this.toolService.proceedFunctionCall(fc, sessionId);
   }
 
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {

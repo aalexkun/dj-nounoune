@@ -1,4 +1,4 @@
-import { FunctionCallResult, ToolHandler } from '../../tool.type';
+import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
 import { DiscJockeyAgent } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 
@@ -7,18 +7,17 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
 
   constructor(private readonly djAgent: DiscJockeyAgent) {}
 
-  async execute(args: any): Promise<FunctionCallResult> {
-    const query = args.natural_language_request;
-    if (!query) {
+  async execute(args: unknown, sessionId?: string): Promise<FunctionCallResult> {
+    if (!isNaturalLanguageRequest(args)) {
       return {
-        message: 'No natural_language_request provided.',
+        message: `Invalid arguments provided to ${this.name}. Expected parameter natural_language_request to be a string.`,
         name: this.name,
         type: 'string',
       };
     }
 
     try {
-      const djResult = await this.djAgent.createPlaylist(query);
+      const djResult = await this.djAgent.createPlaylist(args.natural_language_request, sessionId);
 
       return {
         description: djResult.description,

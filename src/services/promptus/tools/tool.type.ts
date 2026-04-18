@@ -22,5 +22,19 @@ export type FunctionCallPlaylistResult = {
 
 export interface ToolHandler {
   name: string;
-  execute(args: unknown): Promise<FunctionCallResult>;
+  execute(args: unknown, sessionId?: string): Promise<FunctionCallResult>;
 }
+
+export type NaturalLanguageRequest = {
+  natural_language_request: string;
+};
+
+export const isNaturalLanguageRequest = (args: unknown): args is NaturalLanguageRequest => {
+  if (!args || typeof args !== 'object') {
+    return false;
+  }
+
+  const obj = args as Record<string, unknown>;
+
+  return typeof obj.natural_language_request === 'string';
+};

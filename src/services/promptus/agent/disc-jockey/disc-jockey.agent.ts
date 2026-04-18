@@ -7,6 +7,7 @@ import { CreatePlaylistRequest } from './request/create-playlist.request';
 import { CreatePlaylistResponse } from './response/create-playlist.response';
 import { WhatIsPlayingRequest } from './request/what-is-playing.request';
 import { WhatIsPlayingResponse } from './response/what-is-playing.response';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export type MusicSearchResult = {
   id: string;
@@ -39,19 +40,23 @@ export class DiscJockeyAgent extends Agent {
   name = 'MusicSearchAgent';
   protected readonly logger = new Logger(this.name);
 
-  constructor(apiKey: string, toolService: ToolsService) {
+  constructor(
+    apiKey: string,
+    toolService: ToolsService,
+    protected eventEmitter: EventEmitter2,
+  ) {
     super();
-    this.initialiseAgent(apiKey, toolService);
+    this.initialiseAgent(apiKey, toolService, eventEmitter);
   }
 
-  async createPlaylist(naturalLanguageRequest: string) {
+  async createPlaylist(naturalLanguageRequest: string, sessionId?: string) {
     const djRequest = new CreatePlaylistRequest(naturalLanguageRequest);
-    return await this.generate(djRequest);
+    return await this.generate(djRequest, sessionId);
   }
 
-  async whatIsPlaying(request: string) {
+  async whatIsPlaying(request: string, sessionId?: string) {
     const wip = new WhatIsPlayingRequest(request);
-    return await this.generate(wip);
+    return await this.generate(wip, sessionId);
   }
 
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {

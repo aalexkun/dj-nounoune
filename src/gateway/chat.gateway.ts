@@ -10,25 +10,21 @@ import {
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../services/auth/auth.service';
 import { Logger } from '@nestjs/common';
-import { BehaviorSubject, bufferTime, concatMap, delayWhen, filter, from, map, of, Subject, Subscription, take, timer } from 'rxjs';
+import { OnEvent } from '@nestjs/event-emitter';
 import * as chatGatewayTypes from './chat.gateway.types';
-import { ChatFeedbackMessage } from './chat.gateway.types';
-import { PromptusService } from '../services/promptus/promptus.service';
-import { NounouneSession, SessionId, SessionService } from '../services/session/session.service';
-
-type ChannelName =
-  | `${SessionId}-chat-feedback`
-  | `${SessionId}-chat-message`
-  | `${SessionId}-chat-message-status-response`
-  | `${SessionId}-user-status`;
-type FeedbackCounts = Partial<Record<ChatFeedbackMessage['feedback'], number>>;
+import { SessionService } from '../services/session/session.service';
+import { ChatService } from '../services/chat/chat.service';
+import {
+  ChatMessageResponseEvent,
+  ChatMessageResponseEventName,
+  ChatStatusResponseEvent,
+  ChatStatusResponseEventName,
+} from '../services/chat/chat.event';
 
 @WebSocketGateway({
   cors: true,
   pingInterval: 1000, // 10 seconds (Default is 25000)
-
-  // 2. How long the server waits for a pong before dropping the client
-  pingTimeout: 2000, // 5 seconds (Default is 20000)
+  pingTimeout: 1000, // 5 seconds (Default is 20000)
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -36,15 +32,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger('ChatGateway');
 
-  private channels: ChannelName[] = ['-chat-feedback', '-chat-message', '-chat-message-status-response'];
-  private clientSubjects = new Map<
-    ChannelName,
-    Subject<chatGatewayTypes.ChatStatusMessage | chatGatewayTypes.ChatMessage | chatGatewayTypes.ChatFeedbackMessage>
-  >();
-  private clientSubscriptions = new Map<ChannelName, Subscription>();
-
   constructor(
-    private readonly promptusService: PromptusService,
+    private readonly chatService: ChatService,
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
   ) {}
@@ -67,17 +56,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const session = await this.sessionService.retrieveUserSession(userId, client);
-
       if (session) {
         client.join(session.id);
         this.logger.log(`Reconnecting client ${session.id} |=| ${client.id}`);
         session.status.next('active');
       } else {
         const session = await this.sessionService.createSession(userId, client);
-        if (session) {
-          client.join(session.id);
-          this.logger.log(`Creating session for user ${userId} |+| ${session.id} `);
+
+        if (!session) {
+          this.logger.error(`Error createSession session`);
+          client.disconnect();
+          return;
         }
+
+        this.logger.log(`Creating session for user ${userId} |+| ${session.id} `);
+        this.chatService.subscribeToChat(session);
+        this.chatService.subscribeToFeedback(session.id);
+        client.join(session.id);
       }
     } catch (error) {
       this.logger.error(`Error handleConnection session: ${error.message}`);
@@ -87,131 +82,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   async handleDisconnect(client: Socket) {
-    await this.sessionService.disconnected(client, (sessionId: string) => this.unSubscribeClient(sessionId));
+    await this.sessionService.disconnected(client, (sessionId: string) => this.chatService.unSubscribeSession(sessionId));
     this.logger.log(`Client disconnected: ${client.id}`);
-  }
-
-  private unSubscribeClient(sessionId: string) {
-    for (const channel of this.channels) {
-      this.clientSubjects.get(`${sessionId}${channel}`)?.complete();
-      this.clientSubscriptions.get(`${sessionId}${channel}`)?.unsubscribe();
-      this.clientSubjects.delete(`${sessionId}${channel}`);
-      this.clientSubscriptions.delete(`${sessionId}${channel}`);
-    }
   }
 
   @SubscribeMessage('chat-feedback')
   handleDataStream(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
-    const sessionId = this.sessionService.getSessionId(client.id)?.id;
+    const sessionId = this.sessionService.getSession(client.id)?.id;
 
-    if (this.clientSubjects.has(`${sessionId}-chat-feedback`)) {
-      this.clientSubjects.get(`${sessionId}-chat-feedback`)?.next(payload);
-    } else if (sessionId) {
-      this.subscribeToFeedback(client, sessionId).next(payload);
-    } else {
-      throw new Error('No session id found chat-feedback');
+    if (!sessionId) {
+      this.logger.error(`No session id found chat-feedback ${client.id}`);
+      return;
     }
-  }
 
-  private subscribeToFeedback(client: Socket, sessionId: SessionId): Subject<ChatFeedbackMessage> {
-    const subject = new Subject<ChatFeedbackMessage>();
-    const subscription = subject
-      .pipe(
-        bufferTime(5000),
-        filter((bufferedMessages) => bufferedMessages?.length > 0),
-        map((bufferedMessages) => {
-          // 2. Reduce the array into an object that counts each feedback type
-          return bufferedMessages.reduce((acc, message) => {
-            const type = message.feedback;
-            // Initialise at 0 if it doesn't exist, then increment by 1
-            acc[type] = (acc[type] || 0) + 1;
-            return acc;
-          }, {} as FeedbackCounts);
-        }),
-      )
-      .subscribe((groupedCounts) => {
-        // 3. The output will now be an object instead of a single integer
-        this.logger.log('Count of reactions over the last 5 seconds:', groupedCounts);
-
-        // Example output in your logs:
-        // { awesome: 4, wtf: 1, great: 2 }
-      });
-
-    this.clientSubjects.set(`${sessionId}-chat-feedback`, subject);
-    this.clientSubscriptions.set(`${sessionId}-chat-feedback`, subscription);
-    return subject;
+    this.chatService.processFeedbackMessage(sessionId, payload);
   }
 
   @SubscribeMessage('chat-message')
-  handleChatMessage(@MessageBody() payload: chatGatewayTypes.ChatMessage, @ConnectedSocket() client: Socket) {
-    const session = this.sessionService.getSessionId(client.id);
-
-    if (this.clientSubjects.has(`${session?.id}-chat-message`)) {
-      this.clientSubjects.get(`${session?.id}-chat-message`)?.next(payload);
-    } else if (session) {
-      this.subscribeToChat(client, session).next(payload);
-    } else {
-      throw new Error('No session id found chat-message');
+  handleChatMessage(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
+    const sessionId = this.sessionService.getSession(client.id)?.id;
+    if (!sessionId) {
+      this.logger.error(`No session id found chat-feedback ${client.id}`);
+      return;
     }
+
+    this.chatService.processChatMessage(sessionId, payload).then((message) => {
+      this.logger.debug(`chat-message to ${sessionId} Exited`);
+    });
   }
 
-  private subscribeToChat(client: Socket, session: NounouneSession): Subject<chatGatewayTypes.ChatMessage> {
-    const persistentId = session.id;
+  @OnEvent(ChatMessageResponseEventName)
+  sendChatMessageResponse(payload: ChatMessageResponseEvent) {
+    this.logger.debug(`${ChatMessageResponseEventName} to ${payload.sessionId}`);
+    const socketsInRoom = this.server.sockets.adapter.rooms.get(payload.sessionId);
+    if (socketsInRoom) {
+      // 2. Convert the Set to an Array so it logs nicely
+      this.logger.debug(`Room ${payload.sessionId} has ${socketsInRoom.size} client(s):`, Array.from(socketsInRoom));
+    } else {
+      this.logger.warn(`Room ${payload.sessionId} is completely empty! The broadcast will go nowhere.`);
+    }
 
-    // Create a reusable delay function to keep the code DRY
-    const waitForActiveConnection = () => {
-      // If there is no tracker, assume they are connected and let it pass instantly
-      if (!session.status) {
-        return of(true);
-      }
+    this.server.to(payload.sessionId).emit('chat-message-response', payload.message);
+  }
 
-      // If the tracker exists, wait for the behaviour subject to emit 'active'
-      return session.status.pipe(
-        filter((status) => status === 'active'),
-        take(1),
-      );
-    };
+  @OnEvent(ChatStatusResponseEventName)
+  sendChatMessageStatus(payload: ChatStatusResponseEvent) {
+    this.logger.debug(`${ChatStatusResponseEventName} to ${payload.sessionId}`);
 
-    // --- 1. Setup Status Stream ---
-    const statusSubject = new Subject<chatGatewayTypes.ChatStatusMessage>();
-    const statusSubscription = statusSubject
-      .pipe(
-        delayWhen(waitForActiveConnection), // Apply the pause logic
-      )
-      .subscribe((status) => {
-        this.logger.debug(`chat-message-status-response to ${persistentId}`);
-        this.server.to(persistentId).emit('chat-message-status-response', status);
-      });
-
-    // Track by persistent ID
-    this.clientSubjects.set(`${persistentId}-chat-status` as ChannelName, statusSubject);
-    this.clientSubscriptions.set(`${persistentId}-chat-status` as ChannelName, statusSubscription);
-
-    // --- 2. Setup Main Chat Stream ---
-    const subject = new Subject<chatGatewayTypes.ChatMessage>();
-    const subscription = subject
-      .pipe(
-        // Process the heavy AI lifting instantly
-        concatMap((payload) => from(this.promptusService.chat(payload, statusSubject))),
-        // 3. CRITICAL: Apply the exact same pause logic to the final message delivery
-        delayWhen(waitForActiveConnection),
-      )
-      .subscribe((message) => {
-        this.logger.debug(`chat-message-response to ${persistentId}`);
-        const socketsInRoom = this.server.sockets.adapter.rooms.get(persistentId);
-        if (socketsInRoom) {
-          // 2. Convert the Set to an Array so it logs nicely
-          this.logger.debug(`Room ${persistentId} has ${socketsInRoom.size} client(s):`, Array.from(socketsInRoom));
-        } else {
-          this.logger.warn(`Room ${persistentId} is completely empty! The broadcast will go nowhere.`);
-        }
-
-        this.server.to(persistentId).emit('chat-message-response', message);
-      });
-
-    this.clientSubjects.set(`${persistentId}-chat-message`, subject);
-    this.clientSubscriptions.set(`${persistentId}-chat-message`, subscription);
-
-    return subject;
+    this.server.to(payload.sessionId).emit('chat-message-status-response', payload.message);
   }
 }

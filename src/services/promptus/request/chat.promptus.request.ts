@@ -39,7 +39,6 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
 
   constructor(query: string, history: ChatMessage[]) {
     super();
-
     this.history = [
       ...history,
       {

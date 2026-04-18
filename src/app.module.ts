@@ -23,6 +23,7 @@ import { SpotifyModule } from './services/spotify/spotify.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { SessionService } from './services/session/session.service';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    EventEmitterModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -51,15 +53,15 @@ import { SessionService } from './services/session/session.service';
   controllers: [ChatController],
   providers: [
     AppService,
+    PromptusService,
     PsvService,
     ...CommandProviders,
-    PromptusService,
+    ChatService,
     ShellService,
     MusicDbService,
     MpdClientService,
     FileService,
     ChatGateway,
-    ChatService,
     ToolsService,
     AuthService,
     ApiAuthGuard,
