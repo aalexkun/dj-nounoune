@@ -9,9 +9,12 @@ import { createHash } from 'crypto';
 import { PathTransformer } from '../../utils/path.transformer';
 import { AppService } from '../../app.service';
 import { Logger } from '@nestjs/common';
+import { createWriteStream } from 'fs';
+import { once } from 'events';
 
 interface ImportCommandOptions {
   file: string;
+  playlist?: string;
   dryRun?: boolean;
 }
 
@@ -41,7 +44,7 @@ export class ImportCommand extends CommandRunner {
   }
 
   async run(inputs: string[], options: ImportCommandOptions): Promise<void> {
-    const { file, dryRun } = options;
+    const { file, dryRun, playlist } = options;
 
     this.logger.log(`Starting import process for: ${file}`);
     if (dryRun) {
@@ -51,97 +54,118 @@ export class ImportCommand extends CommandRunner {
     let count = 0;
 
     // Call the parser and pass a callback function for saving
-    await this.psvParser.parseFile(options.file, async (userDoc: ParsedPsvRow) => {
-      const artistName = userDoc.artist || 'Unknown Artist';
-      const userGenre = userDoc.genre ? [userDoc.genre] : [];
-      const artistId = this.generateId(artistName);
+    if (playlist) {
+      const writeStream = createWriteStream(`./files/${playlist}.txt`, { encoding: 'utf8' });
 
-      const albumTitle = userDoc.album || 'Unknown Album';
-      const albumArtistName = userDoc.album_artist || artistName;
-      // Album ID depends on Album Title and Album Artist (or Artist)
-      const albumId = this.generateId(`${albumTitle}|${albumArtistName}`);
+      // 2. Process the file line-by-line using your existing parser
+      await this.psvParser.parseFile(options.file, async (userDoc: ParsedPsvRow) => {
+        const path = `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`;
+        const lineToWrite = `${path}\n`;
+        const canContinue = writeStream.write(lineToWrite);
+        if (!canContinue) {
+          await once(writeStream, 'drain');
+        }
+      });
 
-      // Song ID depends on all content (using JSON stringify of the parsed object for simplicity and coverage)
-      // The requirement says "md5 of all know information from that parse PSV"
-      const songAvailableInfo = JSON.stringify(userDoc);
-      const songId = this.generateId(songAvailableInfo);
+      writeStream.end();
+      await once(writeStream, 'finish');
+    } else {
+      await this.psvParser.parseFile(options.file, async (userDoc: ParsedPsvRow) => {
+        const artistName = userDoc.artist || 'Unknown Artist';
+        const userGenre = userDoc.genre ? [userDoc.genre] : [];
+        const artistId = this.generateId(artistName);
 
-      if (!dryRun) {
-        // 1. Upsert Artist
-        await this.artistModel.updateOne(
-          { _id: artistId },
-          {
-            $set: {
-              artist: artistName,
+        const albumTitle = userDoc.album || 'Unknown Album';
+        const albumArtistName = userDoc.album_artist || artistName;
+        // Album ID depends on Album Title and Album Artist (or Artist)
+        const albumId = this.generateId(`${albumTitle}|${albumArtistName}`);
+
+        // Song ID depends on all content (using JSON stringify of the parsed object for simplicity and coverage)
+        // The requirement says "md5 of all know information from that parse PSV"
+        const songAvailableInfo = JSON.stringify(userDoc);
+        const songId = this.generateId(songAvailableInfo);
+
+        if (!dryRun) {
+          this.logger.log(`Upserting Artist: ${artistName} (${artistId})`);
+
+          // 1. Upsert Artist
+          await this.artistModel.updateOne(
+            { _id: artistId },
+            {
+              $set: {
+                artist: artistName,
+              },
+              $addToSet: {
+                primary_genres: { $each: userGenre },
+                albums: albumId,
+              },
             },
-            $addToSet: {
-              primary_genres: { $each: userGenre },
-              albums: albumId,
-            },
-          },
-          { upsert: true },
-        );
+            { upsert: true },
+          );
 
-        // 2. Upsert Album
-        await this.albumModel.updateOne(
-          { _id: albumId },
-          {
-            $set: {
-              title: albumTitle,
-              artist: artistId, // Linking to the main artist (or should it be album artist? Schema says 'artist')
-              // Assuming 'artist' field in Album refers to the primary artist.
-              // If album_artist is different, we might need to handle it, but for now we link to the generated artistId.
-              // Ideally we should generate an ID for album_artist too if it's different, but let's stick to the simple flow first.
-              release_year: userDoc.year,
-              // genre: userGenre, // Album might have multiple genres from songs... keeping it simple for now
+          this.logger.log(`Upserting Album: ${albumTitle} (${albumId})`);
+          // 2. Upsert Album
+          await this.albumModel.updateOne(
+            { _id: albumId },
+            {
+              $set: {
+                title: albumTitle,
+                artist: artistId, // Linking to the main artist (or should it be album artist? Schema says 'artist')
+                // Assuming 'artist' field in Album refers to the primary artist.
+                // If album_artist is different, we might need to handle it, but for now we link to the generated artistId.
+                // Ideally we should generate an ID for album_artist too if it's different, but let's stick to the simple flow first.
+                release_year: userDoc.year,
+                // genre: userGenre, // Album might have multiple genres from songs... keeping it simple for now
+              },
+              $addToSet: {
+                tracks: songId,
+                genre: { $each: userGenre },
+              },
             },
-            $addToSet: {
-              tracks: songId,
-              genre: { $each: userGenre },
-            },
-          },
-          { upsert: true },
-        );
+            { upsert: true },
+          );
 
-        // 3. Upsert Song
-        await this.songModel.updateOne(
-          { _id: songId },
-          {
-            $set: {
-              artist: artistId,
-              album: albumId,
-              album_artist: albumArtistName,
-              title: userDoc.title,
-              composer: userDoc.composer,
-              genre: userDoc.genre,
-              year: userDoc.year,
-              track_number: userDoc.track_number,
-              disc_number: userDoc.disc_number,
-              bpm: userDoc.bpm,
-              category: userDoc.category,
-              filename: userDoc.filename,
-              path: userDoc.path,
-              source: [
-                {
-                  name: 'file',
-                  sourceId: `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`,
-                },
-              ],
-              technical_info: userDoc.technical_info,
+          this.logger.log(`Upserting Song: ${userDoc.title} (${songId})`);
+          // 3. Upsert Song
+          await this.songModel.updateOne(
+            { _id: songId },
+            {
+              $set: {
+                artist: artistId,
+                album: albumId,
+                album_artist: albumArtistName,
+                title: userDoc.title,
+                composer: userDoc.composer,
+                genre: userDoc.genre,
+                year: userDoc.year,
+                track_number: userDoc.track_number,
+                disc_number: userDoc.disc_number,
+                bpm: userDoc.bpm,
+                category: userDoc.category,
+                filename: userDoc.filename,
+                path: userDoc.path,
+                source: [
+                  {
+                    name: 'file',
+                    sourceId: `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`,
+                  },
+                ],
+                technical_info: userDoc.technical_info,
+              },
             },
-          },
-          { upsert: true },
-        );
-      } else {
-        // In dry-run, maybe just log a sampling or just the ID generation
-        // this.logService.log(`[DryRun] Would upsert Artist: ${artistName} (${artistId})`);
-        // this.logService.log(`[DryRun] Would upsert Album: ${albumTitle} (${albumId})`);
-        // this.logService.log(`[DryRun] Would upsert Song: ${userDoc.title} (${songId})`);
-      }
+            { upsert: true },
+          );
+        } else {
+          // In dry-run, maybe just log a sampling or just the ID generation
+          this.logger.log(`[DryRun] Would upsert Artist: ${artistName} (${artistId})`);
+          this.logger.log(`[DryRun] Would upsert Album: ${albumTitle} (${albumId})`);
+          this.logger.log(`[DryRun] Would upsert Song: ${userDoc.title} (${songId})`);
+        }
 
-      count++;
-      if (count % 100 === 0) console.log(`Processed ${count} records...`);
-    });
+        count++;
+        if (count % 100 === 0) console.log(`Processed ${count} records...`);
+      });
+    }
 
     console.log(`Done! Total imported: ${count}`);
   }
@@ -161,6 +185,15 @@ export class ImportCommand extends CommandRunner {
     required: true,
   })
   parseFile(val: string): string {
+    return val;
+  }
+
+  @Option({
+    flags: '-p, --playlist <file>',
+    description: 'Import as playlist',
+    required: true,
+  })
+  parsePlaylist(val: string): string {
     return val;
   }
 }

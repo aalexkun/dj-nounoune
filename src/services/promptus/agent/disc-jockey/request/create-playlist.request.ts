@@ -4,6 +4,7 @@ import { CreatePlaylistResponse } from '../response/create-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { MongoToolsDefinition } from '../../../tools/definition/mongo-tools.definition';
 import { AgentToolsDefinition } from '../../../tools/definition/agent-tools.definition';
+import { promises as fs } from 'fs';
 
 export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistResponse> {
   public tools: ToolDeclaration[] = [
@@ -82,5 +83,14 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
   constructor(query: string) {
     super();
     this._query = query;
+  }
+
+  public async getContext(): Promise<string> {
+    try {
+      return await fs.readFile(this.context, 'utf-8');
+    } catch (e) {
+      console.error(`Error reading context file: ${this.context}`, e);
+      return '';
+    }
   }
 }
