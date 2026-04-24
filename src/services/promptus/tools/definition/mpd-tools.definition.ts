@@ -38,7 +38,7 @@ export class MpdToolsDefinition {
       type: Type.OBJECT,
       properties: {},
     },
-  };
+  } as const;
 
   public static readonly currentMpdCommand: ToolDeclaration = {
     name: 'current_song',
@@ -47,7 +47,7 @@ export class MpdToolsDefinition {
       type: Type.OBJECT,
       properties: {},
     },
-  };
+  } as const;
 
   public static readonly playlistMpdCommand: ToolDeclaration = {
     name: 'current_playlist',
@@ -56,7 +56,7 @@ export class MpdToolsDefinition {
       type: Type.OBJECT,
       properties: {},
     },
-  };
+  } as const;
 
   public static readonly createPlaylistMpdCommand: ToolDeclaration = {
     name: 'create_playlist',
@@ -82,5 +82,5 @@ export class MpdToolsDefinition {
       },
       required: ['songs'],
     },
-  };
+  } as const;
 }

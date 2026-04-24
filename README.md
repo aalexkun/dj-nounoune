@@ -76,9 +76,25 @@ npm run test:watch
 # Test coverage
 npm run test:cov
 
+# Integration tests
+npm run test:integration
+
 # E2E tests
 npm run test:e2e
 ```
+
+### Spotify Integration Setup
+
+To run integration tests for Spotify, you need user authentication tokens. 
+
+1. Ensure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set in your `.env`.
+2. Add `http://localhost:8888/callback` as a Redirect URI in your Spotify Developer Dashboard.
+3. Run the auth utility:
+   ```bash
+   npm run spotify:auth
+   ```
+4. Follow the instructions to get your `SPOTIFY_ACCESS_TOKEN` and `SPOTIFY_REFRESH_TOKEN`.
+5. Add them to your `.env` file.
 
 ### Linting & Formatting
 
@@ -104,6 +120,8 @@ The application requires the following environment variables:
 | `MPD_PORT` | Port for Music Player Daemon |
 | `SPOTIFY_CLIENT_ID` | Spotify Application Client ID |
 | `SPOTIFY_CLIENT_SECRET` | Spotify Application Client Secret |
+| `SPOTIFY_ACCESS_TOKEN` | (Optional) Spotify User Access Token |
+| `SPOTIFY_REFRESH_TOKEN` | (Optional) Spotify User Refresh Token |
 | `IMPORT_LIBRARY_PATH_ROOT`| Root path for music library (Local/Windows) |
 | `LIBRARY_ROOT_PATH` | Path mapping for music library (Server/Samba) |
 

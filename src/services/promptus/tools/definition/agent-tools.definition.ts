@@ -18,7 +18,7 @@ export class AgentToolsDefinition {
       },
       required: ['natural_language_request'],
     },
-  };
+  } as const;
 
   public static readonly discJockeyCreatePlaylist: ToolDeclaration = {
     name: 'disc_jockey_create_playlist',
@@ -34,7 +34,7 @@ export class AgentToolsDefinition {
       },
       required: ['natural_language_request'],
     },
-  };
+  } as const;
 
   public static readonly discJockeyWhatIsPlaying: ToolDeclaration = {
     name: 'disc_jockey_what_is_playing',
@@ -50,5 +50,5 @@ export class AgentToolsDefinition {
       },
       required: ['natural_language_request'],
     },
-  };
+  } as const;
 }

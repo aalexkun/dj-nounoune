@@ -12,7 +12,6 @@ describe('ShellService', () => {
     service = module.get<ShellService>(ShellService);
   });
 
-
   it('should be defined', () => {
     expect(service).toBeDefined();
   });

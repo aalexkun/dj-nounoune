@@ -2,19 +2,19 @@ import { MpdRequest } from './MpdRequest';
 import { SeekCurMpdResponse } from '../responses/SeekCurMpdResponse';
 
 export class SeekCurMpdRequest extends MpdRequest<SeekCurMpdResponse> {
-    constructor(private time: number | string) {
-        super();
-    }
+  constructor(private time: number | string) {
+    super();
+  }
 
-    get command(): string {
-        return 'seekcur';
-    }
+  get command(): string {
+    return 'seekcur';
+  }
 
-    get args(): string[] {
-        return [this.time.toString()];
-    }
+  get args(): string[] {
+    return [this.time.toString()];
+  }
 
-    createResponse(raw: string): SeekCurMpdResponse {
-        return new SeekCurMpdResponse(raw);
-    }
+  createResponse(raw: string): SeekCurMpdResponse {
+    return new SeekCurMpdResponse(raw);
+  }
 }

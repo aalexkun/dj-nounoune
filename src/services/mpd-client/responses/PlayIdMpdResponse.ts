@@ -1,3 +1,3 @@
 import { MpdResponse } from './MpdResponse';
 
-export class PlayIdMpdResponse extends MpdResponse { }
+export class PlayIdMpdResponse extends MpdResponse {}

@@ -1,4 +1,3 @@
-
 export abstract class MpdResponse {
-    constructor(public readonly rawResponse: string) { }
+  constructor(public readonly rawResponse: string) {}
 }

@@ -7,7 +7,7 @@ export class CacheHandler {
     const cachedFiles = await this.client.files.list();
     const existingFiles = cachedFiles.page;
     while (cachedFiles.hasNextPage()) {
-      let nextItems = await cachedFiles.nextPage();
+      const nextItems = await cachedFiles.nextPage();
       existingFiles.push(...nextItems);
     }
     const filteredFiles = existingFiles.filter((file) => file.name?.includes(cacheName));
@@ -18,7 +18,7 @@ export class CacheHandler {
     const cachedContents = await this.client.caches.list();
     const existingCaches = cachedContents.page;
     while (cachedContents.hasNextPage()) {
-      let nextItems = await cachedContents.nextPage();
+      const nextItems = await cachedContents.nextPage();
       existingCaches.push(...nextItems);
     }
     const filteredCaches = existingCaches.filter((cache) => cache.displayName?.includes(cacheName));
@@ -34,10 +34,10 @@ export class CacheHandler {
     modelName: string,
     systemInstruction: string,
   ): Promise<CachedContent | undefined> {
-    let cachedFiles = await this.client.files.list();
+    const cachedFiles = await this.client.files.list();
     let existingFiles = cachedFiles.page;
     while (cachedFiles.hasNextPage()) {
-      let nextItems = await cachedFiles.nextPage();
+      const nextItems = await cachedFiles.nextPage();
       existingFiles = [...existingFiles, ...nextItems];
     }
 
@@ -56,11 +56,11 @@ export class CacheHandler {
     const existingCache = await this.client.caches.list();
     let cachedContents = existingCache.page;
     while (existingCache.hasNextPage()) {
-      let nextItems = await existingCache.nextPage();
+      const nextItems = await existingCache.nextPage();
       cachedContents = [...cachedContents, ...nextItems];
     }
 
-    let existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheName);
+    const existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheName);
 
     if (existingCacheContent) {
       return existingCacheContent;

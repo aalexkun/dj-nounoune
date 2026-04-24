@@ -138,7 +138,7 @@ export class SessionService implements OnModuleInit {
       sessionId: randomUUID(),
       status: 'active',
       deviceName: client.handshake.headers['user-agent'] || client.handshake.headers['User-Agent'] || 'Unknown Device',
-      ...(userId ? { userId: userId as string } : {}),
+      ...(userId ? { userId: userId } : {}),
     });
     const session = await newSession.save();
 

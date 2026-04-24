@@ -1,3 +1,3 @@
 import { MpdResponse } from './MpdResponse';
 
-export class SeekCurMpdResponse extends MpdResponse { }
+export class SeekCurMpdResponse extends MpdResponse {}

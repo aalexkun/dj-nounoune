@@ -58,7 +58,7 @@ export abstract class Agent {
             this.eventEmitter.emit(ChatMessageResponseEventName, new ChatMessageResponseEvent(`Calling: ${fc.name}`, sessionId));
           }
 
-          let result = await this.proceedFunctionCall(fc, sessionId);
+          const result = await this.proceedFunctionCall(fc, sessionId);
           if (result) {
             const fnResult = {
               functionResponse: {

@@ -86,7 +86,7 @@ export class PsvService {
     });
 
     // 2. Process the stream
-    let parsedPSV: ParsedPsvRow[] = [];
+    const parsedPSV: ParsedPsvRow[] = [];
 
     // Iterate over records using the async iterator
     for await (const record of records) {

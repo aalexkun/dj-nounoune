@@ -2,17 +2,11 @@ import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { CreatePlaylistResponse } from '../response/create-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
-import { MongoToolsDefinition } from '../../../tools/definition/mongo-tools.definition';
 import { AgentToolsDefinition } from '../../../tools/definition/agent-tools.definition';
 import { createPlaylistPrompt } from './create-playlist.prompt';
 
 export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistResponse> {
-  public tools: ToolDeclaration[] = [
-    MongoToolsDefinition.artistDistribution,
-    MongoToolsDefinition.bpmDistribution,
-    MongoToolsDefinition.genreDistribution,
-    AgentToolsDefinition.searchMusicDatabase,
-  ];
+  public tools: ToolDeclaration[] = [AgentToolsDefinition.searchMusicDatabase];
   public readonly structuredResponse: StructuredResponse = {
     responseMimeType: 'application/json',
     responseSchema: {

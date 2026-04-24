@@ -40,7 +40,7 @@ export class EnrichCommand extends CommandRunner {
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
     this.logger.log(`Starting enrich command with options: ${JSON.stringify(options)}`);
-    let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
+    const aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
       this.logger.log('Clearing cache requested...');
@@ -63,7 +63,7 @@ export class EnrichCommand extends CommandRunner {
       }
 
       if (options.ai) {
-        let aiEnrichedSong = aiEnrichedSongs.find((s) => s._id === song._id.toString());
+        const aiEnrichedSong = aiEnrichedSongs.find((s) => s._id === song._id.toString());
         song.genre = aiEnrichedSong?.genre || song.genre;
       }
 
