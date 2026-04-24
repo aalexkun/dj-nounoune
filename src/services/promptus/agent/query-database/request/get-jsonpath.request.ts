@@ -1,6 +1,7 @@
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { GetJsonpathResponse } from '../response/get-jsonpath.response';
+import { getJsonpathPrompt } from './get-jsonpath.prompt';
 import { ToolDeclaration } from '../../../tools/tool.type';
 
 export class GetJsonpathRequest extends PromptusRequest<GetJsonpathResponse> {
@@ -10,7 +11,7 @@ export class GetJsonpathRequest extends PromptusRequest<GetJsonpathResponse> {
   public history: Content[] = [];
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/agent/query-database/request/get-jsonpath.request.md';
+  private readonly _context = getJsonpathPrompt;
   private readonly _query: string;
 
   public readonly structuredResponse: StructuredResponse = {

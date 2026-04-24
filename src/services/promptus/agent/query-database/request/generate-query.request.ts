@@ -1,4 +1,5 @@
 import { GenerateQueryResponse } from '../response/generate-query.response';
+import { generateQueryPrompt } from './generate-query.prompt';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
@@ -11,7 +12,7 @@ export class GenerateQueryRequest extends PromptusRequest<GenerateQueryResponse>
   public history: Content[] = [];
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/agent/query-database/request/generate-query.request.md';
+  private readonly _context = generateQueryPrompt;
   private readonly _query: string;
 
   // public readonly structuredResponse: StructuredResponse = {

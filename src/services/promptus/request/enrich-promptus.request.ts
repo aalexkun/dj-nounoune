@@ -1,6 +1,7 @@
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.request';
 import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
+import { enrichPromptusPrompt } from './enrich-promptus.prompt';
 import { ToolDeclaration } from '../tools/tool.type';
 
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
@@ -8,7 +9,7 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
   public config: Partial<GenerateContentConfig>;
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/request/enrich-promptus.request.md';
+  private readonly _context = enrichPromptusPrompt;
   private readonly _query: string;
   public cache: CachedContent;
   public history: Content[] = [];

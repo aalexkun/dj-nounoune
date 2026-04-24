@@ -45,7 +45,7 @@ export class ThrottleHandler {
       totalTokens += request.cache.usageMetadata.totalTokenCount;
     } else if (request.context) {
       // Only read context if cache doesn't exist or doesn't provide token usage.
-      const contextStr = await request.getContext();
+      const contextStr = request.contextContent;
       const contextBytes = Buffer.byteLength(contextStr, 'utf-8');
       totalTokens += Math.ceil(contextBytes / 8);
     }

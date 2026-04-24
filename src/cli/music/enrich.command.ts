@@ -158,12 +158,12 @@ export class EnrichCommand extends CommandRunner {
     //const ranges = getInclusivePaginationRanges(1204, 200);
 
     const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
-    const templateInstruction = await template.getContext();
+    const templateInstruction = template.context;
     const cache = await this.promptusService.cacheHandler.cache(this.cacheFile, this.cacheName, 'text/plain', template.model, templateInstruction);
 
     if (cache) {
       for (const range of ranges) {
-        let enrichRequest = new EnrichPromptusRequest('Process rows ' + range.join(' to ') + '');
+        const enrichRequest = new EnrichPromptusRequest('Process rows ' + range.join(' to ') + '');
         enrichRequest.cache = cache;
         enrichRequests.push(enrichRequest);
       }
@@ -172,7 +172,7 @@ export class EnrichCommand extends CommandRunner {
 
       let result: Partial<ParsedPsvRow>[] = [];
       for (const response of aiResponses) {
-        let remapGenre = response.genre.map((s) => ({ _id: indexMap.get(s.id), genre: s.genre }));
+        const remapGenre = response.genre.map((s) => ({ _id: indexMap.get(s.id), genre: s.genre }));
         result = [...result, ...remapGenre];
       }
 

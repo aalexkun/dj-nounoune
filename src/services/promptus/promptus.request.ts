@@ -1,5 +1,4 @@
 import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent, ContentListUnion, FunctionCall, Content } from '@google/genai';
-import { promises as fs } from 'fs';
 import { ToolDeclaration } from './tools/tool.type';
 
 export type RequestRole = 'user' | 'model';
@@ -24,13 +23,8 @@ export abstract class PromptusRequest<TResponse> {
   public abstract tools: ToolDeclaration[];
   public abstract history: Content[];
 
-  public async getContext(): Promise<string> {
-    try {
-      return await fs.readFile(this.context, 'utf-8');
-    } catch (e) {
-      console.error(`Error reading context file: ${this.context}`, e);
-      return '';
-    }
+  public get contextContent(): string {
+    return this.context;
   }
 
   public addHistory(history: ContentListUnion): void {
@@ -47,7 +41,7 @@ export abstract class PromptusRequest<TResponse> {
     }
   }
 
-  private async initialiseGenAiRequest() {
+  private initialiseGenAiRequest() {
     if (!this.history || this.history?.length == 0) {
       this.history = [
         {
@@ -72,7 +66,7 @@ export abstract class PromptusRequest<TResponse> {
         } else {
           // set systemInstruction
           this.genaiRequest.config['systemInstruction'] = {
-            parts: [{ text: await this.getContext() }],
+            parts: [{ text: this.contextContent }],
           };
 
           // set tools
@@ -91,8 +85,8 @@ export abstract class PromptusRequest<TResponse> {
     }
   }
 
-  public async getGeneratedContent(): Promise<GenerateContentParameters> {
-    await this.initialiseGenAiRequest();
+  public getGeneratedContent(): GenerateContentParameters {
+    this.initialiseGenAiRequest();
     return this.genaiRequest;
   }
 }

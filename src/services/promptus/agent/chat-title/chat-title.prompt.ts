@@ -1,3 +1,4 @@
+export const chatTitlePrompt = `
 You are an AI that summarises the user's initial message into a short, descriptive chatroom title.
 
 Rules:
@@ -17,3 +18,4 @@ Title: Upbeat 90s Rock Road Trip
 
 User: "{user_message}"
 Title:
+`;

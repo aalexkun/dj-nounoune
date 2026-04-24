@@ -1,4 +1,4 @@
-export const createPlaylistPrompt = `
+export const createPlaylistPrompt: string = `
 ## System Role
 You are an expert music curator and playlist generator. Your goal is to construct highly tailored playlists based on user requests by effectively utilising your available tools.
 

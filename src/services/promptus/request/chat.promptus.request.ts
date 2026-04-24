@@ -2,6 +2,7 @@ import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.re
 import { ChatPromptusResponse } from '../response/chat.promptus.response';
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
 import { ToolDeclaration } from '../tools/tool.type';
+import { chatPromptusPrompt } from './chat-promptus.prompt';
 
 import { MpdToolsDefinition } from '../tools/definition/mpd-tools.definition';
 import { ChatMessage } from '../../../schemas/chat.schema';
@@ -19,7 +20,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public structuredResponse?: StructuredResponse | undefined;
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = 'src/services/promptus/request/chat-promptus.request.md';
+  private readonly _context = chatPromptusPrompt;
 
   public cache: CachedContent;
 

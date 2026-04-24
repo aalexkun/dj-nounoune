@@ -1,6 +1,7 @@
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../promptus.request';
 import { ChatTitleResponse } from './chat-title.response';
+import { chatTitlePrompt } from './chat-title.prompt';
 import { ToolDeclaration } from '../../tools/tool.type';
 
 export class ChatTitleRequest extends PromptusRequest<ChatTitleResponse> {
@@ -26,7 +27,7 @@ export class ChatTitleRequest extends PromptusRequest<ChatTitleResponse> {
 
   private _role: RequestRole = 'user';
   private _model = 'gemini-3-flash-preview';
-  private _context = 'src/services/promptus/agent/chat-title/chat-title.request.md';
+  private _context = chatTitlePrompt;
 
   constructor(chatroomName: string) {
     super();
