@@ -19,7 +19,10 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:integration": "jest --config ./test/jest-e2e.json test/integration"
+    "test:integration": "jest --config ./test/jest-e2e.json test/integration",
+    "docker:build": "docker build --network=host -t dj-nounoune:latest .",
+    "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
+    "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest"
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
@@ -52,8 +55,6 @@
     "@types/spotify-web-api-node": "^5.0.11",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
-    "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
