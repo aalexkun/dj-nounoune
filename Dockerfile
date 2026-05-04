@@ -27,7 +27,8 @@ RUN npm ci --omit=dev
 FROM base AS production
 # Enforce production environment variables
 ENV NODE_ENV=production
-
+ARG APP_VERSION=unknown
+ENV npm_package_version=${APP_VERSION}
 # Copy only the package files
 COPY package*.json ./
 
