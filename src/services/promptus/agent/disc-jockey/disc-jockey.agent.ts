@@ -14,6 +14,7 @@ import { FindBestArrangementResponse } from './response/find-best-arrangement.re
 import { PostFilteringRequest } from './request/post-filtering.request';
 import { PostFilteringResponse } from './response/post-filtering.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 
 export type MusicSearchResult = {
   id: string;
@@ -56,13 +57,17 @@ export class DiscJockeyAgent extends Agent {
   }
 
   async createPlaylist(naturalLanguageRequest: string, sessionId?: string) {
-    // Step 1
+    // Get the Request Category
     const categorisedInfo = await this.categorisePlaylist(naturalLanguageRequest, sessionId);
 
+    const djRequest = new CreatePlaylistRequest(naturalLanguageRequest, categorisedInfo);
+    const playlist = await this.generate(djRequest, sessionId);
 
+    if (sessionId && playlist.description) {
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlist.description, sessionId));
+    }
 
-    const djRequest = new CreatePlaylistRequest(naturalLanguageRequest);
-    return await this.generate(djRequest, sessionId);
+    return playlist;
   }
 
   async whatIsPlaying(request: string, sessionId?: string) {

@@ -8,8 +8,6 @@ ${DJ_AGENT_ROLE_PROMPT}
 ${DJ_AGENT_PERSONA_PROMPT}
 
 
-## Avalaible Genres
-
 ## Your Process
 
 

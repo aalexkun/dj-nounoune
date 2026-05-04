@@ -3,9 +3,14 @@ import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promp
 import { CategorisePlaylistResponse } from '../response/categorise-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { categorisePlaylistPrompt } from './categorise-playlist.prompt';
+import { MongoToolsDefinition } from '../../../tools/definition/mongo-tools.definition';
 
 export class CategorisePlaylistRequest extends PromptusRequest<CategorisePlaylistResponse> {
-  public tools: ToolDeclaration[] = [];
+  public tools: ToolDeclaration[] = [
+    MongoToolsDefinition.artistDistribution,
+    MongoToolsDefinition.genreDistribution,
+    MongoToolsDefinition.bpmDistribution,
+  ];
   public readonly structuredResponse: StructuredResponse = {
     responseMimeType: 'application/json',
     responseSchema: {
@@ -27,6 +32,13 @@ export class CategorisePlaylistRequest extends PromptusRequest<CategorisePlaylis
         artists: {
           type: 'ARRAY',
           description: 'A list of artists identified for the playlist.',
+          items: {
+            type: 'STRING',
+          },
+        },
+        moods: {
+          type: 'ARRAY',
+          description: 'A list of moods identified for the playlist.',
           items: {
             type: 'STRING',
           },

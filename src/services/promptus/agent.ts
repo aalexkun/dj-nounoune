@@ -1,14 +1,10 @@
-import { Content, ContentListUnion, FinishReason, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import { ThrottleHandler } from './handler/throttle.handler';
 import { ToolsService } from './tools.service';
 import { PromptusRequest } from './promptus.request';
-import { PromptusResponse } from './promptus.response';
 import { FunctionCallResult } from './tools/tool.type';
-import { Subject } from 'rxjs';
-import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
-import { MessageUpdateCallback } from './promptus.type';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatMessageResponseEvent, ChatMessageResponseEventName, ChatStatusResponseEvent, ChatStatusResponseEventName } from '../chat/chat.event';
 
@@ -38,7 +34,7 @@ export abstract class Agent {
 
     let loop = 0;
     while (loop < this.maxThinkingLoop) {
-      const aiRequest = await request.getGeneratedContent();
+      const aiRequest = request.getGeneratedContent();
       await this.printTokenUsage(request.model, aiRequest.contents);
       const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
 

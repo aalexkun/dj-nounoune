@@ -3,7 +3,11 @@ import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promp
 import { CreatePlaylistResponse } from '../response/create-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { AgentToolsDefinition } from '../../../tools/definition/agent-tools.definition';
-import { createPlaylistPrompt } from './create-playlist.prompt';
+
+import { CategorisePlaylistResponse } from '../response/categorise-playlist.response';
+import { createPlaylistCompletePrompt } from './create-playlist-prompts/create-playlist-complete.prompt';
+import { createPlaylistPartialPrompt } from './create-playlist-prompts/create-playlist-partial.prompt';
+import { createPlaylistVibePrompt } from './create-playlist-prompts/create-playlist-vibe.prompt';
 
 export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistResponse> {
   public tools: ToolDeclaration[] = [AgentToolsDefinition.searchMusicDatabase];
@@ -56,7 +60,7 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
   public history: Content[] = [];
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = createPlaylistPrompt;
+  private readonly _context: string;
   private readonly _query: string;
 
   get model(): string {
@@ -74,8 +78,51 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
     return this._query;
   }
 
-  constructor(query: string) {
+  constructor(query: string, categorisesKnowledge: CategorisePlaylistResponse) {
     super();
     this._query = query;
+
+    if (categorisesKnowledge.playlistClassification.type === 'complete') {
+      this._context = this.mergeContext(createPlaylistCompletePrompt, categorisesKnowledge);
+    } else if (categorisesKnowledge.playlistClassification.type === 'partial') {
+      this._context = this.mergeContext(createPlaylistPartialPrompt, categorisesKnowledge);
+    } else if (categorisesKnowledge.playlistClassification.type === 'vibe') {
+      this._context = this.mergeContext(createPlaylistVibePrompt, categorisesKnowledge);
+    }
+  }
+
+  private mergeContext(prompt: string, categorisesKnowledge: CategorisePlaylistResponse) {
+    let context = prompt;
+
+    const genres = categorisesKnowledge.playlistClassification.genres?.join(', ') ?? '';
+    const artists = categorisesKnowledge.playlistClassification.artists?.join(', ') ?? '';
+    const bpmMin = categorisesKnowledge.playlistClassification.bpmMin ?? '';
+    const bpmMax = categorisesKnowledge.playlistClassification.bpmMax ?? '';
+
+    if (categorisesKnowledge.playlistClassification.genres && categorisesKnowledge.playlistClassification.genres.length > 0) {
+      context = context.replace('###GENRES###', `List of available genres for the request: ${genres}`);
+    } else {
+      context = context.replace('###GENRES###', '');
+    }
+
+    if (categorisesKnowledge.playlistClassification.artists && categorisesKnowledge.playlistClassification.artists.length > 0) {
+      context = context.replace('###ARTISTS###', `List of available artists for the request:  ${artists}`);
+    } else {
+      context = context.replace('###ARTISTS###', '');
+    }
+
+    if (typeof categorisesKnowledge.playlistClassification.bpmMin === 'number') {
+      context = context.replace('###MINBPM###', `Songs Minimum BPM: ${bpmMin}`);
+    } else {
+      context = context.replace('###MINBPM###', '');
+    }
+
+    if (typeof categorisesKnowledge.playlistClassification.bpmMax === 'number') {
+      context = context.replace('###MAXBPM###', `Songs Maximum BPM: ${bpmMax}`);
+    } else {
+      context = context.replace('###MAXBPM###', '');
+    }
+
+    return context;
   }
 }
