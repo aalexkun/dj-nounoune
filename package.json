@@ -20,6 +20,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./test/jest-e2e.json test/integration",
+    "release": "npm run build && npm version minor && npm run docker:build && npm run docker:tag && npm run docker:push",
     "docker:build": "docker build --network=host -t dj-nounoune:latest .",
     "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
     "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest"
