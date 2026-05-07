@@ -165,4 +165,30 @@ export class QobuzService implements OnModuleInit {
 
     return this.signedGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
   }
+
+  /**
+   * Retrieve the list of all favorite albums
+   */
+  public async getFavoriteAlbums(limit: number = 50, offset: number = 0): Promise<QobuzUserFavoritesResponse> {
+    await this.login();
+
+    const params = {
+      type: 'albums',
+      limit: limit.toString(),
+      offset: offset.toString(),
+    };
+
+    return this.signedGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
+  }
+
+  /**
+   * Retrieve full details of an album, including its tracks
+   */
+  public async getAlbum(albumId: string): Promise<any> {
+    const params = {
+      album_id: albumId,
+    };
+
+    return this.signedGet<any>('/album/get', params);
+  }
 }

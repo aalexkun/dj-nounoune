@@ -14,11 +14,17 @@ export interface QobuzLoginResponse {
 }
 
 export interface QobuzUserFavoritesResponse {
-  tracks: {
+  tracks?: {
     limit: number;
     offset: number;
     total: number;
     items: QobuzTrack[];
+  };
+  albums?: {
+    limit: number;
+    offset: number;
+    total: number;
+    items: QobuzAlbum[];
   };
 }
 
@@ -52,6 +58,9 @@ export interface QobuzAlbum {
     thumbnail: string;
     large: string;
     back: string;
+  };
+  tracks?: {
+    items: QobuzTrack[];
   };
   [key: string]: any;
 }
