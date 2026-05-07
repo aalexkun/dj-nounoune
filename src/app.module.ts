@@ -20,6 +20,7 @@ import { AuthService } from './services/auth/auth.service';
 import { ApiAuthGuard } from './services/auth/api-auth.guard';
 import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
+import { QobuzModule } from './services/qobuz/qobuz.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
@@ -49,6 +50,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ]),
     MpdClientModule,
     SpotifyModule,
+    QobuzModule,
   ],
   controllers: [ChatController],
   providers: [
