@@ -1,7 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { QobuzErrorResponse, QobuzLoginResponse, QobuzUserFavoritesResponse } from './qobuz.interfaces';
+import { QobuzAuthUtil } from './qobuz-auth.util';
 
 @Injectable()
 export class QobuzService implements OnModuleInit {
@@ -11,6 +14,7 @@ export class QobuzService implements OnModuleInit {
   private appId!: string;
   private appSecret!: string;
   private userAuthToken?: string;
+  public auth!: QobuzAuthUtil;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -24,6 +28,8 @@ export class QobuzService implements OnModuleInit {
 
     this.appId = appId || '';
     this.appSecret = appSecret || '';
+
+    this.auth = new QobuzAuthUtil(this.configService);
   }
 
   /**
@@ -71,31 +77,22 @@ export class QobuzService implements OnModuleInit {
   /**
    * Send a GET request to the Qobuz API with signature authentication.
    */
-  private async signedGet<T>(endpoint: string, params: Record<string, string>): Promise<T> {
-    const timestamp = Math.floor(Date.now() / 1000).toString();
+  private async qobuzGet<T>(endpoint: string, params: Record<string, string>): Promise<T> {
 
-    // The timestamp used in the signature MUST match the one sent as request_ts
-    const paramsForSignature = { ...params, timestamp };
-    const signature = this.generateSignature('GET', endpoint, paramsForSignature);
+    if (!this.userAuthToken){
+      throw new Error('User authentication token is missing. Please authenticate first.');
+    }
 
     const requestParams = {
       ...params,
-      app_id: this.appId,
-      request_ts: timestamp,
-      request_sig: signature,
     };
 
-    if (this.userAuthToken) {
-      requestParams['user_auth_token'] = this.userAuthToken;
-    }
+    const headers: Record<string, string> = {};
+    headers['X-User-Auth-Token'] = this.userAuthToken;
+    headers['X-App-Id'] = this.appId;
 
     const queryString = this.toQueryString(requestParams);
     const url = `${this.API_BASE_URL}${endpoint}?${queryString}`;
-
-    const headers: Record<string, string> = {};
-    if (this.userAuthToken) {
-      headers['X-User-Auth-Token'] = this.userAuthToken;
-    }
 
     const response = await fetch(url, { headers });
     const data = (await response.json()) as QobuzErrorResponse & T;
@@ -107,6 +104,23 @@ export class QobuzService implements OnModuleInit {
     return data as T;
   }
 
+  private getSessionFilePath(): string {
+    return path.join(process.cwd(), '.qobuz-session.json');
+  }
+
+  private loadSession(): { userId?: string, userAuthToken?: string } {
+    try {
+      const sessionPath = this.getSessionFilePath();
+      if (fs.existsSync(sessionPath)) {
+        const data = fs.readFileSync(sessionPath, 'utf8');
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      this.logger.error(`Error loading Qobuz session: ${error}`);
+    }
+    return {};
+  }
+
   /**
    * Authenticate with the Qobuz API using the username and md5 password
    */
@@ -115,39 +129,11 @@ export class QobuzService implements OnModuleInit {
       return this.userAuthToken;
     }
 
-    const userToken = this.configService.get<string>('QOBUZ_USER_TOKEN');
-    const userId = this.configService.get<string>('QOBUZ_USER_ID');
-
-    if (!userId || !userToken) {
-      throw new Error('QOBUZ_USER_TOKEN or QOBUZ_USER_ID environment variables are missing');
+    const session = this.loadSession();
+    this.userAuthToken   = session.userAuthToken;
+    if (!this.userAuthToken) {
+      throw new Error('Qobuz session data (.qobuz-session.json) is missing. Please authenticate first by running the auth CLI command.');
     }
-
-    const params: Record<string, string> = {
-      user_id: userId,
-      user_auth_token: userToken,
-    };
-
-    const queryString = this.toQueryString(params);
-    const url = `${this.API_BASE_URL}/user/login?${queryString}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-App-Id': this.appId
-      },
-    });
-
-    const data = (await response.json()) as QobuzErrorResponse & QobuzLoginResponse;
-
-    if (data.status === 'error') {
-      throw new Error(`Qobuz Authentication Error: ${data.message} (code: ${data.code})`);
-    }
-
-    const loginData = data as QobuzLoginResponse;
-    this.userAuthToken = loginData.user_auth_token;
-
-    this.logger.log(`Successfully authenticated with Qobuz API as ${loginData.user.email}`);
-
     return this.userAuthToken;
   }
 
@@ -163,7 +149,7 @@ export class QobuzService implements OnModuleInit {
       offset: offset.toString(),
     };
 
-    return this.signedGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
+    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
   }
 
   /**
@@ -178,7 +164,7 @@ export class QobuzService implements OnModuleInit {
       offset: offset.toString(),
     };
 
-    return this.signedGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
+    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
   }
 
   /**
@@ -189,6 +175,6 @@ export class QobuzService implements OnModuleInit {
       album_id: albumId,
     };
 
-    return this.signedGet<any>('/album/get', params);
+    return this.qobuzGet<any>('/album/get', params);
   }
 }

@@ -50,6 +50,8 @@ export interface QobuzAlbum {
   artist: QobuzPerformer;
   release_date_original: string;
   release_date_stream: string;
+  subtitle: string;
+  description: string;
   upc: string;
   tracks_count: number;
   genre: QobuzGenre;

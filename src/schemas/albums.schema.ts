@@ -46,6 +46,23 @@ export class Album {
   @Prop([String])
   languages: string[];
 
+  @Prop({ type: Object })
+  image: {
+    small: string;
+    thumbnail: string;
+    large: string;
+    back: string;
+  };
+
+  @Prop()
+  release_date_original: string;
+
+  @Prop()
+  subtitle: string;
+
+  @Prop()
+  description: string;
+
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Song' }] })
   tracks: Song[];
 }

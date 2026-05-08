@@ -42,6 +42,8 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+.qobuz-session.json
+
 # temp directory
 .temp
 .tmp

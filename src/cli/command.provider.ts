@@ -18,6 +18,7 @@ import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
 import { QobuzCommand } from './qobuz/qobuz.command';
 import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
+import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -44,4 +45,5 @@ export const CommandProviders = [
   QobuzCommand,
   QobuzFavoritesSubCommand,
   QobuzFavoriteAlbumsSubCommand,
+  QobuzAuthSubCommand,
 ];
