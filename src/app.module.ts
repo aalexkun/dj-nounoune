@@ -16,10 +16,12 @@ import { ChatGateway } from './gateway/chat.gateway';
 import { Chat, ChatSchema } from './schemas/chat.schema';
 import { ChatService } from './services/chat/chat.service';
 import { ChatController } from './controller/chat.controller';
+import { AuthController } from './controller/auth.controller';
 import { AuthService } from './services/auth/auth.service';
 import { ApiAuthGuard } from './services/auth/api-auth.guard';
 import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
+import { QobuzModule } from './services/qobuz/qobuz.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
@@ -49,8 +51,9 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     ]),
     MpdClientModule,
     SpotifyModule,
+    QobuzModule,
   ],
-  controllers: [ChatController],
+  controllers: [ChatController, AuthController],
   providers: [
     AppService,
     PromptusService,

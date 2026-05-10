@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { Song } from './song.schema';
+import { Source, SourceSchema } from './source.schema';
 
 export type AlbumDocument = HydratedDocument<Album>;
 
@@ -46,8 +47,28 @@ export class Album {
   @Prop([String])
   languages: string[];
 
+  @Prop({ type: Object })
+  image: {
+    small: string;
+    thumbnail: string;
+    large: string;
+    back: string;
+  };
+
+  @Prop()
+  release_date_original: string;
+
+  @Prop()
+  subtitle: string;
+
+  @Prop()
+  description: string;
+
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Song' }] })
   tracks: Song[];
+
+  @Prop({ type: [SourceSchema], default: [] })
+  source: Source[];
 }
 
 export const AlbumSchema = SchemaFactory.createForClass(Album);

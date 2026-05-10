@@ -13,6 +13,12 @@ export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
   album: Album;
 };
 
+export type QobuzLookupResult = {
+  artist: string;
+  album: string;
+  title: string;
+}
+
 @Injectable()
 export class MusicDbService {
   private readonly logger = new Logger(MusicDbService.name);
@@ -24,6 +30,71 @@ export class MusicDbService {
 
   async getAllSongs(): Promise<SongDocument[]> {
     return await this.songModel.find().exec();
+  }
+
+  async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
+    const results = await this.songModel
+      .aggregate([
+        {
+          $match: {
+            source: {
+              $elemMatch: {
+                name: 'qobuz',
+                sourceId: qobuzId,
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'artists',
+            localField: 'artist',
+            foreignField: '_id',
+            as: 'artist_info',
+          },
+        },
+        {
+          $lookup: {
+            from: 'albums',
+            localField: 'album',
+            foreignField: '_id',
+            as: 'album_info',
+          },
+        },
+      ])
+      .exec();
+
+    const songModel = Array.isArray(results) && results.length > 0 ? results[0] : null;
+
+    if (songModel && typeof songModel === 'object' && 'title' in songModel && typeof songModel.title === 'string') {
+      let artist = '';
+      let album = '';
+      let title = songModel.title;
+
+      if ('artist_info' in songModel) {
+        const artistInfo = Array.isArray(songModel.artist_info) ? songModel.artist_info[0] : songModel.artist_info;
+        if (artistInfo && typeof artistInfo === 'object' && 'artist' in artistInfo && typeof artistInfo.artist === 'string') {
+          artist = artistInfo.artist;
+        }
+      }
+
+      if ('album_info' in songModel){
+        const albumInfo = Array.isArray(songModel.album_info) ? songModel.album_info[0] : songModel.album_info;
+        if(albumInfo && typeof albumInfo === 'object' && 'title' in albumInfo && typeof albumInfo.title === 'string') {
+          album = albumInfo.title;
+        }
+      }
+
+      return {
+        artist,
+        album,
+        title,
+      };
+
+    } else {
+      this.logger.error('getSongByQobuzId: Unexpected song model:', songModel);
+      return null;
+    }
   }
 
   async getArtistDistribution(): Promise<{ artist: string; count: number }[]> {

@@ -31,9 +31,23 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
                 type: 'STRING',
                 description: 'The identifier of the song',
               },
-              sourceId: {
-                type: 'STRING',
-                description: 'The source identifier of the song',
+              source: {
+                type: 'ARRAY',
+                description: 'The sources for the song',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    name: {
+                      type: 'STRING',
+                      description: 'The name of the source (e.g. qobuz, file)',
+                    },
+                    sourceId: {
+                      type: 'STRING',
+                      description: 'The identifier within the source',
+                    },
+                  },
+                  required: ['name', 'sourceId'],
+                },
               },
               title: {
                 type: 'STRING',
@@ -48,7 +62,7 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
                 description: 'The album the song belongs to',
               },
             },
-            required: ['id', 'sourceId', 'title', 'artist', 'album'],
+            required: ['id', 'source', 'title', 'artist', 'album'],
           },
         },
       },

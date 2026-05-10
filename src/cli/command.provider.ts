@@ -15,6 +15,11 @@ import { EnrichCommand } from './music/enrich.command';
 import { PromptusChatSubcommand } from './promptus/chat.subcommand';
 import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
+import { QobuzCommand } from './qobuz/qobuz.command';
+import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
+import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
+import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
+import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -37,4 +42,10 @@ export const CommandProviders = [
 
   SpotifyCommand,
   SpotifyAuthSubCommand,
+
+  QobuzCommand,
+  QobuzFavoritesSubCommand,
+  QobuzFavoriteAlbumsSubCommand,
+  QobuzImportFavoriteAlbumsSubCommand,
+  QobuzAuthSubCommand,
 ];

@@ -26,6 +26,7 @@ Represents individual tracks.
     - \`is_cd_quality\`: Is CD Quality (Boolean)
 - \`source\`: Array of playback source (Array)
     - \`sourceId\` : The playback ID - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
+    - \`name\` : The playback name (String) - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
 
 ### 2. \`albums\` Collection
 Represents albums, linking to songs.
@@ -59,13 +60,13 @@ It accepts:
 1. **Analyze** the user's request to identify the primary entity (Are they looking for a Song? An Album? An Artist?). this determines the \`collection\`.
 2. **Extract** criteria (Title, Year, Bitrate, etc?) and map them to the correct schema fields.
 3. **Construct** the JSON filter. Use \`$regex\` with \`"i"\` option for text fields to ensure case-insensitive matching.
-   4. **REQUIRED** Always add the songs \`source.sourceId\`, \`id\`, \`track_number\`,\`disc_number\`. Also add the  \`artists.artist\` as \`ArtistName\`, \`albums.title\` as \`AlbumName\`, and \`songs.title\` as \`title\` in the result query.
+   4. **REQUIRED** Always add the songs \`source\` with \`source.sourceId\`,\`source.name\`, \`id\`, \`track_number\`,\`disc_number\`. Also add the  \`artists.artist\` as \`ArtistName\`, \`albums.title\` as \`AlbumName\`, and \`songs.title\` as \`title\` in the result query.
 
 Example:
 \`\`\`json
     {
   "$project": {
-    "source.sourceId": 1,
+    "source": 1,
     "track_number": 1,
     "disc_number": 1
   }

@@ -17,6 +17,7 @@ import { QueryDatabaseAgent } from './agent/query-database/query-database.agent'
 import { QueryDatabaseHandler } from './tools/handler/agent/query-database.handler';
 import { DiscJockeyWhatIsPlayingHandler } from './tools/handler/agent/disc-jockey-what-is-playing.handler';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ToolsService {
@@ -25,11 +26,12 @@ export class ToolsService {
   constructor(
     private mpdClientService: MpdClientService,
     private musicDbService: MusicDbService,
+    private configService: ConfigService,
   ) {
     // Generic and global accessible Tool and function
-    this.registerTool(new PlayMusicHandler(this.mpdClientService));
+    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
-    this.registerTool(new CurrentSongHandler(this.mpdClientService));
+    this.registerTool(new CurrentSongHandler(this.mpdClientService, this.musicDbService));
     this.registerTool(new CurrentPlaylistHandler(this.mpdClientService));
     this.registerTool(new GenreDistributionHandler(this.musicDbService));
     this.registerTool(new ArtistDistributionHandler(this.musicDbService));
