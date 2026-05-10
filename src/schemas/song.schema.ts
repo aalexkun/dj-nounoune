@@ -52,6 +52,9 @@ export class Song {
 
   @Prop({ type: TechnicalInfoSchema })
   technical_info: TechnicalInfo;
+
+  @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false })
+  created_by?: string;
 }
 
 export const SongSchema = SchemaFactory.createForClass(Song);
