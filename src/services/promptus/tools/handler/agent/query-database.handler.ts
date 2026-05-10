@@ -1,20 +1,22 @@
 import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
 import { QueryDatabaseAgent } from '../../../agent/query-database/query-database.agent';
-import { MusicSearchResult } from '../../../agent/disc-jockey/disc-jockey.agent';
+import { MusicSearchResult, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { JSONPath } from 'jsonpath-plus';
 import { MusicDbAggregateResult } from '../../../../music-db/music-db.service';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 import { Logger } from '@nestjs/common';
 
+
+
 const MusicResultExpected: MusicSearchResult = {
   id: 'string',
-  sourceId: 'string',
+  source: [] as PlaySource[],
   title: 'string',
   artist: 'string',
   album: 'string',
 };
 
-const validMusicSearchResultKeys: (keyof MusicSearchResult)[] = ['id', 'sourceId', 'title', 'artist', 'album'];
+const validMusicSearchResultKeys: (keyof MusicSearchResult)[] = ['id', 'source', 'title', 'artist', 'album'];
 
 export class QueryDatabaseHandler implements ToolHandler {
   private readonly logger = new Logger('QueryDatabaseHandler');
@@ -28,12 +30,32 @@ export class QueryDatabaseHandler implements ToolHandler {
     return Array.isArray(property) ? property[0] : property;
   }
 
+  private extractSourceProperty(jsonPath: string | null, song: MusicDbAggregateResult): PlaySource[] {
+    if (!jsonPath) return [];
+    const property = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false }) as unknown;
+    const castedProperty = Array.isArray(property) ? property[0] : property;
+
+    if (!Array.isArray(castedProperty)) {
+      throw new Error('Invalid source property');
+    }
+
+    let sources: PlaySource[] = [];
+    for (const src of castedProperty) {
+      if ((typeof src === 'object' && typeof src.sourceId === 'string' && src.name === 'qobuz') || src.name === 'file') {
+        sources.push(src as PlaySource);
+      }
+    }
+
+    return sources;
+
+  }
+
   private castWithProbableStructure(dbResult: MusicDbAggregateResult[]): MusicSearchResult[] {
     const musicSearchResults: MusicSearchResult[] = [];
 
     if (dbResult.length > 0) {
       const candidateJSON = {
-        sourceId: '$.source[0].sourceId',
+        source: '$.source',
         id: '$._id',
         albumName: '$.AlbumName',
         artistName: '$.ArtistName',
@@ -45,13 +67,13 @@ export class QueryDatabaseHandler implements ToolHandler {
       for (const rawSong of dbResult) {
         const song: MusicSearchResult = {
           id: this.extractProperty(candidateJSON.id, rawSong),
-          sourceId: this.extractProperty(candidateJSON.sourceId, rawSong),
+          source: this.extractSourceProperty(candidateJSON.source, rawSong),
           title: this.extractProperty(candidateJSON.title, rawSong),
           artist: this.extractProperty(candidateJSON.artistName, rawSong),
           album: this.extractProperty(candidateJSON.albumName, rawSong),
         };
 
-        if (song.id === undefined || song.sourceId === undefined) {
+        if (song.id === undefined || song.source === undefined || !Array.isArray(song.source) || song.source[0]?.sourceId === undefined) {
           throw new Error('Invalid casting');
         } else {
           musicSearchResults.push(song);
@@ -78,7 +100,7 @@ export class QueryDatabaseHandler implements ToolHandler {
       for (const rawSong of dbResult) {
         const song: MusicSearchResult = {
           id: this.extractProperty(jsonPathResponse.mapping.id, rawSong),
-          sourceId: this.extractProperty(jsonPathResponse.mapping.sourceId, rawSong),
+          source: this.extractSourceProperty(jsonPathResponse.mapping.source, rawSong),
           title: this.extractProperty(jsonPathResponse.mapping.title, rawSong),
           artist: this.extractProperty(jsonPathResponse.mapping.artistName, rawSong),
           album: this.extractProperty(jsonPathResponse.mapping.albumName, rawSong),

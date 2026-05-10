@@ -16,9 +16,14 @@ import { PostFilteringResponse } from './response/post-filtering.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 
+export type PlaySource = {
+  sourceId: string;
+  name: 'qobuz' | 'file';
+};
+
 export type MusicSearchResult = {
   id: string;
-  sourceId: string;
+  source: PlaySource[];
   title: string;
   artist: string;
   album: string;
@@ -36,7 +41,10 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
   // Validate that all required properties exist and are strings
   return (
     typeof record.id === 'string' &&
-    typeof record.sourceId === 'string' &&
+    Array.isArray(record.source) &&
+    record.source.every(
+      (src: any) => typeof src === 'object' && src !== null && typeof src.sourceId === 'string' && (src.name === 'qobuz' || src.name === 'file'),
+    ) &&
     typeof record.title === 'string' &&
     typeof record.artist === 'string' &&
     typeof record.album === 'string'
@@ -65,6 +73,11 @@ export class DiscJockeyAgent extends Agent {
 
     if (sessionId && playlist.description) {
       this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlist.description, sessionId));
+    }
+
+    if (sessionId && playlist.items.length > 0) {
+      const playlistItemMsg = playlist.items.map((item, index) => `${index + 1} - [${item.artist}] ${item.title}`).join('\n');
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
     }
 
     return playlist;

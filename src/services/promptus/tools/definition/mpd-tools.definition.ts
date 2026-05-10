@@ -18,12 +18,29 @@ export class MpdToolsDefinition {
             type: Type.OBJECT,
             properties: {
               id: { type: Type.STRING },
-              sourceId: { type: Type.STRING },
+              source: {
+                type: Type.ARRAY,
+                description: 'The sources for the song',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: {
+                      type: Type.STRING,
+                      description: 'The name of the source (e.g. qobuz, file)',
+                    },
+                    sourceId: {
+                      type: Type.STRING,
+                      description: 'The identifier within the source',
+                    },
+                  },
+                  required: ['name', 'sourceId'],
+                },
+              },
               title: { type: Type.STRING },
               artist: { type: Type.STRING },
               album: { type: Type.STRING },
             },
-            required: ['sourceId'], // sourceId is usually the most critical for playback
+            required: ['source'], // sourceId is usually the most critical for playback
           },
         },
       },

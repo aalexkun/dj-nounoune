@@ -3,7 +3,7 @@ import { PromptusResponse } from '../../../promptus.response';
 
 export interface JsonPathSourceId {
   id: string;
-  sourceId: string;
+  source: string;
   discNumber: string;
   trackNumber: string;
   albumName: string;
@@ -15,7 +15,7 @@ export class GetJsonpathResponse extends PromptusResponse {
   public mapping: JsonPathSourceId;
 
   isValid(): boolean {
-    return !!this.mapping.sourceId;
+    return !!this.mapping.source;
     //return Object.values(this.mapping).every((value) => value !== null);
   }
 
@@ -28,7 +28,7 @@ export class GetJsonpathResponse extends PromptusResponse {
 
       this.mapping = {
         id: mapping.id ?? null,
-        sourceId: mapping.sourceId ?? null,
+        source: mapping.source ?? null,
         discNumber: mapping.discNumber ?? null,
         trackNumber: mapping.trackNumber ?? null,
         albumName: mapping.albumName ?? null,
