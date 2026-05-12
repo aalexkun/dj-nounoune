@@ -144,9 +144,13 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
             created_by: 'qobuz',
             technical_info: {
               bitrate: 0,
-              frequency: track.maximum_sampling_rate,
-              duration: track.duration,
-            }
+              sample_rate: parseInt(`${track.maximum_sampling_rate}000`),
+              bit_depth: parseInt(track.maximum_bit_depth),
+              is_high_res: track.hires,
+              is_cd_quality: true,
+              extension: 'flac',
+              duration: parseInt(track.duration),
+            },
           });
           
           await songDoc.save();

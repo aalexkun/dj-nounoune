@@ -9,6 +9,8 @@ import { GenerateContentResponse } from '@google/genai';
 import { PromptusRequest } from './promptus.request';
 import { ChatPromptusResponse } from './response/chat.promptus.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EnrichPromptusRequest } from './request/enrich-promptus.request';
+import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 
 @Injectable()
 export class PromptusService extends Agent {
@@ -32,6 +34,11 @@ export class PromptusService extends Agent {
     if (request instanceof ChatPromptusRequest) {
       return new ChatPromptusResponse(response) as ReqType;
     }
+
+    if ( request instanceof EnrichPromptusRequest){
+      return new EnrichPromptusResponse(response) as ReqType;
+    }
+
     throw new Error('Method not implemented. PromptusService::wrapResponse ');
   }
 }

@@ -28,8 +28,9 @@ export class MusicDbService {
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
   ) {}
 
-  async getAllSongs(): Promise<SongDocument[]> {
-    return await this.songModel.find().exec();
+  async getSongs(createdAt?: Date): Promise<SongDocument[]> {
+    const filter = createdAt ? { createdAt: { $gte: createdAt } } : {};
+    return await this.songModel.find(filter).exec();
   }
 
   async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
@@ -177,8 +178,9 @@ export class MusicDbService {
       .exec();
   }
 
-  async getAllPopulatedSongs(): Promise<PopulatedSong[]> {
-    return (await this.songModel.find().populate('artist').populate('album').exec()) as any;
+  async getAllPopulatedSongs(createdAt?: Date): Promise<PopulatedSong[]> {
+    const filter = createdAt ? { createdAt: { $gte: createdAt } } : {};
+    return (await this.songModel.find(filter).populate('artist').populate('album').exec()) as any;
   }
 
   async upsertSong(song: SongDocument): Promise<SongDocument> {

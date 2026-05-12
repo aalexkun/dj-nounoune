@@ -17,6 +17,7 @@ interface EnrichCommandOptions {
   clearCache?: boolean;
   Ffprobe?: boolean;
   bpm?: boolean;
+  createdAt?: Date;
 }
 
 @SubCommand({
@@ -32,7 +33,6 @@ export class EnrichCommand extends CommandRunner {
     private musicDbService: MusicDbService,
     private appService: AppService,
     private promptusService: PromptusService,
-    private psvSerive: PsvService,
     private fileService: FileService,
   ) {
     super();
@@ -40,7 +40,7 @@ export class EnrichCommand extends CommandRunner {
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
     this.logger.log(`Starting enrich command with options: ${JSON.stringify(options)}`);
-    const aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
+    let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
       this.logger.log('Clearing cache requested...');
@@ -52,11 +52,11 @@ export class EnrichCommand extends CommandRunner {
     // Generate the PSV file for batch processing.
     if (options.ai) {
       this.logger.log('Fetching populated songs from MusicDbService for AI enrichment...');
-      const populatedSong = await this.musicDbService.getAllPopulatedSongs();
-      // aiEnrichedSongs = await this.updateAi(populatedSong);
+      const populatedSong = await this.musicDbService.getAllPopulatedSongs(options.createdAt);
+      aiEnrichedSongs = await this.updateAi(populatedSong);
     }
 
-    const songs = await this.musicDbService.getAllSongs();
+    const songs = await this.musicDbService.getSongs(options.createdAt);
     for (let song of songs) {
       if (options.Ffprobe) {
         song = await this.updateFfprobe(song);
@@ -151,7 +151,8 @@ export class EnrichCommand extends CommandRunner {
     });
 
     // Save the file as tmp and cache it for the request
-    await this.fileService.saveFile(this.cacheName, this.psvSerive.toPsv(songsForPromptus, true));
+
+    await this.fileService.saveFile(this.cacheName, this.toPsv(songsForPromptus, true));
 
     const enrichRequests: EnrichPromptusRequest[] = [];
     const ranges = getInclusivePaginationRanges(songsForPromptus.length, 1000);
@@ -168,7 +169,7 @@ export class EnrichCommand extends CommandRunner {
         enrichRequests.push(enrichRequest);
       }
 
-      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests);
+      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests,5);
 
       let result: Partial<ParsedPsvRow>[] = [];
       for (const response of aiResponses) {
@@ -180,6 +181,38 @@ export class EnrichCommand extends CommandRunner {
     } else {
       throw new Error('No cache found for enrich songs library promptus');
     }
+  }
+
+
+  /* todo merge with psv service */
+  toPsv(records: Partial<ParsedPsvRow>[], addHeader = false): string {
+    const raw = records.map((record) => this.mapToRaw(record));
+    let psv = '';
+
+    if (addHeader) {
+      psv = Object.keys(raw[0]).join('|') + '\n';
+    }
+
+    psv += raw.map((row) => Object.values(row).join('|')).join('\n');
+
+    return psv;
+  }
+
+  private mapToRaw(song: Partial<ParsedPsvRow>): any {
+    const raw: any = {};
+
+    // Helper to add property only if value is not null/undefined
+    const addIfSet = (key: string, value: any) => {
+      if (value !== null && value !== undefined) {
+        raw[key] = value;
+      }
+    };
+
+    addIfSet('id', song._id);
+    addIfSet('Title', song.title);
+    addIfSet('Artist', song.artist);
+    addIfSet('Album', song.album);
+    return raw;
   }
 
   @Option({
@@ -216,5 +249,13 @@ export class EnrichCommand extends CommandRunner {
   })
   parseClearCache(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: ', --createdAt [createdAt]',
+    description: 'Filter songs created after a date (yyyy-mm-dd)',
+  })
+  parseCreatedAt(createdAt: string): Date {
+    return new Date(createdAt);
   }
 }
