@@ -20,6 +20,10 @@ import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
 import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
+import { ElasticCommand } from './elastic/elastic.command';
+import { ElasticCreateIndexSubCommand } from './elastic/create-index.subcommand';
+import { ElasticPruneIndexSubCommand } from './elastic/prune-index.subcommand';
+import { ElasticIndexSongsSubCommand } from './elastic/index-songs.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -48,4 +52,9 @@ export const CommandProviders = [
   QobuzFavoriteAlbumsSubCommand,
   QobuzImportFavoriteAlbumsSubCommand,
   QobuzAuthSubCommand,
+
+  ElasticCommand,
+  ElasticCreateIndexSubCommand,
+  ElasticPruneIndexSubCommand,
+  ElasticIndexSongsSubCommand,
 ];

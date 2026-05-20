@@ -26,6 +26,9 @@ import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ElasticsearchModule } from './services/elasticsearch/elasticsearch.module';
+import { MergeModule } from './services/merge/merge.module';
+
 
 @Module({
   imports: [
@@ -52,6 +55,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     MpdClientModule,
     SpotifyModule,
     QobuzModule,
+    ElasticsearchModule,
+    MergeModule,
   ],
   controllers: [ChatController, AuthController],
   providers: [

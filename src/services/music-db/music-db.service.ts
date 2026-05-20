@@ -5,6 +5,8 @@ import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Model } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
+import { ElasticsearchService } from '../elasticsearch/elasticsearch.service';
+import { MergeFactory } from '../merge/merge.factory';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
 
@@ -26,6 +28,8 @@ export class MusicDbService {
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
+    private readonly elasticsearchService: ElasticsearchService,
+    private readonly mergeFactory: MergeFactory,
   ) {}
 
   async getSongs(createdAt?: Date): Promise<SongDocument[]> {
@@ -178,8 +182,8 @@ export class MusicDbService {
       .exec();
   }
 
-  async getAllPopulatedSongs(createdAt?: Date): Promise<PopulatedSong[]> {
-    const filter = createdAt ? { createdAt: { $gte: createdAt } } : {};
+  async getAllPopulatedSongs(createdAfter?: Date): Promise<PopulatedSong[]> {
+    const filter = createdAfter ? { createdAt: { $gte: createdAfter } } : {};
     return (await this.songModel.find(filter).populate('artist').populate('album').exec()) as any;
   }
 
