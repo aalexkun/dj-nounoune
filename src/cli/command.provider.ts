@@ -24,6 +24,10 @@ import { ElasticCommand } from './elastic/elastic.command';
 import { ElasticCreateIndexSubCommand } from './elastic/create-index.subcommand';
 import { ElasticPruneIndexSubCommand } from './elastic/prune-index.subcommand';
 import { ElasticIndexSongsSubCommand } from './elastic/index-songs.subcommand';
+import { OpensearchCommand } from './opensearch/opensearch.command';
+import { OpensearchCreateIndexSubCommand } from './opensearch/create-index.subcommand';
+import { OpensearchPruneIndexSubCommand } from './opensearch/prune-index.subcommand';
+import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -57,4 +61,9 @@ export const CommandProviders = [
   ElasticCreateIndexSubCommand,
   ElasticPruneIndexSubCommand,
   ElasticIndexSongsSubCommand,
+
+  OpensearchCommand,
+  OpensearchCreateIndexSubCommand,
+  OpensearchPruneIndexSubCommand,
+  OpensearchIndexSongsSubCommand,
 ];

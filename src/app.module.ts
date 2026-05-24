@@ -28,6 +28,7 @@ import { SessionService } from './services/session/session.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ElasticsearchModule } from './services/elasticsearch/elasticsearch.module';
 import { MergeModule } from './services/merge/merge.module';
+import { OpensearchModule } from './services/opensearch/opensearch.module';
 
 
 @Module({
@@ -57,6 +58,7 @@ import { MergeModule } from './services/merge/merge.module';
     QobuzModule,
     ElasticsearchModule,
     MergeModule,
+    OpensearchModule,
   ],
   controllers: [ChatController, AuthController],
   providers: [
