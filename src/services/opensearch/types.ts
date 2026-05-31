@@ -91,11 +91,14 @@ export type MlModelSearchResponse = z.infer<typeof MlModelSearchResponseSchema>;
 
 // Song Source document fields in OpenSearch
 export const SongSourceSchema = z.object({
+  year: z.string(),
+  disk_number: z.number().optional(),
   title: z.string(),
   artist: z.string(),
   album: z.string(),
-  song_text: z.string().optional(),
-  song_vector: z.array(z.number()).optional(),
+  song_vector: z.array(z.number()),
+  song_semantic: z.string(),
+  track_number: z.number().optional(),
 });
 
 export type SongSource = z.infer<typeof SongSourceSchema>;

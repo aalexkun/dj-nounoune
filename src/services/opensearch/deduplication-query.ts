@@ -2,93 +2,57 @@ import { DuplicateSongCheck } from './opensearch.service';
 
 
 export class DeduplicationSearchQuery {
-
   constructor(
     private songAttributes: DuplicateSongCheck,
     private modelId: string,
-  ){}
+  ) {}
 
-
-  getQuery() {
+  // fix the return to work with the new query
+  getQuery(): Record<string, any> {
     return {
+      size: 10,
+      query: {
         bool: {
           must_not: [
             {
               term: {
-                _id: this.songAttributes.songId, // Filter out the current song
+                _id: this.songAttributes.songId,
               },
             },
           ],
-          must: [
-            // 1. ARTIST: (Any text match) OR (Neural match)
+          should: [
             {
               bool: {
-                minimum_should_match: 1,
-                should: [
+                boost: 100,
+                must: [
                   {
                     multi_match: {
-                      query: this.songAttributes.artist,
-                      fields: ['artist.normalizer', 'artist.pinyin', 'artist.romaji'],
+                      query: `"""${this.songAttributes.artist}"""`,
+                      fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
+                      type: 'best_fields',
+                      operator: 'and',
+                      tie_breaker: 0.3,
                     },
                   },
-                  {
-                    neural: {
-                      artist_vector: {
-                        query_text: this.songAttributes.artist,
-                        model_id: this.modelId,
-                        k: 5,
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-
-            // 2. ALBUM: (Any text match) OR (Neural match)
-            {
-              bool: {
-                minimum_should_match: 1,
-                should: [
                   {
                     multi_match: {
-                      query: this.songAttributes.album,
-                      fields: ['album.normalizer', 'album.pinyin', 'album.romaji'],
-                    },
-                  },
-                  {
-                    neural: {
-                      album_vector: {
-                        query_text: this.songAttributes.album,
-                        model_id: this.modelId,
-                        k: 5,
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-
-            // 3. TITLE & TRACK NUMBER: (Any text match) OR (Neural match AND Track Logic)
-            {
-              bool: {
-                minimum_should_match: 1,
-                should: [
-                  {
-                    multi_match: {
-                      query: this.songAttributes.title,
-                      fields: ['title.normalizer', 'title.pinyin', 'title.romaji'],
+                      query: `"""${this.songAttributes.album}"""`,
+                      fields: ['album.keyword^5', 'album.normalizer', 'album.pinyin', 'album.romaji^2'],
+                      type: 'best_fields',
+                      operator: 'and',
+                      tie_breaker: 0.3,
                     },
                   },
                   {
                     bool: {
                       must: [
                         {
-                          neural: {
-                            title_vector: {
-                              query_text: this.songAttributes.title,
-                              model_id: this.modelId,
-                              k: 5,
-                            },
+                          multi_match: {
+                            query: `"""${this.songAttributes.title}"""`,
+                            fields: ['title.keyword^5', 'title.normalizer', 'title.pinyin', 'title.romaji^2'],
+                            type: 'best_fields',
+                            operator: 'and',
+                            tie_breaker: 0.3,
                           },
                         },
                         {
@@ -98,6 +62,11 @@ export class DeduplicationSearchQuery {
                               {
                                 term: {
                                   track_number: this.songAttributes.track_number,
+                                },
+                              },
+                              {
+                                term: {
+                                  track_number: 0,
                                 },
                               },
                               {
@@ -118,8 +87,18 @@ export class DeduplicationSearchQuery {
                 ],
               },
             },
+            {
+              neural: {
+                song_vector: {
+                  query_text: `"""${this.songAttributes.artist} ${this.songAttributes.album} (track ${this.songAttributes.track_number}) ${this.songAttributes.title}"""`,
+                  model_id: this.modelId,
+                  k: 5,
+                },
+              },
+            },
           ],
         },
+      },
     };
   }
 }

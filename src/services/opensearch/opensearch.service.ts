@@ -285,9 +285,7 @@ export class OpensearchService {
               text_embedding: {
                 model_id: modelId,
                 field_map: {
-                  semantic_title: 'title_vector',
-                  semantic_artist: 'artist_vector',
-                  semantic_album: 'album_vector',
+                  song_semantic: 'song_vector',
                 },
               },
             },
@@ -401,28 +399,53 @@ export class OpensearchService {
 
 
       const duplicates = await this.findDuplicates(songAttributes);
-      if (duplicates && duplicates.hits.hits.length > 0) {
 
-          this.logger.log(
-            `Duplicate found for song: "${song.title}" by "${songAttributes.artist}" - "${songAttributes.album}" => ${song._id.toString()}`,
-          );
-        duplicates.hits.hits.forEach((hit) => {
-          this.logger.warn(
-            `      song: "${hit._source.title}" by "${hit._source.artist}" - "${hit._source.album}" => ${hit._id} (score: ${hit._score})`,
-          );
-        });
+      if (duplicates){
+        const highConfidenceHits = duplicates.hits.hits.filter((hit) => hit._score >= 100); // Query Boost for full match is boosted
+        const lowConfidenceHits = duplicates.hits.hits.filter((hit) => hit._score >= 0.98 && hit._score < 100); // sementic serach
+
+        if(highConfidenceHits.length > 0) {
+          this.logger.warn(`Duplicate found for song: "${song._id.toString()}" with high confidence score`);
+          highConfidenceHits.forEach((hit) => {
+            this.logger.log(` ${hit._id} (score: ${hit._score})`);
+            this.logger.log(`   ${songAttributes.artist} |=| ${hit._source.artist}`);
+            this.logger.log(`   ${songAttributes.album} |=| ${hit._source.album}`);
+            this.logger.log(`   ${song.title} |=| ${hit._source.title}`);
+            this.logger.log(`   ${songAttributes.track_number} |=| ${hit._source.track_number}`);
+          });
+        }
+
+        if(lowConfidenceHits.length > 0) {
+
+          lowConfidenceHits.forEach((hit) => {
+            if (
+              songAttributes.track_number == hit._source.track_number ||
+              !songAttributes.track_number ||
+              songAttributes.track_number == 0 ||
+              hit._source.track_number == 0
+            ) {
+              this.logger.warn(`Potential duplicate song: "${song._id.toString()}" with low confidence score`);
+              this.logger.log(`   ${hit._id} (score: ${hit._score})`);
+              this.logger.log(`   ${songAttributes.artist} || ${hit._source.artist}`);
+              this.logger.log(`   ${songAttributes.album} || ${hit._source.album}`);
+              this.logger.log(`   ${song.title} || ${hit._source.title}`);
+              this.logger.log(`   ${songAttributes.track_number} || ${hit._source.track_number}`);
+            }
+
+          });
+        }
 
       }
 
       try {
         await this.client.index({
           index: 'songs',
-          id: song._id.toString(),
+          id: songAttributes.songId,
           body: {
             ...songAttributes,
-            semantic_title: songAttributes.title,
-            semantic_artist: songAttributes.artist,
-            semantic_album: songAttributes.album,
+            artist_id: song.artist.toString() || '',
+            album_id: song.album.toString() || '',
+            song_semantic: `${songAttributes.artist} ${songAttributes.album} (track ${songAttributes.track_number}) ${songAttributes.title}`,
           },
         });
 
@@ -448,9 +471,7 @@ export class OpensearchService {
     try {
       const response = await this.client.search({
         index: 'songs',
-        body: {
-          query: query.getQuery()
-        },
+        body: query.getQuery(),
       });
 
       const parsedResponse = OpenSearchSearchResponseSchema.safeParse(response.body);

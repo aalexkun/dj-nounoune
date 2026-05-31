@@ -23,19 +23,23 @@ export class SongIndices {
         },
       },
       analyzer: {
+        artistic_text_analyzer: {
+          // keep ponctuation
+          type: 'custom',
+          tokenizer: 'whitespace',
+          filter: ['lowercase'],
+        },
         normal_text_analyzer: {
+          // strip ponctuation
           type: 'custom',
           tokenizer: 'standard',
-          filter: [
-            'lowercase',
-            'asciifolding',
-          ],
+          filter: ['lowercase'],
         },
         // Handles Western + Chinese Pinyin
         chinese_pinyin_analyzer: {
           type: 'custom',
           char_filter: ['strip_punctuation'],
-          tokenizer: 'whitespace', // Or 'smartcn' if installed
+          tokenizer: 'standard',
           filter: ['lowercase', 'pinyin_first_letter_and_full_pinyin_filter'],
         },
         // Handles Western + Japanese Romaji
@@ -43,24 +47,22 @@ export class SongIndices {
           type: 'custom',
           char_filter: ['strip_punctuation'],
           tokenizer: 'kuromoji_tokenizer',
-          filter: [
-            'lowercase',
-            'kuromoji_baseform',
-            'kuromoji_readingform', // CRITICAL: Converts Katakana/Kanji to Romaji (e.g. 四季 -> shiki)
-          ],
+          filter: ['kuromoji_readingform_romaji', 'lowercase'],
         },
       },
       filter: {
+        kuromoji_readingform_romaji: {
+          type: 'kuromoji_readingform',
+          use_romaji: true,
+        },
         pinyin_first_letter_and_full_pinyin_filter: {
           type: 'pinyin',
-          keep_first_letter: true,
-          keep_full_pinyin: false,
+          keep_first_letter: false,
+          keep_full_pinyin: true,
           keep_none_chinese: true,
-          keep_original: false,
-          limit_first_letter_length: 16,
+          keep_none_chinese_together: true,
+          none_chinese_pinyin_tokenize: false,
           lowercase: true,
-          trim_whitespace: true,
-          keep_none_chinese_in_first_letter: true,
         },
       },
     },
@@ -68,9 +70,17 @@ export class SongIndices {
 
   static readonly mappings = {
     properties: {
+      artist_id: { type: 'keyword' },
+      album_id: { type: 'keyword' },
+      track_number: { type: 'integer' },
+      disc_number: { type: 'integer' },
       title: {
         type: 'text',
         fields: {
+          keyword: {
+            type: 'keyword',
+            ignore_above: 512,
+          },
           normalizer: {
             type: 'text',
             analyzer: 'normal_text_analyzer',
@@ -88,9 +98,13 @@ export class SongIndices {
       artist: {
         type: 'text',
         fields: {
+          keyword: {
+            type: 'keyword',
+            ignore_above: 512,
+          },
           normalizer: {
             type: 'text',
-            analyzer: 'normal_text_analyzer',
+            analyzer: 'artistic_text_analyzer',
           },
           pinyin: {
             type: 'text',
@@ -105,9 +119,13 @@ export class SongIndices {
       album: {
         type: 'text',
         fields: {
+          keyword: {
+            type: 'keyword',
+            ignore_above: 512,
+          },
           normalizer: {
             type: 'text',
-            analyzer: 'normal_text_analyzer',
+            analyzer: 'artistic_text_analyzer',
           },
           pinyin: {
             type: 'text',
@@ -119,42 +137,16 @@ export class SongIndices {
           },
         },
       },
-      semantic_title: {
+      song_semantic: {
         type: 'text',
       },
-      semantic_artist: {
-        type: 'text',
-      },
-      semantic_album: {
-        type: 'text',
-      },
-      title_vector: {
+      song_vector: {
         type: 'knn_vector',
-        dimension: NeuralSearch.dimension, // need to match model dimention
+        dimension: NeuralSearch.dimension,
         method: {
           name: 'hnsw',
           engine: 'lucene',
-          space_type: 'l2',
-          parameters: {},
-        },
-      },
-      artist_vector: {
-        type: 'knn_vector',
-        dimension: NeuralSearch.dimension, // need to match model dimention
-        method: {
-          name: 'hnsw',
-          engine: 'lucene',
-          space_type: 'l2',
-          parameters: {},
-        },
-      },
-      album_vector: {
-        type: 'knn_vector',
-        dimension: NeuralSearch.dimension, // need to match model dimention
-        method: {
-          name: 'hnsw',
-          engine: 'lucene',
-          space_type: 'l2',
+          space_type: 'cosinesimil',
           parameters: {},
         },
       },
