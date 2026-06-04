@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { TechnicalInfo, TechnicalInfoSchema } from './technical-info.schema';
 import { Source, SourceSchema } from './source.schema';
 
 export type SongDocument = HydratedDocument<Song>;
@@ -49,9 +48,6 @@ export class Song {
 
   @Prop({ type: [SourceSchema], default: [] })
   source: Source[];
-
-  @Prop({ type: TechnicalInfoSchema })
-  technical_info: TechnicalInfo;
 
   @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false })
   created_by?: string;

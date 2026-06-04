@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { TechnicalInfo, TechnicalInfoSchema } from './technical-info.schema';
 
 export type SourceType = 'file' | 'spotify' | 'applemusic' | 'youtube' | 'qobuz';
 
@@ -13,6 +14,9 @@ export class Source {
 
   @Prop({ type: String, required: false })
   sourceId?: string | null;
+
+  @Prop({ type: TechnicalInfoSchema, required: false })
+  technical_info?: TechnicalInfo;
 }
 
 export const SourceSchema = SchemaFactory.createForClass(Source);

@@ -163,8 +163,22 @@ export class MusicDbService {
     return this.songModel
       .aggregate([
         {
+          $unwind: '$source',
+        },
+        {
+          $match: {
+            'source.technical_info.bpm': { $exists: true, $ne: null },
+          },
+        },
+        {
           $group: {
-            _id: '$technical_info.bpm',
+            _id: '$_id',
+            bpm: { $max: '$source.technical_info.bpm' },
+          },
+        },
+        {
+          $group: {
+            _id: '$bpm',
             count: { $sum: 1 },
           },
         },

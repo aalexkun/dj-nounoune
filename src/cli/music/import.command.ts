@@ -148,9 +148,9 @@ export class ImportCommand extends CommandRunner {
                   {
                     name: 'file',
                     sourceId: `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`,
+                    technical_info: userDoc.technical_info,
                   },
                 ],
-                technical_info: userDoc.technical_info,
               },
             },
             { upsert: true },

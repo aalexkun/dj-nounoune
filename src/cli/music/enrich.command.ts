@@ -5,6 +5,7 @@ import { MusicDbService, PopulatedSong } from '../../services/music-db/music-db.
 import { AppService } from '../../app.service';
 import { extname } from 'path';
 import { SongDocument } from '../../schemas/song.schema';
+import { TechnicalInfo } from '../../schemas/technical-info.schema';
 
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { FileService } from '../../services/file/file.service';
@@ -87,7 +88,8 @@ export class EnrichCommand extends CommandRunner {
       try {
         const bpm = await this.shellService.executeBpmTag(`${rootPath}${filePath}`);
         if (bpm > 0) {
-          song.technical_info.bpm = Math.round(bpm);
+          song.source[0].technical_info = song.source[0].technical_info ?? ({} as TechnicalInfo);
+          song.source[0].technical_info.bpm = Math.round(bpm);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -99,7 +101,14 @@ export class EnrichCommand extends CommandRunner {
 
   private async updateFfprobe(song: SongDocument): Promise<SongDocument> {
     const rootPath = this.appService.getLibraryRootPath();
-    const filePath = song.source.find((s) => s.name === 'file')?.sourceId;
+    const fileSource = song.source.find((s) => s.name === 'file');
+
+    if (!fileSource || !fileSource.sourceId) {
+      this.logger.log(`Skipping ffprobe for song "${song.title}": no file source found`);
+      return song;
+    }
+
+    const filePath = fileSource.sourceId;
     const probeData = await this.shellService.getTechnicalInfo(`${rootPath}${filePath}`);
 
     const audioStream = probeData.streams.find((s) => s.codec_type === 'audio');
@@ -107,7 +116,7 @@ export class EnrichCommand extends CommandRunner {
       throw new Error('No audio stream found in file');
     }
 
-    const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate, 3) : 0;
+    const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate, 10) : 0;
 
     let bitDepth = 0;
     if (audioStream.bits_per_raw_sample) {
@@ -119,8 +128,8 @@ export class EnrichCommand extends CommandRunner {
     const isHighRes = bitDepth > 16 || sampleRate > 48000;
     const isCdQuality = bitDepth >= 16 && sampleRate >= 44100;
 
-    song.technical_info = {
-      ...song.technical_info,
+    fileSource.technical_info = {
+      ...(fileSource.technical_info ?? {}),
       encoding: audioStream.codec_name,
       size: probeData.format.size ? parseInt(probeData.format.size, 10) : 0,
       duration: parseFloat(probeData.format.duration || audioStream.duration || '0'),
@@ -130,7 +139,7 @@ export class EnrichCommand extends CommandRunner {
       extension: extname(probeData.format.filename).replace('.', ''),
       is_high_res: isHighRes,
       is_cd_quality: isCdQuality,
-    };
+    } as TechnicalInfo;
 
     return song;
   }

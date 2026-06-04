@@ -12,6 +12,7 @@ import { PromptusPlaySubcommand } from './promptus/play.subcommand';
 import { PromptusCommand } from './promptus/promptus.command';
 import { MusicCommand } from './music/music.command';
 import { EnrichCommand } from './music/enrich.command';
+import { MigrateTechnicalInfoCommand } from './music/migrate-technical-info.command';
 import { PromptusChatSubcommand } from './promptus/chat.subcommand';
 import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
@@ -34,6 +35,7 @@ export const CommandProviders = [
   ImportCommand,
   ClearCommand,
   EnrichCommand,
+  MigrateTechnicalInfoCommand,
 
   MpdCommand,
   TestMpdSubCommand,

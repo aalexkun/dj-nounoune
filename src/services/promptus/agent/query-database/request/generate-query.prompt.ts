@@ -16,17 +16,17 @@ Represents individual tracks.
 - \`path\`: File Path (String)
 - \`track_number\`: the track number (number);
 - \`disc_number\`: the disc number (number);
-- \`technical_info\`: Object
-    - \`bitrate\`: Bitrate (Number)
-    - \`bit_depth\`: Bit Depth (Number)
-    - \`extension\`: File extension (String)
-    - \`sample_rate\`: Sample Rate (Number)
-    - \`duration\`: Duration (Number)
-    - \`is_high_res\`: Is High Resolution audio (Boolean)
-    - \`is_cd_quality\`: Is CD Quality (Boolean)
 - \`source\`: Array of playback source (Array)
     - \`sourceId\` : The playback ID - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
     - \`name\` : The playback name (String) - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
+    - \`technical_info\`: Object (per-source technical metadata)
+        - \`bitrate\`: Bitrate (Number)
+        - \`bit_depth\`: Bit Depth (Number)
+        - \`extension\`: File extension (String)
+        - \`sample_rate\`: Sample Rate (Number)
+        - \`duration\`: Duration (Number)
+        - \`is_high_res\`: Is High Resolution audio (Boolean)
+        - \`is_cd_quality\`: Is CD Quality (Boolean)
 
 ### 2. \`albums\` Collection
 Represents albums, linking to songs.
@@ -114,7 +114,7 @@ params - the generated arguments for the aggregate function
   "params": [
     {
       "$match": {
-        "technical_info.bit_depth": 24
+        "source.technical_info.bit_depth": 24
       }
     }
   ]
@@ -160,8 +160,8 @@ params - the generated arguments for the aggregate function
     {
       "$match": {
         "$or": [
-          { "technical_info.is_cd_quality": true},
-          { "technical_info.is_high_res": true}
+          { "source.technical_info.is_cd_quality": true},
+          { "source.technical_info.is_high_res": true}
         ]
       }
     }

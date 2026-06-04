@@ -138,19 +138,22 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
             disc_number: track.media_number,
             year: trackYear,
             category: albumDetails.genre?.name || 'Music',
-            source: [{ name: 'qobuz', sourceId: trackQobuzId }],
+            source: [{
+              name: 'qobuz',
+              sourceId: trackQobuzId,
+              technical_info: {
+                bitrate: 0,
+                sample_rate: parseInt(`${track.maximum_sampling_rate}000`),
+                bit_depth: parseInt(track.maximum_bit_depth),
+                is_high_res: track.hires,
+                is_cd_quality: true,
+                extension: 'flac',
+                duration: parseInt(track.duration),
+              },
+            }],
             path: `/qobuz/track/version/1/trackId/${trackQobuzId}`,
             filename: track.title,
             created_by: 'qobuz',
-            technical_info: {
-              bitrate: 0,
-              sample_rate: parseInt(`${track.maximum_sampling_rate}000`),
-              bit_depth: parseInt(track.maximum_bit_depth),
-              is_high_res: track.hires,
-              is_cd_quality: true,
-              extension: 'flac',
-              duration: parseInt(track.duration),
-            },
           });
           
           await songDoc.save();
