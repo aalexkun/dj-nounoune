@@ -57,6 +57,7 @@ export class MigrateTechnicalInfoCommand extends CommandRunner {
             $set: { 'source.0.technical_info': legacyTechnicalInfo },
             $unset: { technical_info: '' },
           },
+          { strict: false },
         );
 
         migrated++;
