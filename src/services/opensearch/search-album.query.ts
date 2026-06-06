@@ -1,8 +1,8 @@
 import { SearchQuery } from './query.interface';
 
-export class ArtistSearchQuery implements SearchQuery {
+export class AlbumSearchQuery implements SearchQuery {
   constructor(
-    private artist: string,
+    private album: string,
     private modelId: string,
   ) {}
 
@@ -14,8 +14,8 @@ export class ArtistSearchQuery implements SearchQuery {
           should: [
             {
               multi_match: {
-                query: `"""${this.artist}"""`,
-                fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
+                query: `"""${this.album}"""`,
+                fields: ['album.keyword^5', 'album.normalizer', 'album.pinyin', 'album.romaji^2'],
                 type: 'best_fields',
                 operator: 'and',
                 tie_breaker: 0.3,
@@ -24,7 +24,7 @@ export class ArtistSearchQuery implements SearchQuery {
             {
               neural: {
                 song_vector: {
-                  query_text: `"""${this.artist}"""`,
+                  query_text: `"""${this.album}"""`,
                   model_id: this.modelId,
                   k: 5,
                 },

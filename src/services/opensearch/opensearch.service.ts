@@ -11,7 +11,7 @@ import {
   OpenSearchSearchResponseSchema,
   OpenSearchSearchResponse,
 } from './types';
-import { DeduplicationSearchQuery } from './deduplication-query';
+import { SearchSongQuery } from './search-song.query';
 
 
 export type DuplicateSongCheck = {
@@ -397,46 +397,6 @@ export class OpensearchService {
         album: song.album.title || '',
       };
 
-
-      const duplicates = await this.findDuplicates(songAttributes);
-
-      if (duplicates){
-        const highConfidenceHits = duplicates.hits.hits.filter((hit) => hit._score >= 100); // Query Boost for full match is boosted
-        const lowConfidenceHits = duplicates.hits.hits.filter((hit) => hit._score >= 0.98 && hit._score < 100); // sementic serach
-
-        if(highConfidenceHits.length > 0) {
-          this.logger.warn(`Duplicate found for song: "${song._id.toString()}" with high confidence score`);
-          highConfidenceHits.forEach((hit) => {
-            this.logger.log(` ${hit._id} (score: ${hit._score})`);
-            this.logger.log(`   ${songAttributes.artist} |=| ${hit._source.artist}`);
-            this.logger.log(`   ${songAttributes.album} |=| ${hit._source.album}`);
-            this.logger.log(`   ${song.title} |=| ${hit._source.title}`);
-            this.logger.log(`   ${songAttributes.track_number} |=| ${hit._source.track_number}`);
-          });
-        }
-
-        if(lowConfidenceHits.length > 0) {
-
-          lowConfidenceHits.forEach((hit) => {
-            if (
-              songAttributes.track_number == hit._source.track_number ||
-              !songAttributes.track_number ||
-              songAttributes.track_number == 0 ||
-              hit._source.track_number == 0
-            ) {
-              this.logger.warn(`Potential duplicate song: "${song._id.toString()}" with low confidence score`);
-              this.logger.log(`   ${hit._id} (score: ${hit._score})`);
-              this.logger.log(`   ${songAttributes.artist} || ${hit._source.artist}`);
-              this.logger.log(`   ${songAttributes.album} || ${hit._source.album}`);
-              this.logger.log(`   ${song.title} || ${hit._source.title}`);
-              this.logger.log(`   ${songAttributes.track_number} || ${hit._source.track_number}`);
-            }
-
-          });
-        }
-
-      }
-
       try {
         await this.client.index({
           index: 'songs',
@@ -458,7 +418,7 @@ export class OpensearchService {
     this.logger.log(`Successfully processed ${songs.length} songs.`);
   }
 
-  async findDuplicates(songAttributes: DuplicateSongCheck): Promise<OpenSearchSearchResponse | null> {
+  async findDuplicatesSongs(songAttributes: DuplicateSongCheck): Promise<OpenSearchSearchResponse | null> {
     if (!this.client) return null;
 
     const modelId = await this.getDeployedModelId();
@@ -466,7 +426,7 @@ export class OpensearchService {
       this.logger.warn('Cannot query neural search duplicates: No deployed model found.');
       return null;
     }
-    const query = new DeduplicationSearchQuery(songAttributes, modelId);
+    const query = new SearchSongQuery(songAttributes, modelId);
 
     try {
       const response = await this.client.search({

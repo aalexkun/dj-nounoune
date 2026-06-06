@@ -1,7 +1,9 @@
 import { DuplicateSongCheck } from './opensearch.service';
+import { SearchQuery } from './query.interface';
 
 
-export class DeduplicationSearchQuery {
+
+export class SearchSongQuery implements SearchQuery {
   constructor(
     private songAttributes: DuplicateSongCheck,
     private modelId: string,
@@ -102,3 +104,4 @@ export class DeduplicationSearchQuery {
     };
   }
 }
+
