@@ -29,6 +29,9 @@ import { OpensearchCommand } from './opensearch/opensearch.command';
 import { OpensearchCreateIndexSubCommand } from './opensearch/create-index.subcommand';
 import { OpensearchPruneIndexSubCommand } from './opensearch/prune-index.subcommand';
 import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcommand';
+import { DedupCommand } from './music/dedup.command';
+import { DedupSearchCommand } from './music/dedup-search.subcommand';
+import { DedupProcessCommand } from './music/dedup-process.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -36,6 +39,9 @@ export const CommandProviders = [
   ClearCommand,
   EnrichCommand,
   MigrateTechnicalInfoCommand,
+  DedupCommand,
+  DedupSearchCommand,
+  DedupProcessCommand,
 
   MpdCommand,
   TestMpdSubCommand,
@@ -69,3 +75,4 @@ export const CommandProviders = [
   OpensearchPruneIndexSubCommand,
   OpensearchIndexSongsSubCommand,
 ];
+

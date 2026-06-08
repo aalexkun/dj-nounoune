@@ -4,15 +4,17 @@ import { ImportCommand } from './import.command';
 import { ClearCommand } from './clear.command';
 import { EnrichCommand } from './enrich.command';
 import { MigrateTechnicalInfoCommand } from './migrate-technical-info.command';
+import { DedupCommand } from './dedup.command';
 
 @Command({
   name: 'music',
   description: 'Music Database management commands',
-  subCommands: [ImportCommand, ClearCommand, EnrichCommand, MigrateTechnicalInfoCommand],
+  subCommands: [ImportCommand, ClearCommand, EnrichCommand, MigrateTechnicalInfoCommand, DedupCommand],
 })
 @Injectable()
 export class MusicCommand extends CommandRunner {
   async run(inputs: string[], options: Record<string, any>): Promise<void> {
-    console.log('Use subcommands: clear, import, enrich, migrate-technical-info');
+    console.log('Use subcommands: clear, import, enrich, migrate-technical-info, dedup');
   }
 }
+
