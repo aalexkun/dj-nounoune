@@ -141,6 +141,8 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
             source: [{
               name: 'qobuz',
               sourceId: trackQobuzId,
+              path: `/qobuz/track/version/1/trackId/${trackQobuzId}`,
+              filename: track.title,
               technical_info: {
                 bitrate: 0,
                 sample_rate: parseInt(`${track.maximum_sampling_rate}000`),
@@ -151,8 +153,6 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
                 duration: parseInt(track.duration),
               },
             }],
-            path: `/qobuz/track/version/1/trackId/${trackQobuzId}`,
-            filename: track.title,
             created_by: 'qobuz',
           });
           

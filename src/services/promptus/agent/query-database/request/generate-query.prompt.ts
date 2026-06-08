@@ -13,12 +13,13 @@ Represents individual tracks.
 - \`title\`: Track Title (String)
 - \`genre\`: Genre (String)
 - \`year\`: Release Year (String)
-- \`path\`: File Path (String)
 - \`track_number\`: the track number (number);
 - \`disc_number\`: the disc number (number);
 - \`source\`: Array of playback source (Array)
     - \`sourceId\` : The playback ID - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
     - \`name\` : The playback name (String) - **ALWAYS INCLUDE THE sourceId IN YOUR REQUEST**
+    - \`path\`: File Path (String, optional)
+    - \`filename\`: Filename (String)
     - \`technical_info\`: Object (per-source technical metadata)
         - \`bitrate\`: Bitrate (Number)
         - \`bit_depth\`: Bit Depth (Number)

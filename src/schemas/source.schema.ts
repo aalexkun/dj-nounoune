@@ -24,6 +24,12 @@ export class AlbumSource extends Source {}
 
 @Schema({ _id: false })
 export class SongSource extends Source {
+  @Prop({ type: String, required: false })
+  path?: string;
+
+  @Prop({ type: String, required: true })
+  filename: string;
+
   @Prop({ type: TechnicalInfoSchema, required: false })
   technical_info?: TechnicalInfo;
 }

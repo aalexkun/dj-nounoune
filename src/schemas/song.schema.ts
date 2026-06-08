@@ -40,12 +40,6 @@ export class Song {
   @Prop({ index: true })
   category: string;
 
-  @Prop({ type: String, required: false })
-  path?: string;
-
-  @Prop({ required: true })
-  filename: string;
-
   @Prop({ type: [SongSourceSchema], default: [] })
   source: SongSource[];
 
