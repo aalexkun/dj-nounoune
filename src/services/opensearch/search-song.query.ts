@@ -11,17 +11,22 @@ export class SearchSongQuery implements SearchQuery {
 
   // fix the return to work with the new query
   getQuery(): Record<string, any> {
+
+    const mustNotClause = this.songAttributes.songId
+      ? [
+          {
+            term: {
+              _id: this.songAttributes.songId,
+            },
+          },
+        ]
+      : [];
+
     return {
       size: 10,
       query: {
         bool: {
-          must_not: [
-            {
-              term: {
-                _id: this.songAttributes.songId,
-              },
-            },
-          ],
+          must_not: mustNotClause,
           should: [
             {
               bool: {

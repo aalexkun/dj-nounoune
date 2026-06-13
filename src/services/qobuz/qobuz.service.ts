@@ -3,7 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { QobuzErrorResponse, QobuzLoginResponse, QobuzUserFavoritesResponse } from './qobuz.interfaces';
+import {
+  QobuzErrorResponseSchema,
+  QobuzUserFavoritesResponse,
+  QobuzUserFavoritesResponseSchema,
+  QobuzAlbum,
+  QobuzAlbumSchema,
+} from './qobuz.interfaces';
+import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
 
 @Injectable()
@@ -77,7 +84,7 @@ export class QobuzService implements OnModuleInit {
   /**
    * Send a GET request to the Qobuz API with signature authentication.
    */
-  private async qobuzGet<T>(endpoint: string, params: Record<string, string>): Promise<T> {
+  private async qobuzGet<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>): Promise<T> {
 
     if (!this.userAuthToken){
       throw new Error('User authentication token is missing. Please authenticate first.');
@@ -95,13 +102,14 @@ export class QobuzService implements OnModuleInit {
     const url = `${this.API_BASE_URL}${endpoint}?${queryString}`;
 
     const response = await fetch(url, { headers });
-    const data = (await response.json()) as QobuzErrorResponse & T;
+    const jsonData = await response.json() as unknown;
 
-    if (data.status === 'error') {
-      throw new Error(`Qobuz API Error: ${data.message} (code: ${data.code})`);
+    const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
+    if (errorResult.success && errorResult.data.status === 'error') {
+      throw new Error(`Qobuz API Error: ${errorResult.data.message} (code: ${errorResult.data.code})`);
     }
 
-    return data as T;
+    return schema.parse(jsonData);
   }
 
   private getSessionFilePath(): string {
@@ -149,7 +157,7 @@ export class QobuzService implements OnModuleInit {
       offset: offset.toString(),
     };
 
-    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
+    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params, QobuzUserFavoritesResponseSchema);
   }
 
   /**
@@ -164,17 +172,17 @@ export class QobuzService implements OnModuleInit {
       offset: offset.toString(),
     };
 
-    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params);
+    return this.qobuzGet<QobuzUserFavoritesResponse>('/favorite/getUserFavorites', params, QobuzUserFavoritesResponseSchema);
   }
 
   /**
    * Retrieve full details of an album, including its tracks
    */
-  public async getAlbum(albumId: string): Promise<any> {
+  public async getAlbum(albumId: string): Promise<QobuzAlbum> {
     const params = {
       album_id: albumId,
     };
 
-    return this.qobuzGet<any>('/album/get', params);
+    return this.qobuzGet<QobuzAlbum>('/album/get', params, QobuzAlbumSchema);
   }
 }

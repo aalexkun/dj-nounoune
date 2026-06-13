@@ -16,7 +16,7 @@ export class QobuzAuthSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
     this.logger.log('Starting Qobuz Authentication...');
     
     // Generate the authorize URL and the auth utility logs the instructions

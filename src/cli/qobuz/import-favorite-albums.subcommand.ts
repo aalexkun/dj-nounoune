@@ -1,8 +1,9 @@
 import { CommandRunner, SubCommand } from 'nest-commander';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { QobuzService } from '../../services/qobuz/qobuz.service';
+import { QobuzAlbum, QobuzTrack } from '../../services/qobuz/qobuz.interfaces';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
@@ -28,7 +29,7 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
     this.logger.log('Retrieving Qobuz favorite albums for import...');
     try {
       const limit = 50;
@@ -67,7 +68,7 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
     }
   }
 
-  private async importAlbum(albumDetails: any): Promise<void> {
+  private async importAlbum(albumDetails: QobuzAlbum): Promise<void> {
     // 1. Find or create Artist
     const artistQobuzId = albumDetails.artist.id.toString();
     let artistDoc = await this.artistModel.findOne({
@@ -135,8 +136,8 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
         }
 
         // Ensure the album is linked to the artist.
-        if (!artistDoc.albums.includes(albumDoc._id as any)) {
-          artistDoc.albums.push(albumDoc._id as any);
+        if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
+          artistDoc.albums.push(albumDoc._id as Types.ObjectId);
           await artistDoc.save();
         }
       }
@@ -163,8 +164,8 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
       this.logger.debug(`Created new album: ${albumDoc.title}`);
       
       // Update artist albums list
-      if (!artistDoc.albums.includes(albumDoc._id as any)) {
-        artistDoc.albums.push(albumDoc._id as any);
+      if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
+        artistDoc.albums.push(albumDoc._id as Types.ObjectId);
         await artistDoc.save();
       }
     }
@@ -209,8 +210,8 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
             this.logger.debug(`Added qobuz source to existing song: ${existingSong.title}`);
           }
 
-          if (!albumDoc.tracks.includes(existingSong._id as any)) {
-            albumDoc.tracks.push(existingSong._id as any);
+          if (!albumDoc.tracks.includes(existingSong._id as unknown as Song)) {
+            albumDoc.tracks.push(existingSong._id as unknown as Song);
             await albumDoc.save();
           }
 
@@ -234,15 +235,15 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
         await songDoc.save();
         this.logger.debug(`Created new song: ${songDoc.title}`);
 
-        if (!albumDoc.tracks.includes(songDoc._id as any)) {
-          albumDoc.tracks.push(songDoc._id as any);
+        if (!albumDoc.tracks.includes(songDoc._id as unknown as Song)) {
+          albumDoc.tracks.push(songDoc._id as unknown as Song);
           await albumDoc.save();
         }
       }
     }
   }
 
-  private buildQobuzSource(track: any, trackQobuzId: string): SongSource {
+  private buildQobuzSource(track: QobuzTrack, trackQobuzId: string): SongSource {
     return {
       name: 'qobuz',
       sourceId: trackQobuzId,
@@ -250,12 +251,12 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
       filename: track.title,
       technical_info: {
         bitrate: 0,
-        sample_rate: parseInt(`${track.maximum_sampling_rate}000`),
-        bit_depth: parseInt(track.maximum_bit_depth),
+        sample_rate: track.maximum_sampling_rate * 1000,
+        bit_depth: track.maximum_bit_depth,
         is_high_res: track.hires,
         is_cd_quality: true,
         extension: 'flac',
-        duration: parseInt(track.duration),
+        duration: track.duration,
       } as TechnicalInfo,
     };
   }

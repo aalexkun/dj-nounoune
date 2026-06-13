@@ -15,7 +15,7 @@ export class QobuzFavoriteAlbumsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
     this.logger.log('Retrieving Qobuz favorite albums...');
     try {
       const limit = 50;

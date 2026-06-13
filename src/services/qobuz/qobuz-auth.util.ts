@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { z } from 'zod';
 
 export class QobuzAuthUtil {
   private readonly logger = new Logger(QobuzAuthUtil.name);
@@ -56,7 +57,14 @@ export class QobuzAuthUtil {
         throw new Error(`Token exchange failed (${tokenResponse.status}): ${text}`);
       }
 
-      const tokenData = await tokenResponse.json();
+      const tokenJson = await tokenResponse.json() as unknown;
+      
+      const TokenDataSchema = z.object({
+        token: z.string(),
+        user_id: z.union([z.string(), z.number()]),
+      });
+      const tokenData = TokenDataSchema.parse(tokenJson);
+
       const userAuthToken = tokenData.token;
       const userId = String(tokenData.user_id);
 
@@ -76,7 +84,15 @@ export class QobuzAuthUtil {
         throw new Error(`Login validation failed (${loginResponse.status}): ${text}`);
       }
 
-      const profileData = await loginResponse.json();
+      const profileJson = await loginResponse.json() as unknown;
+      
+      const ProfileDataSchema = z.object({
+        user: z.object({
+          email: z.string().optional(),
+        }).optional(),
+      }).passthrough();
+      
+      const profileData = ProfileDataSchema.parse(profileJson);
       const userEmail = profileData.user?.email || 'Unknown User';
 
       const sessionPath = path.join(process.cwd(), '.qobuz-session.json');

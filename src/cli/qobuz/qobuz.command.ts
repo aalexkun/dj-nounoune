@@ -12,7 +12,7 @@ import { QobuzImportFavoriteAlbumsSubCommand } from './import-favorite-albums.su
 })
 @Injectable()
 export class QobuzCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
     console.log('Use subcommands: favorites, favorite-albums, import-favorite-albums, auth');
   }
 }
