@@ -1,36 +1,26 @@
 import { SearchQuery } from './query.interface';
 
 export class ArtistSearchQuery implements SearchQuery {
-  constructor(
-    private artist: string,
-    private modelId: string,
-  ) {}
+  constructor(private artist: string) {}
 
   getQuery(): Record<string, any> {
     return {
       size: 10,
       query: {
-        bool: {
-          should: [
-            {
-              multi_match: {
-                query: `"""${this.artist}"""`,
-                fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
-                type: 'best_fields',
-                operator: 'and',
-                tie_breaker: 0.3,
-              },
-            },
-            {
-              neural: {
-                song_vector: {
-                  query_text: `"""${this.artist}"""`,
-                  model_id: this.modelId,
-                  k: 5,
-                },
-              },
-            },
-          ],
+        multi_match: {
+          query: this.artist,
+          fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
+          type: 'best_fields',
+          operator: 'and',
+          tie_breaker: 0.3,
+        },
+      },
+      aggs: {
+        artist_id: {
+          terms: {
+            field: 'artist_id',
+            size: 20,
+          },
         },
       },
     };

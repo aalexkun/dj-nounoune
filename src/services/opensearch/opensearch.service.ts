@@ -9,9 +9,12 @@ import {
   MlModelGroupSearchResponseSchema,
   MlModelSearchResponseSchema,
   OpenSearchSearchResponseSchema,
-  OpenSearchSearchResponse,
+  OpenSearchSearchResponse, OpenSearchArtistSearchResponse, OpenSearchArtistSearchResponseSchema,
+  OpenSearchAlbumSearchResponse, OpenSearchAlbumSearchResponseSchema,
 } from './types';
 import { SearchSongQuery } from './search-song.query';
+import { ArtistSearchQuery } from './search-artist.query';
+import { AlbumSearchQuery } from './search-album.query';
 
 
 export type DuplicateSongCheck = {
@@ -403,8 +406,8 @@ export class OpensearchService {
           id: songAttributes.songId,
           body: {
             ...songAttributes,
-            artist_id: song.artist.toString() || '',
-            album_id: song.album.toString() || '',
+            artist_id: song.artist._id.toString() || '',
+            album_id: song.album._id.toString() || '',
             song_semantic: `${songAttributes.artist} ${songAttributes.album} (track ${songAttributes.track_number}) ${songAttributes.title}`,
           },
         });
@@ -416,6 +419,29 @@ export class OpensearchService {
     }
 
     this.logger.log(`Successfully processed ${songs.length} songs.`);
+  }
+
+  async deleteSong(songId: string): Promise<void> {
+    if (!this.client) {
+      this.logger.error('OpenSearch client is not initialized');
+      return;
+    }
+
+    try {
+      await this.client.delete({
+        index: 'songs',
+        id: songId,
+      });
+      this.logger.log(`Deleted song ${songId} from OpenSearch index.`);
+    } catch (error) {
+      const err = error as Error & { statusCode?: number; meta?: { statusCode?: number } };
+      const statusCode = err.statusCode ?? err.meta?.statusCode;
+      if (statusCode === 404) {
+        this.logger.warn(`Song ${songId} not found in OpenSearch index, nothing to delete.`);
+        return;
+      }
+      this.logger.error(`Failed to delete song ${songId} from OpenSearch: ${err.message}`);
+    }
   }
 
   async findDuplicatesSongs(songAttributes: DuplicateSongCheck): Promise<OpenSearchSearchResponse | null> {
@@ -448,4 +474,57 @@ export class OpensearchService {
       return null;
     }
   }
+
+  async fuzzySearchArtist(artistName: string): Promise<OpenSearchArtistSearchResponse | null> {
+    if (!this.client) return null;
+
+    const query = new ArtistSearchQuery(artistName);
+
+    try {
+      const response = await this.client.search({
+        index: 'songs',
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchArtistSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      } else {
+        this.logger.error('OpenSearch artist search response validation failed', parsedResponse.error);
+        return null;
+      }
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Error querying OpenSearch Artist Search: ${err.message}`);
+      return null;
+    }
+  }
+
+  async fuzzySearchAlbum(albumName: string): Promise<OpenSearchAlbumSearchResponse | null> {
+    if (!this.client) return null;
+
+    const query = new AlbumSearchQuery(albumName);
+
+    try {
+      const response = await this.client.search({
+        index: 'songs',
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchAlbumSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      } else {
+        this.logger.error('OpenSearch album search response validation failed', parsedResponse.error);
+        return null;
+      }
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Error querying OpenSearch Album Search: ${err.message}`);
+      return null;
+    }
+  }
 }
+

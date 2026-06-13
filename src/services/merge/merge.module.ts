@@ -12,6 +12,7 @@ import {
   Deduplication,
   DeduplicationSchema,
 } from '../../schemas/deduplication.schema';
+import { OpensearchModule } from '../opensearch/opensearch.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import {
       { name: Artist.name, schema: ArtistSchema },
       { name: Deduplication.name, schema: DeduplicationSchema },
     ]),
+    OpensearchModule,
   ],
   providers: [
     MergeFactory,

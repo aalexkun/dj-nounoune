@@ -5,14 +5,12 @@ import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Model } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
-import { ElasticsearchService } from '../elasticsearch/elasticsearch.service';
-import { MergeFactory } from '../merge/merge.factory';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
 
 export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
-  artist: Artist;
-  album: Album;
+  artist: ArtistDocument;
+  album: AlbumDocument;
 };
 
 export type QobuzLookupResult = {
@@ -28,8 +26,6 @@ export class MusicDbService {
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
-    private readonly elasticsearchService: ElasticsearchService,
-    private readonly mergeFactory: MergeFactory,
   ) {}
 
   async getSongs(createdAt?: Date): Promise<SongDocument[]> {
@@ -89,6 +85,7 @@ export class MusicDbService {
           album = albumInfo.title;
         }
       }
+
 
       return {
         artist,

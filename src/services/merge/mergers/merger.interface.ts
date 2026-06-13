@@ -1,3 +1,3 @@
 export interface Merger<T> {
-  merge(existingEntity: T, newEntity: T): T;
+  merge(existingEntity: T, newEntity: T): T | Promise<T>;
 }

@@ -4,17 +4,7 @@ import { z } from 'zod';
 export const MlTaskSchema = z.object({
   task_type: z.string(),
   function_name: z.string().optional(),
-  state: z.enum([
-    'CREATED',
-    'RUNNING',
-    'COMPLETED',
-    'FAILED',
-    'CANCELLED',
-    'COMPLETED_WITH_ERROR',
-    'CANCELLING',
-    'EXPIRED',
-    'UNREACHABLE',
-  ]),
+  state: z.enum(['CREATED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'COMPLETED_WITH_ERROR', 'CANCELLING', 'EXPIRED', 'UNREACHABLE']),
   worker_node: z.array(z.string()).optional(),
   create_time: z.number().optional(),
   last_update_time: z.number().optional(),
@@ -31,9 +21,7 @@ export const MlModelGroupRegisterResponseSchema = z.object({
   status: z.string(),
 });
 
-export type MlModelGroupRegisterResponse = z.infer<
-  typeof MlModelGroupRegisterResponseSchema
->;
+export type MlModelGroupRegisterResponse = z.infer<typeof MlModelGroupRegisterResponseSchema>;
 
 // ML Commons Model Group Search Response Schema
 export const MlModelGroupSearchResponseSchema = z.object({
@@ -57,9 +45,7 @@ export const MlModelGroupSearchResponseSchema = z.object({
   }),
 });
 
-export type MlModelGroupSearchResponse = z.infer<
-  typeof MlModelGroupSearchResponseSchema
->;
+export type MlModelGroupSearchResponse = z.infer<typeof MlModelGroupSearchResponseSchema>;
 
 // ML Commons Model Search Response Schema
 export const MlModelSearchResponseSchema = z.object({
@@ -136,6 +122,80 @@ export const OpenSearchSearchResponseSchema = z.object({
   }),
 });
 
-export type OpenSearchSearchResponse = z.infer<
-  typeof OpenSearchSearchResponseSchema
->;
+export type OpenSearchSearchResponse = z.infer<typeof OpenSearchSearchResponseSchema>;
+
+export const OpenSearchArtistSearchResponseSchema = z.object({
+  took: z.number(),
+  timed_out: z.boolean(),
+  _shards: z.object({
+    total: z.number(),
+    successful: z.number(),
+    skipped: z.number().optional(),
+    failed: z.number(),
+  }),
+  hits: z.object({
+    total: z.union([
+      z.number(),
+      z.object({
+        value: z.number(),
+        relation: z.string(),
+      }),
+    ]),
+    max_score: z.union([z.number(), z.null()]).optional(),
+    hits: z.array(z.any()),
+  }),
+  aggregations: z
+    .object({
+      artist_id: z.object({
+        doc_count_error_upper_bound: z.number(),
+        sum_other_doc_count: z.number(),
+        buckets: z.array(
+          z.object({
+            key: z.string(),
+            doc_count: z.number(),
+          }),
+        ),
+      }),
+    })
+    .optional(),
+});
+
+export type OpenSearchArtistSearchResponse = z.infer<typeof OpenSearchArtistSearchResponseSchema>;
+
+export const OpenSearchAlbumSearchResponseSchema = z.object({
+  took: z.number(),
+  timed_out: z.boolean(),
+  _shards: z.object({
+    total: z.number(),
+    successful: z.number(),
+    skipped: z.number().optional(),
+    failed: z.number(),
+  }),
+  hits: z.object({
+    total: z.union([
+      z.number(),
+      z.object({
+        value: z.number(),
+        relation: z.string(),
+      }),
+    ]),
+    max_score: z.union([z.number(), z.null()]).optional(),
+    hits: z.array(z.any()),
+  }),
+  aggregations: z
+    .object({
+      album_id: z.object({
+        doc_count_error_upper_bound: z.number(),
+        sum_other_doc_count: z.number(),
+        buckets: z.array(
+          z.object({
+            key: z.string(),
+            doc_count: z.number(),
+          }),
+        ),
+      }),
+    })
+    .optional(),
+});
+
+export type OpenSearchAlbumSearchResponse = z.infer<typeof OpenSearchAlbumSearchResponseSchema>;

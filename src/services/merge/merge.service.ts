@@ -81,7 +81,7 @@ export class MergeService {
 
     // 3. Song level merge
     const merger = this.mergeFactory.getMerger('song');
-    const merged = merger.merge(primary, duplicate);
+    const merged = await merger.merge(primary, duplicate);
     await merged.save();
 
     // Hard delete duplicate song
@@ -133,7 +133,7 @@ export class MergeService {
 
     // Merge via factory
     const merger = this.mergeFactory.getMerger('album');
-    const merged = merger.merge(primary, duplicate);
+    const merged = await merger.merge(primary, duplicate);
     await merged.save();
 
     // Hard delete duplicate album
@@ -185,7 +185,7 @@ export class MergeService {
 
     // Merge via factory
     const merger = this.mergeFactory.getMerger('artist');
-    const merged = merger.merge(primary, duplicate);
+    const merged = await merger.merge(primary, duplicate);
     await merged.save();
 
     // Hard delete duplicate artist

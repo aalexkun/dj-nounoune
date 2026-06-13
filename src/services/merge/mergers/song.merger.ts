@@ -3,16 +3,19 @@ import { resolveFieldValue } from './field-resolver';
 import { SongDocument } from '../../../schemas/song.schema';
 import { Merger } from './merger.interface';
 import { Source } from '../../../schemas/source.schema';
+import { OpensearchService } from '../../opensearch/opensearch.service';
 
 
 @Injectable()
 export class SongMerger implements Merger<SongDocument> {
   private readonly logger = new Logger(SongMerger.name);
 
-  merge(
+  constructor(private readonly opensearchService: OpensearchService) {}
+
+  async merge(
     primaryEntity: SongDocument,
     duplicateEntity: SongDocument,
-  ): SongDocument {
+  ): Promise<SongDocument> {
     this.logger.log(
       `Merging song "${duplicateEntity.title}" (${String(duplicateEntity._id)}) into "${primaryEntity.title}" (${String(primaryEntity._id)})`,
     );
@@ -70,6 +73,10 @@ export class SongMerger implements Merger<SongDocument> {
       'category', primaryEntity.category, duplicateEntity.category,
       primarySources, duplicateSources,
     );
+
+    // 3. Remove the merged (duplicate) song document from the OpenSearch index.
+    // The song's id is used as the OpenSearch document id.
+    await this.opensearchService.deleteSong(String(duplicateEntity._id));
 
     return primaryEntity;
   }
