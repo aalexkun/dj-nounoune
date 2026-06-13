@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Song, SongDocument } from '../../schemas/song.schema.js';
-import { Album, AlbumDocument } from '../../schemas/albums.schema.js';
-import { Artist, ArtistDocument } from '../../schemas/artist.schema.js';
+import { Song, SongDocument } from '../../schemas/song.schema';
+import { Album, AlbumDocument } from '../../schemas/albums.schema';
+import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import {
   Deduplication,
   DeduplicationDocument,
-} from '../../schemas/deduplication.schema.js';
-import { MergeFactory } from './merge.factory.js';
+} from '../../schemas/deduplication.schema';
+import { MergeFactory } from './merge.factory';
 
 @Injectable()
 export class MergeService {

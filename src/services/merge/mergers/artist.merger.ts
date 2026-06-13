@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Merger } from './merger.interface.js';
-import { ArtistDocument } from '../../../schemas/artist.schema.js';
-import { ArtistSource } from '../../../schemas/source.schema.js';
-import { resolveFieldValue } from './field-resolver.js';
+import { Merger } from './merger.interface';
+import { ArtistDocument } from '../../../schemas/artist.schema';
+import { ArtistSource } from '../../../schemas/source.schema';
+import { resolveFieldValue } from './field-resolver';
 
 @Injectable()
 export class ArtistMerger implements Merger<ArtistDocument> {

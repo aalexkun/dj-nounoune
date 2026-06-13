@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { Merger } from './merger.interface.js';
-import { AlbumDocument } from '../../../schemas/albums.schema.js';
-import { AlbumSource } from '../../../schemas/source.schema.js';
-import { resolveFieldValue } from './field-resolver.js';
+import { Merger } from './merger.interface';
+import { AlbumDocument } from '../../../schemas/albums.schema';
+import { AlbumSource } from '../../../schemas/source.schema';
+import { resolveFieldValue } from './field-resolver';
 
 @Injectable()
 export class AlbumMerger implements Merger<AlbumDocument> {

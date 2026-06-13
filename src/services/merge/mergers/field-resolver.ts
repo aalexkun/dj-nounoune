@@ -1,5 +1,5 @@
-import { Source } from '../../../schemas/source.schema.js';
-import { containsNonAscii } from '../../../utils/string.utils.js';
+import { Source } from '../../../schemas/source.schema';
+import { containsNonAscii } from '../../../utils/string.utils';
 
 /** Fields where the 'file' source always wins */
 const GENRE_FIELDS = new Set(['genre', 'primary_genres']);

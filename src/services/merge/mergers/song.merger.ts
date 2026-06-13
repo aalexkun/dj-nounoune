@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { resolveFieldValue } from './field-resolver.js';
-import { SongDocument } from '../../../schemas/song.schema.js';
-import { Merger } from './merger.interface.js';
-import { Source } from '../../../schemas/source.schema.js';
+import { resolveFieldValue } from './field-resolver';
+import { SongDocument } from '../../../schemas/song.schema';
+import { Merger } from './merger.interface';
+import { Source } from '../../../schemas/source.schema';
 
 
 @Injectable()
