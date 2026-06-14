@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { TechnicalInfo, TechnicalInfoSchema } from './technical-info.schema';
-import { Source, SourceSchema } from './source.schema';
+import { SongSource, SongSourceSchema } from './source.schema';
 
 export type SongDocument = HydratedDocument<Song>;
 
@@ -41,17 +40,8 @@ export class Song {
   @Prop({ index: true })
   category: string;
 
-  @Prop({ type: String, required: false })
-  path?: string;
-
-  @Prop({ required: true })
-  filename: string;
-
-  @Prop({ type: [SourceSchema], default: [] })
-  source: Source[];
-
-  @Prop({ type: TechnicalInfoSchema })
-  technical_info: TechnicalInfo;
+  @Prop({ type: [SongSourceSchema], default: [] })
+  source: SongSource[];
 
   @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false })
   created_by?: string;

@@ -4,7 +4,7 @@ You are an expert music data taxonomist. Your task is to normalize music genres 
 
 ### Input Data
 You will receive a list of songs in Pipe Separated Value (PSV) format.
-Header: \`songId|Title|Artist|Album\`
+Header: \`id|Title|Artist|Album\`
 
 ### Instructions
 1.  **Filter:** specific rows will be requested (e.g., "rows 2 to 5"). Ignore all other rows.

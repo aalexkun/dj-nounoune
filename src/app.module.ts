@@ -14,6 +14,7 @@ import { ShellService } from './services/shell/shell.service';
 import { FileService } from './services/file/file.service';
 import { ChatGateway } from './gateway/chat.gateway';
 import { Chat, ChatSchema } from './schemas/chat.schema';
+import { Deduplication, DeduplicationSchema } from './schemas/deduplication.schema';
 import { ChatService } from './services/chat/chat.service';
 import { ChatController } from './controller/chat.controller';
 import { AuthController } from './controller/auth.controller';
@@ -26,6 +27,10 @@ import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ElasticsearchModule } from './services/elasticsearch/elasticsearch.module';
+import { MergeModule } from './services/merge/merge.module';
+import { OpensearchModule } from './services/opensearch/opensearch.module';
+
 
 @Module({
   imports: [
@@ -48,10 +53,14 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
       { name: Song.name, schema: SongSchema },
       { name: Connection.name, schema: ConnectionSchema },
       { name: Chat.name, schema: ChatSchema },
+      { name: Deduplication.name, schema: DeduplicationSchema },
     ]),
     MpdClientModule,
     SpotifyModule,
     QobuzModule,
+    ElasticsearchModule,
+    MergeModule,
+    OpensearchModule,
   ],
   controllers: [ChatController, AuthController],
   providers: [

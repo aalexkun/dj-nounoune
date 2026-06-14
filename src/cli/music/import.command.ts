@@ -142,15 +142,15 @@ export class ImportCommand extends CommandRunner {
                 disc_number: userDoc.disc_number,
                 bpm: userDoc.bpm,
                 category: userDoc.category,
-                filename: userDoc.filename,
-                path: userDoc.path,
                 source: [
                   {
                     name: 'file',
                     sourceId: `${this.pathTransformer.transform(userDoc.path)}${userDoc.filename}`,
+                    path: userDoc.path,
+                    filename: userDoc.filename,
+                    technical_info: userDoc.technical_info,
                   },
                 ],
-                technical_info: userDoc.technical_info,
               },
             },
             { upsert: true },

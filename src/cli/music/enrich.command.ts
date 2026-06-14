@@ -5,6 +5,7 @@ import { MusicDbService, PopulatedSong } from '../../services/music-db/music-db.
 import { AppService } from '../../app.service';
 import { extname } from 'path';
 import { SongDocument } from '../../schemas/song.schema';
+import { TechnicalInfo } from '../../schemas/technical-info.schema';
 
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { FileService } from '../../services/file/file.service';
@@ -17,6 +18,7 @@ interface EnrichCommandOptions {
   clearCache?: boolean;
   Ffprobe?: boolean;
   bpm?: boolean;
+  createdAt?: Date;
 }
 
 @SubCommand({
@@ -32,7 +34,6 @@ export class EnrichCommand extends CommandRunner {
     private musicDbService: MusicDbService,
     private appService: AppService,
     private promptusService: PromptusService,
-    private psvSerive: PsvService,
     private fileService: FileService,
   ) {
     super();
@@ -40,7 +41,7 @@ export class EnrichCommand extends CommandRunner {
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
     this.logger.log(`Starting enrich command with options: ${JSON.stringify(options)}`);
-    const aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
+    let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
       this.logger.log('Clearing cache requested...');
@@ -52,11 +53,11 @@ export class EnrichCommand extends CommandRunner {
     // Generate the PSV file for batch processing.
     if (options.ai) {
       this.logger.log('Fetching populated songs from MusicDbService for AI enrichment...');
-      const populatedSong = await this.musicDbService.getAllPopulatedSongs();
-      // aiEnrichedSongs = await this.updateAi(populatedSong);
+      const populatedSong = await this.musicDbService.getAllPopulatedSongs(options.createdAt);
+      aiEnrichedSongs = await this.updateAi(populatedSong);
     }
 
-    const songs = await this.musicDbService.getAllSongs();
+    const songs = await this.musicDbService.getSongs(options.createdAt);
     for (let song of songs) {
       if (options.Ffprobe) {
         song = await this.updateFfprobe(song);
@@ -87,7 +88,8 @@ export class EnrichCommand extends CommandRunner {
       try {
         const bpm = await this.shellService.executeBpmTag(`${rootPath}${filePath}`);
         if (bpm > 0) {
-          song.technical_info.bpm = Math.round(bpm);
+          song.source[0].technical_info = song.source[0].technical_info ?? ({} as TechnicalInfo);
+          song.source[0].technical_info.bpm = Math.round(bpm);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -99,7 +101,14 @@ export class EnrichCommand extends CommandRunner {
 
   private async updateFfprobe(song: SongDocument): Promise<SongDocument> {
     const rootPath = this.appService.getLibraryRootPath();
-    const filePath = song.source.find((s) => s.name === 'file')?.sourceId;
+    const fileSource = song.source.find((s) => s.name === 'file');
+
+    if (!fileSource || !fileSource.sourceId) {
+      this.logger.log(`Skipping ffprobe for song "${song.title}": no file source found`);
+      return song;
+    }
+
+    const filePath = fileSource.sourceId;
     const probeData = await this.shellService.getTechnicalInfo(`${rootPath}${filePath}`);
 
     const audioStream = probeData.streams.find((s) => s.codec_type === 'audio');
@@ -107,7 +116,7 @@ export class EnrichCommand extends CommandRunner {
       throw new Error('No audio stream found in file');
     }
 
-    const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate, 3) : 0;
+    const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate, 10) : 0;
 
     let bitDepth = 0;
     if (audioStream.bits_per_raw_sample) {
@@ -119,8 +128,8 @@ export class EnrichCommand extends CommandRunner {
     const isHighRes = bitDepth > 16 || sampleRate > 48000;
     const isCdQuality = bitDepth >= 16 && sampleRate >= 44100;
 
-    song.technical_info = {
-      ...song.technical_info,
+    fileSource.technical_info = {
+      ...(fileSource.technical_info ?? {}),
       encoding: audioStream.codec_name,
       size: probeData.format.size ? parseInt(probeData.format.size, 10) : 0,
       duration: parseFloat(probeData.format.duration || audioStream.duration || '0'),
@@ -130,7 +139,7 @@ export class EnrichCommand extends CommandRunner {
       extension: extname(probeData.format.filename).replace('.', ''),
       is_high_res: isHighRes,
       is_cd_quality: isCdQuality,
-    };
+    } as TechnicalInfo;
 
     return song;
   }
@@ -151,7 +160,8 @@ export class EnrichCommand extends CommandRunner {
     });
 
     // Save the file as tmp and cache it for the request
-    await this.fileService.saveFile(this.cacheName, this.psvSerive.toPsv(songsForPromptus, true));
+
+    await this.fileService.saveFile(this.cacheName, this.toPsv(songsForPromptus, true));
 
     const enrichRequests: EnrichPromptusRequest[] = [];
     const ranges = getInclusivePaginationRanges(songsForPromptus.length, 1000);
@@ -168,7 +178,7 @@ export class EnrichCommand extends CommandRunner {
         enrichRequests.push(enrichRequest);
       }
 
-      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests);
+      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests,5);
 
       let result: Partial<ParsedPsvRow>[] = [];
       for (const response of aiResponses) {
@@ -180,6 +190,38 @@ export class EnrichCommand extends CommandRunner {
     } else {
       throw new Error('No cache found for enrich songs library promptus');
     }
+  }
+
+
+  /* todo merge with psv service */
+  toPsv(records: Partial<ParsedPsvRow>[], addHeader = false): string {
+    const raw = records.map((record) => this.mapToRaw(record));
+    let psv = '';
+
+    if (addHeader) {
+      psv = Object.keys(raw[0]).join('|') + '\n';
+    }
+
+    psv += raw.map((row) => Object.values(row).join('|')).join('\n');
+
+    return psv;
+  }
+
+  private mapToRaw(song: Partial<ParsedPsvRow>): any {
+    const raw: any = {};
+
+    // Helper to add property only if value is not null/undefined
+    const addIfSet = (key: string, value: any) => {
+      if (value !== null && value !== undefined) {
+        raw[key] = value;
+      }
+    };
+
+    addIfSet('id', song._id);
+    addIfSet('Title', song.title);
+    addIfSet('Artist', song.artist);
+    addIfSet('Album', song.album);
+    return raw;
   }
 
   @Option({
@@ -216,5 +258,13 @@ export class EnrichCommand extends CommandRunner {
   })
   parseClearCache(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: ', --createdAt [createdAt]',
+    description: 'Filter songs created after a date (yyyy-mm-dd)',
+  })
+  parseCreatedAt(createdAt: string): Date {
+    return new Date(createdAt);
   }
 }

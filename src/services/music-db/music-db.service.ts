@@ -9,8 +9,8 @@ import { SourceType } from '../../schemas/source.schema';
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
 
 export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
-  artist: Artist;
-  album: Album;
+  artist: ArtistDocument;
+  album: AlbumDocument;
 };
 
 export type QobuzLookupResult = {
@@ -28,8 +28,9 @@ export class MusicDbService {
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
   ) {}
 
-  async getAllSongs(): Promise<SongDocument[]> {
-    return await this.songModel.find().exec();
+  async getSongs(createdAt?: Date): Promise<SongDocument[]> {
+    const filter = createdAt ? { createdAt: { $gte: createdAt } } : {};
+    return await this.songModel.find(filter).exec();
   }
 
   async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
@@ -84,6 +85,7 @@ export class MusicDbService {
           album = albumInfo.title;
         }
       }
+
 
       return {
         artist,
@@ -158,8 +160,22 @@ export class MusicDbService {
     return this.songModel
       .aggregate([
         {
+          $unwind: '$source',
+        },
+        {
+          $match: {
+            'source.technical_info.bpm': { $exists: true, $ne: null },
+          },
+        },
+        {
           $group: {
-            _id: '$technical_info.bpm',
+            _id: '$_id',
+            bpm: { $max: '$source.technical_info.bpm' },
+          },
+        },
+        {
+          $group: {
+            _id: '$bpm',
             count: { $sum: 1 },
           },
         },
@@ -177,8 +193,9 @@ export class MusicDbService {
       .exec();
   }
 
-  async getAllPopulatedSongs(): Promise<PopulatedSong[]> {
-    return (await this.songModel.find().populate('artist').populate('album').exec()) as any;
+  async getAllPopulatedSongs(createdAfter?: Date): Promise<PopulatedSong[]> {
+    const filter = createdAfter ? { createdAt: { $gte: createdAfter } } : {};
+    return (await this.songModel.find(filter).populate('artist').populate('album').exec()) as any;
   }
 
   async upsertSong(song: SongDocument): Promise<SongDocument> {

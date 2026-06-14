@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { FunctionCallResult, ToolHandler } from '../../tool.type';
 import { MpdToolsDefinition } from '../../definition/mpd-tools.definition';
-import { MusicSearchResult } from '../../../agent/disc-jockey/disc-jockey.agent';
+import { MusicSearchResult, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { ClearMpdRequest } from '../../../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../../../mpd-client/requests/AddMpdRequest';
@@ -53,6 +53,28 @@ export class PlayMusicHandler implements ToolHandler {
     return `${qobuzProxyUrl}/qobuz/track/version/1/trackId/`;
   }
 
+  private getBestSource(sources: PlaySource[]): PlaySource | undefined {
+    if (!sources || sources.length === 0) {
+      return undefined;
+    }
+
+    const getScore = (source: PlaySource) => {
+      let score = 0;
+      if (source.technical_info) {
+        if (source.technical_info.is_high_res) score += 1000000;
+        if (source.technical_info.is_cd_quality) score += 500000;
+        if (source.technical_info.sample_rate) score += source.technical_info.sample_rate;
+        if (source.technical_info.bitrate) score += source.technical_info.bitrate / 1000;
+      }
+      // Default source if there is no technical info is qobuz
+      if (source.name === 'qobuz') score += 10;
+      return score;
+    };
+
+    const sortedSources = [...sources].sort((a, b) => getScore(b) - getScore(a));
+    return sortedSources[0];
+  }
+
   async execute(args: unknown): Promise<FunctionCallResult> {
     if (!this.isPlayMusicArgs(args)) {
       throw new Error(`Invalid arguments provided to play_music. Expected an array of songs with sourceIds.`);
@@ -74,14 +96,15 @@ export class PlayMusicHandler implements ToolHandler {
       }
 
       // Get best source
-      const bestSource =
-        song.source.find((source) => source.name === 'qobuz') ||
-        song.source.find((source) => source.name === 'file');
+      const bestSource = this.getBestSource(song.source);
 
       if(!bestSource) {
         this.logger.error(`No source found for song: ${JSON.stringify(song)}`);
         continue;
       }
+
+      this.logger.debug(`Selected best source from ${song.source.length} option(s) for song: ${song.title || 'Unknown'}`);
+
 
       const uri = bestSource.name === 'qobuz' ? `${this.getQobuzProxyUrl()}${bestSource.sourceId}` : bestSource.sourceId;
 

@@ -12,6 +12,8 @@ import { PromptusPlaySubcommand } from './promptus/play.subcommand';
 import { PromptusCommand } from './promptus/promptus.command';
 import { MusicCommand } from './music/music.command';
 import { EnrichCommand } from './music/enrich.command';
+import { MigrateTechnicalInfoCommand } from './music/migrate-technical-info.command';
+import { MigrateSongSourceCommand } from './music/migrate-song-source.command';
 import { PromptusChatSubcommand } from './promptus/chat.subcommand';
 import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
@@ -20,12 +22,28 @@ import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
 import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
+import { ElasticCommand } from './elastic/elastic.command';
+import { ElasticCreateIndexSubCommand } from './elastic/create-index.subcommand';
+import { ElasticPruneIndexSubCommand } from './elastic/prune-index.subcommand';
+import { ElasticIndexSongsSubCommand } from './elastic/index-songs.subcommand';
+import { OpensearchCommand } from './opensearch/opensearch.command';
+import { OpensearchCreateIndexSubCommand } from './opensearch/create-index.subcommand';
+import { OpensearchPruneIndexSubCommand } from './opensearch/prune-index.subcommand';
+import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcommand';
+import { DedupCommand } from './music/dedup.command';
+import { DedupSearchCommand } from './music/dedup-search.subcommand';
+import { DedupProcessCommand } from './music/dedup-process.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
   ImportCommand,
   ClearCommand,
   EnrichCommand,
+  MigrateTechnicalInfoCommand,
+  MigrateSongSourceCommand,
+  DedupCommand,
+  DedupSearchCommand,
+  DedupProcessCommand,
 
   MpdCommand,
   TestMpdSubCommand,
@@ -48,4 +66,15 @@ export const CommandProviders = [
   QobuzFavoriteAlbumsSubCommand,
   QobuzImportFavoriteAlbumsSubCommand,
   QobuzAuthSubCommand,
+
+  ElasticCommand,
+  ElasticCreateIndexSubCommand,
+  ElasticPruneIndexSubCommand,
+  ElasticIndexSongsSubCommand,
+
+  OpensearchCommand,
+  OpensearchCreateIndexSubCommand,
+  OpensearchPruneIndexSubCommand,
+  OpensearchIndexSongsSubCommand,
 ];
+

@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { TechnicalInfo, TechnicalInfoSchema } from './technical-info.schema';
 
 export type SourceType = 'file' | 'spotify' | 'applemusic' | 'youtube' | 'qobuz';
 
@@ -15,4 +16,25 @@ export class Source {
   sourceId?: string | null;
 }
 
+@Schema({ _id: false })
+export class ArtistSource extends Source {}
+
+@Schema({ _id: false })
+export class AlbumSource extends Source {}
+
+@Schema({ _id: false })
+export class SongSource extends Source {
+  @Prop({ type: String, required: false })
+  path?: string;
+
+  @Prop({ type: String, required: true })
+  filename: string;
+
+  @Prop({ type: TechnicalInfoSchema, required: false })
+  technical_info?: TechnicalInfo;
+}
+
 export const SourceSchema = SchemaFactory.createForClass(Source);
+export const ArtistSourceSchema = SchemaFactory.createForClass(ArtistSource);
+export const AlbumSourceSchema = SchemaFactory.createForClass(AlbumSource);
+export const SongSourceSchema = SchemaFactory.createForClass(SongSource);
