@@ -32,6 +32,7 @@ import { MergeModule } from './services/merge/merge.module';
 import { OpensearchModule } from './services/opensearch/opensearch.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
+import { PlaylogModule } from './services/playlog/playlog.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { SchedulersModule } from './schedulers/schedulers.module';
     OpensearchModule,
     ScheduleModule.forRoot(),
     SchedulersModule,
+    PlaylogModule,
   ],
   controllers: [ChatController, AuthController],
   providers: [

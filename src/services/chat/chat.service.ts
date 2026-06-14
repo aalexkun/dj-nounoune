@@ -110,6 +110,7 @@ export class ChatService {
       .subscribe((groupedCounts) => {
         // 3. The output will now be an object instead of a single integer
         this.logger.log('Count of reactions over the last 5 seconds:', groupedCounts);
+        this.eventEmitter.emit('chat.feedback.received', groupedCounts);
 
         // Example output in your logs:
         // { awesome: 4, wtf: 1, great: 2 }
