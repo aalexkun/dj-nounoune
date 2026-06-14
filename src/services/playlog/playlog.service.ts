@@ -1,17 +1,15 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
-import { OnEvent } from '@nestjs/event-emitter';
 
 @Injectable()
-export class PlaylogService implements OnModuleInit {
+export class PlaylogService {
   private readonly logger = new Logger(PlaylogService.name);
-  private lastPlayedFile: string | null = null;
-  private currentPlaylogId: Types.ObjectId | null = null;
+
 
   constructor(
     @InjectModel(Playlog.name) private playlogModel: Model<PlaylogDocument>,
@@ -19,87 +17,94 @@ export class PlaylogService implements OnModuleInit {
     private mpdClientService: MpdClientService,
   ) {}
 
-  async onModuleInit() {
+  @Interval(10000)
+  async checkCurrentSong() {
+    try {
+
+      const { song, mpdResponse } = await this.getMpdSong();
+
+      if (!song) {
+        this.logger.debug(`No songId found for file: ${mpdResponse?.song?.file}`);
+        return;
+      }
+
+      const previousSongId = await this.fetchPreviousSong();
+
+
+      this.logger.debug(`Current song: ${mpdResponse?.song?.file}`);
+      this.logger.debug(`Current songId: ${previousSongId}`);
+
+      if (song._id.toString() != previousSongId) {
+
+        const newPlaylog = new this.playlogModel({
+          playedAt: new Date(),
+          raw: mpdResponse?.rawResponse,
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          songId: song._id.toString(),
+        });
+
+        const savedPlaylog = await newPlaylog.save();
+        this.logger.log(`Created new playlog entry: ${savedPlaylog._id}`);
+      }
+
+    } catch (error: any) {
+      this.logger.error(`Error checking current song: ${error.message}`);
+    }
+
+  }
+
+
+  private async getMpdSong() {
+
+    const mpdResponse = await this.mpdClientService.currentsong();
+    if (!mpdResponse || !mpdResponse.song || !mpdResponse.song.file) {
+      return {};
+    }
+
+    const file = mpdResponse.song.file;
+
+    let song: PlaylogDocument | null = null;
+
+    if (file.includes('/qobuz/track/')) {
+      const parts = file.split('/trackId/');
+      const qobuzId = parts.length > 1 ? parts[1] : null;
+
+      if (qobuzId) {
+        song = await this.songModel.findOne({
+          source: { $elemMatch: { name: 'qobuz', sourceId: qobuzId } },
+        });
+      }
+    } else {
+      song = await this.songModel.findOne({
+        source: { $elemMatch: { name: 'file', sourceId: file } },
+      });
+    }
+
+    return { song, mpdResponse };
+  }
+
+  private async fetchPreviousSong() {
     try {
       const lastPlaylog = await this.playlogModel.findOne().sort({ playedAt: -1 }).exec();
-      if (lastPlaylog) {
-        const fileMatch = lastPlaylog.raw.match(/^file:\s*(.*)$/m);
-        if (fileMatch && fileMatch[1]) {
-          this.lastPlayedFile = fileMatch[1];
-          this.currentPlaylogId = lastPlaylog._id;
-          this.logger.log(`Initialized last played file from DB: ${this.lastPlayedFile}`);
-        }
+      if (lastPlaylog && lastPlaylog.songId) {
+        return lastPlaylog.songId.toString();
       }
     } catch (error: any) {
       this.logger.error(`Error initializing last played file from DB: ${error.message}`);
     }
   }
 
-  @Interval(10000)
-  async checkCurrentSong() {
-    try {
-      const currentSongResponse = await this.mpdClientService.currentsong();
-      if (!currentSongResponse || !currentSongResponse.song || !currentSongResponse.song.file) {
-        return;
-      }
-
-      const file = currentSongResponse.song.file;
-
-      if (file !== this.lastPlayedFile) {
-        this.logger.log(`New song detected: ${file}`);
-        this.lastPlayedFile = file;
-
-        let songId: Types.ObjectId | undefined;
-        
-        // Find matching song in the DB
-        if (file.includes('/qobuz/track/')) {
-          const parts = file.split('/trackId/');
-          const qobuzId = parts.length > 1 ? parts[1] : null;
-          
-          if (qobuzId) {
-            const song = await this.songModel.findOne({
-              source: { $elemMatch: { name: 'qobuz', sourceId: qobuzId } }
-            });
-            if (song) {
-              songId = song._id;
-            }
-          }
-        } else {
-          // File path matching
-          const song = await this.songModel.findOne({
-            source: { $elemMatch: { name: 'file',  sourceId: file } },
-          });
-          if (song) {
-            songId = song._id;
-          }
-        }
-
-        const newPlaylog = new this.playlogModel({
-          playedAt: new Date(),
-          raw: currentSongResponse.rawResponse,
-          title: currentSongResponse.song.title,
-          artist: currentSongResponse.song.artist,
-          album: currentSongResponse.song.album,
-          songId: songId,
-        });
-
-        const savedPlaylog = await newPlaylog.save();
-        this.currentPlaylogId = savedPlaylog._id;
-        this.logger.log(`Created new playlog entry: ${savedPlaylog._id}`);
-      }
-    } catch (error: any) {
-      this.logger.error(`Error checking current song: ${error.message}`);
-    }
-  }
-
-  @OnEvent('chat.feedback.received')
   async handleFeedbackEvent(groupedCounts: Record<string, number>) {
-    if (!this.currentPlaylogId) {
-      this.logger.warn(`Feedback received but no active playlog session: ${JSON.stringify(groupedCounts)}`);
+
+    const { song, mpdResponse } = await this.getMpdSong();
+
+    if (!song) {
       return;
     }
 
-    const validFeedbackTypes = ['awesome', 'wtf', 'great', 'boring'];
+    const validFeedbackTypes = ['awesome', 'wtf', 'great', 'duh'];
     const updateQuery: Record<string, number> = {};
     let hasUpdates = false;
 
@@ -117,11 +122,8 @@ export class PlaylogService implements OnModuleInit {
     }
 
     try {
-      await this.playlogModel.updateOne(
-        { _id: this.currentPlaylogId },
-        { $inc: updateQuery }
-      );
-      this.logger.log(`Incremented feedback counts for playlog ${this.currentPlaylogId}`);
+      await this.playlogModel.findOneAndUpdate({ songId: song.id }, { $inc: updateQuery }, { sort: { playedAt: -1 } });
+        this.logger.log(`Incremented feedback counts for playlog ${song.id}`);
     } catch (error: any) {
       this.logger.error(`Error updating playlog feedback: ${error.message}`);
     }

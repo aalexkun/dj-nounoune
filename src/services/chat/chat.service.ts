@@ -10,6 +10,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PromptusService } from '../promptus/promptus.service';
 import { ChatPromptusRequest } from '../promptus/request/chat.promptus.request';
 import { ChatEvent, ChatFeedbackEvent, ChatMessageEvent, ChatMessageResponseEvent, ChatMessageResponseEventName } from './chat.event';
+import { PlaylogService } from '../playlog/playlog.service';
 
 export type ChannelName =
   | `${SessionId}-chat-feedback`
@@ -27,6 +28,7 @@ export class ChatService {
   constructor(
     private readonly promptusService: PromptusService,
     private eventEmitter: EventEmitter2,
+    private readonly playlog: PlaylogService,
     @InjectModel(Chat.name) private readonly chatModel: Model<ChatDocument>,
   ) {}
 
@@ -110,10 +112,8 @@ export class ChatService {
       .subscribe((groupedCounts) => {
         // 3. The output will now be an object instead of a single integer
         this.logger.log('Count of reactions over the last 5 seconds:', groupedCounts);
-        this.eventEmitter.emit('chat.feedback.received', groupedCounts);
+        this.playlog.handleFeedbackEvent(groupedCounts);
 
-        // Example output in your logs:
-        // { awesome: 4, wtf: 1, great: 2 }
       });
 
     this.clientSubjects.set(`${sessionId}-chat-feedback`, subject);
