@@ -67,7 +67,7 @@ export class PlaylogService implements OnModuleInit {
         } else {
           // File path matching
           const song = await this.songModel.findOne({
-            source: { $elemMatch: { name: 'file', $or: [{ path: file }, { filename: file }] } }
+            source: { $elemMatch: { name: 'file',  sourceId: file } },
           });
           if (song) {
             songId = song._id;
