@@ -8,7 +8,7 @@ export class QobuzImportScheduler {
 
   constructor(private readonly qobuzService: QobuzService) {}
 
-  @Cron('0 * * * *')
+  @Cron('0 6 * * *')
   async handleCron() {
     this.logger.log('Starting scheduled Qobuz favorite albums import...');
     try {
