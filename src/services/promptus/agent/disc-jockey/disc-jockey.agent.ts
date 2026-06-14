@@ -16,9 +16,23 @@ import { PostFilteringResponse } from './response/post-filtering.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 
+export type TechnicalInfo = {
+  size?: number;
+  encoding?: string;
+  bitrate?: number;
+  sample_rate?: number;
+  is_high_res?: boolean;
+  is_cd_quality?: boolean;
+  duration?: number;
+  bit_depth?: number;
+  extension?: string;
+  bpm?: number;
+};
+
 export type PlaySource = {
   sourceId: string;
   name: 'qobuz' | 'file';
+  technical_info?: TechnicalInfo;
 };
 
 export type MusicSearchResult = {
