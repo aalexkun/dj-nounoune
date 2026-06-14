@@ -30,7 +30,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ElasticsearchModule } from './services/elasticsearch/elasticsearch.module';
 import { MergeModule } from './services/merge/merge.module';
 import { OpensearchModule } from './services/opensearch/opensearch.module';
-
+import { ScheduleModule } from '@nestjs/schedule';
+import { SchedulersModule } from './schedulers/schedulers.module';
 
 @Module({
   imports: [
@@ -61,6 +62,8 @@ import { OpensearchModule } from './services/opensearch/opensearch.module';
     ElasticsearchModule,
     MergeModule,
     OpensearchModule,
+    ScheduleModule.forRoot(),
+    SchedulersModule,
   ],
   controllers: [ChatController, AuthController],
   providers: [
