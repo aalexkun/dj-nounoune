@@ -2,7 +2,7 @@ import { CommandRunner, SubCommand } from 'nest-commander';
 import { OpensearchService } from '../../services/opensearch/opensearch.service';
 
 @SubCommand({
-  name: 'create-index',
+  name: 'create',
   description: 'Create OpenSearch indices, settings, ingest pipeline and deploy ML model',
 })
 export class OpensearchCreateIndexSubCommand extends CommandRunner {

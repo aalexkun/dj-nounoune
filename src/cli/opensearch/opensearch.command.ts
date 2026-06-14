@@ -18,6 +18,6 @@ export class OpensearchCommand extends CommandRunner {
   private readonly logger = new Logger(OpensearchCommand.name);
 
   async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
-    console.log('Use subcommands: create-index, prune-index, index-songs');
+    console.log('Use subcommands: create, prune, index');
   }
 }

@@ -9,7 +9,7 @@ interface IndexSongsCommandOptions {
 }
 
 @SubCommand({
-  name: 'index-songs',
+  name: 'index',
   description: 'Fetch current songs from DB and index them in OpenSearch with Neural Search de-duplication',
 })
 export class OpensearchIndexSongsSubCommand extends CommandRunner {

@@ -411,6 +411,23 @@ export class QobuzService implements OnModuleInit {
           albumDoc.tracks.push(songDoc._id as unknown as Song);
           await albumDoc.save();
         }
+
+        try {
+          const songForIndex = {
+            _id: songDoc._id,
+            track_number: songDoc.track_number || 0,
+            disc_number: songDoc.disc_number || 0,
+            year: songDoc.year || '',
+            title: songDoc.title || '',
+            artist: artistDoc,
+            album: albumDoc,
+          } as any;
+          await this.opensearchService.indexSongs([songForIndex]);
+          this.logger.debug(`Indexed song ${songDoc.title} in OpenSearch.`);
+        } catch (error) {
+          const errMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Failed to index new song ${songDoc.title} in OpenSearch: ${errMessage}`);
+        }
       }
     }
   }

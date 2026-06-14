@@ -11,6 +11,7 @@ import { AppService } from '../../app.service';
 import { Logger } from '@nestjs/common';
 import { createWriteStream } from 'fs';
 import { once } from 'events';
+import { OpensearchService } from '../../services/opensearch/opensearch.service';
 
 interface ImportCommandOptions {
   file: string;
@@ -31,6 +32,7 @@ export class ImportCommand extends CommandRunner {
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
+    private readonly opensearchService: OpensearchService,
   ) {
     super();
 
@@ -155,6 +157,29 @@ export class ImportCommand extends CommandRunner {
             },
             { upsert: true },
           );
+
+          try {
+            const songForIndex = {
+              _id: songId,
+              track_number: userDoc.track_number || 0,
+              disc_number: userDoc.disc_number || 0,
+              year: userDoc.year || '',
+              title: userDoc.title || '',
+              artist: {
+                _id: artistId,
+                artist: artistName,
+              },
+              album: {
+                _id: albumId,
+                title: albumTitle,
+              },
+            } as any;
+            await this.opensearchService.indexSongs([songForIndex]);
+            this.logger.debug(`Indexed song ${userDoc.title} in OpenSearch.`);
+          } catch (error) {
+            const errMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to index song ${userDoc.title} in OpenSearch: ${errMessage}`);
+          }
         } else {
           // In dry-run, maybe just log a sampling or just the ID generation
           this.logger.log(`[DryRun] Would upsert Artist: ${artistName} (${artistId})`);

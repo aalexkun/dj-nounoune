@@ -2,7 +2,7 @@ import { CommandRunner, SubCommand } from 'nest-commander';
 import { OpensearchService } from '../../services/opensearch/opensearch.service';
 
 @SubCommand({
-  name: 'prune-index',
+  name: 'prune',
   description: 'Delete OpenSearch songs index, ingest pipeline and undeploy model',
 })
 export class OpensearchPruneIndexSubCommand extends CommandRunner {
