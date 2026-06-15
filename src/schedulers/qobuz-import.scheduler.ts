@@ -18,4 +18,15 @@ export class QobuzImportScheduler {
       this.logger.error('Scheduled Qobuz import failed', error);
     }
   }
+
+  @Cron('*/15 * * * *')
+  async handleFrequentCron() {
+    this.logger.log('Starting frequent Qobuz favorite albums import (last 15)...');
+    try {
+      await this.qobuzService.importFavoriteAlbums(50);
+      this.logger.log('Frequent Qobuz import completed successfully.');
+    } catch (error) {
+      this.logger.error('Frequent Qobuz import failed', error);
+    }
+  }
 }

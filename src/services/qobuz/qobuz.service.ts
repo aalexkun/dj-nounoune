@@ -201,7 +201,7 @@ export class QobuzService implements OnModuleInit {
     return this.qobuzGet<QobuzAlbum>('/album/get', params, QobuzAlbumSchema);
   }
 
-  public async importFavoriteAlbums(): Promise<void> {
+  public async importFavoriteAlbums(ImportLastXAlbum: number = Number.MAX_SAFE_INTEGER): Promise<void> {
     this.logger.log('Retrieving Qobuz favorite albums for import...');
     try {
       const limit = 50;
@@ -211,15 +211,27 @@ export class QobuzService implements OnModuleInit {
 
       do {
         const response = await this.getFavoriteAlbums(limit, offset);
-        
+
         if (!response || !response.albums) {
           throw new Error('Invalid response from Qobuz API: Missing albums property');
         }
 
         for (const albumItem of response.albums.items) {
           try {
+            const albumQobuzId = albumItem.id.toString();
+            const existingAlbum = await this.albumModel.exists({
+              'source.name': 'qobuz',
+              'source.sourceId': albumQobuzId,
+            });
+
+            if (existingAlbum) {
+              this.logger.debug(`Album already imported: ${albumItem.title} (${albumQobuzId})`);
+              continue;
+            }
+
             this.logger.debug(`Fetching details for album: ${albumItem.title} (${albumItem.id})`);
-            const albumDetails = await this.getAlbum(albumItem.id.toString());
+
+            const albumDetails = await this.getAlbum(albumQobuzId);
             await this.importAlbum(albumDetails);
             importedAlbumsCount++;
           } catch (albumError) {
@@ -230,8 +242,7 @@ export class QobuzService implements OnModuleInit {
 
         total = response.albums.total;
         offset += limit;
-
-      } while (offset < total);
+      } while (offset < total && importedAlbumsCount < ImportLastXAlbum);
 
       this.logger.log(`Successfully imported ${importedAlbumsCount} favorite albums with their tracks.`);
     } catch (error) {
