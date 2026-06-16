@@ -5,28 +5,28 @@ export type ConnectionDocument = Connection & Document;
 
 @Schema()
 export class Connection {
-  @Prop({ required: true })
+  @Prop({ required: true, description: 'Socket identifier of the connection' })
   socketId: string;
 
-  @Prop({ required: false })
+  @Prop({ required: false, description: 'Identifier of the connected user' })
   userId: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, description: 'Session identifier of the connection' })
   sessionId: string;
 
-  @Prop({ required: true, default: 'active' })
+  @Prop({ required: true, default: 'active', description: 'Current status of the connection' })
   status: string;
 
-  @Prop()
+  @Prop({ description: 'Name of the connected device' })
   deviceName?: string;
 
-  @Prop({ default: Date.now })
+  @Prop({ default: Date.now, description: 'Timestamp when the connection was established' })
   connectedAt: Date;
 
-  @Prop()
+  @Prop({ description: 'Timestamp when the connection was disconnected' })
   disconnectedAt?: Date;
 
-  @Prop()
+  @Prop({ description: 'Timestamp when the user logged out' })
   logoutAt?: Date;
 }
 

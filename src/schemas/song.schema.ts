@@ -10,40 +10,40 @@ export type SongDocument = HydratedDocument<Song>;
   versionKey: '__v',
 })
 export class Song {
-  @Prop({ type: Types.ObjectId, ref: 'Artist', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'Artist', required: true, description: 'Reference to the Artist that performed the song' })
   artist: Types.ObjectId;
 
-  @Prop()
+  @Prop({ description: 'Name of the album artist' })
   album_artist: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Album', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'Album', required: true, description: 'Reference to the Album the song belongs to' })
   album: Types.ObjectId;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, description: 'Title of the track' })
   title: string;
 
-  @Prop()
+  @Prop({ description: 'Composer of the track' })
   composer: string;
 
-  @Prop({ index: true })
+  @Prop({ index: true, description: 'Musical genre of the track' })
   genre: string;
 
-  @Prop({ index: true })
+  @Prop({ index: true, description: 'Release year of the track' })
   year: string;
 
-  @Prop()
+  @Prop({ description: 'Position of the track within its disc' })
   track_number: number;
 
-  @Prop()
+  @Prop({ description: 'Disc number the track belongs to' })
   disc_number: number;
 
-  @Prop({ index: true })
+  @Prop({ index: true, description: 'High-level category of the track (like genre but with less segmentation)' })
   category: string;
 
-  @Prop({ type: [SongSourceSchema], default: [] })
+  @Prop({ type: [SongSourceSchema], default: [], description: 'List of playback sources where the track is available' })
   source: SongSource[];
 
-  @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false })
+  @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false, description: 'Source system that created the song record' })
   created_by?: string;
 }
 

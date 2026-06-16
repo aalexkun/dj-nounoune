@@ -2,34 +2,34 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ _id: false })
 export class TechnicalInfo {
-  @Prop()
+  @Prop({ description: 'File size in bytes' })
   size: number;
 
-  @Prop()
+  @Prop({ description: 'Audio encoding format' })
   encoding: string;
 
-  @Prop()
+  @Prop({ description: 'Audio bitrate' })
   bitrate: number;
 
-  @Prop()
+  @Prop({ description: 'Audio sample rate' })
   sample_rate: number;
 
-  @Prop({ index: true })
+  @Prop({ index: true, description: 'Whether the audio is high resolution' })
   is_high_res: boolean;
 
-  @Prop({ index: true })
+  @Prop({ index: true, description: 'Whether the audio is CD quality' })
   is_cd_quality: boolean;
 
-  @Prop()
+  @Prop({ description: 'Duration of the audio in seconds' })
   duration: number;
 
-  @Prop()
+  @Prop({ description: 'Audio bit depth' })
   bit_depth: number;
 
-  @Prop()
+  @Prop({ description: 'File extension of the audio file' })
   extension: string;
 
-  @Prop()
+  @Prop({ description: 'Beats per minute of the track' })
   bpm: number;
 }
 

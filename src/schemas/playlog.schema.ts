@@ -5,16 +5,16 @@ export type PlaylogDocument = HydratedDocument<Playlog>;
 
 @Schema({ _id: false })
 export class PlaylogFeedback {
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number, default: 0, description: 'Count of "awesome" listener reactions' })
   awesome: number;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number, default: 0, description: 'Count of "wtf" listener reactions' })
   wtf: number;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number, default: 0, description: 'Count of "great" listener reactions' })
   great: number;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number, default: 0, description: 'Count of "duh" listener reactions' })
   duh: number;
 }
 
@@ -26,28 +26,32 @@ export const PlaylogFeedbackSchema = SchemaFactory.createForClass(PlaylogFeedbac
   versionKey: '__v',
 })
 export class Playlog {
-  @Prop({ default: Date.now })
+  @Prop({ default: Date.now, description: 'Timestamp when the track was played' })
   playedAt: Date;
 
-  @Prop({ required: true })
+  @Prop({ required: true, description: 'Raw MPD server current request reply' })
   raw: string;
 
-  @Prop()
+  @Prop({ description: 'text title of the played track' })
   title?: string;
 
-  @Prop()
-  artist?: string;
+  @Prop({ description: 'id reference artist of the played track' })
+  artist?: Types.ObjectId;
 
-  @Prop()
-  album?: string;
+  @Prop({ description: 'id reference album of the played track' })
+  album?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Song', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'Song', required: true, description: 'Reference to the played song' })
   songId: Types.ObjectId;
 
-  @Prop({ type: PlaylogFeedbackSchema, default: () => ({ awesome: 0, wtf: 0, great: 0, duh: 0 }) })
+  @Prop({
+    type: PlaylogFeedbackSchema,
+    default: () => ({ awesome: 0, wtf: 0, great: 0, duh: 0 }),
+    description: 'Aggregated listener feedback reactions for this play',
+  })
   feedback: PlaylogFeedback;
 
-  @Prop()
+  @Prop({ description: 'Identifier of the playlist request that triggered this play' })
   playlistRequestId?: string;
 }
 

@@ -9,10 +9,11 @@ export class Source {
     type: String,
     required: true,
     enum: ['file', 'spotify', 'applemusic', 'youtube', 'qobuz'],
+    description: 'Name of the playback source provider',
   })
   name: SourceType;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: false, description: 'Provider-specific identifier of the item on this source' })
   sourceId?: string | null;
 }
 
@@ -24,13 +25,13 @@ export class AlbumSource extends Source {}
 
 @Schema({ _id: false })
 export class SongSource extends Source {
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: false, description: 'File path of the track on this source' })
   path?: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, description: 'Filename of the track on this source' })
   filename: string;
 
-  @Prop({ type: TechnicalInfoSchema, required: false })
+  @Prop({ type: TechnicalInfoSchema, required: false, description: 'Per-source technical metadata of the track' })
   technical_info?: TechnicalInfo;
 }
 
