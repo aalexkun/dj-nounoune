@@ -34,39 +34,44 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
 import { PlaylogModule } from './services/playlog/playlog.module';
 
+const imports: Array<any> = [
+  // Load global env
+  ConfigModule.forRoot({
+    isGlobal: true,
+  }),
+  EventEmitterModule.forRoot(),
+  MongooseModule.forRootAsync({
+    imports: [ConfigModule],
+    inject: [ConfigService],
+    useFactory: async (configService: ConfigService) => ({
+      uri: configService.get<string>('MONGODB_URI'),
+      dbName: configService.get<string>('MONGO_DATABASE'),
+    }),
+  }),
+  MongooseModule.forFeature([
+    { name: Artist.name, schema: ArtistSchema },
+    { name: Album.name, schema: AlbumSchema },
+    { name: Song.name, schema: SongSchema },
+    { name: Connection.name, schema: ConnectionSchema },
+    { name: Chat.name, schema: ChatSchema },
+    { name: Deduplication.name, schema: DeduplicationSchema },
+  ]),
+  MpdClientModule,
+  SpotifyModule,
+  QobuzModule,
+  ElasticsearchModule,
+  MergeModule,
+  OpensearchModule,
+  PlaylogModule,
+];
+
+if (process.env.IS_CLI !== 'true') {
+  imports.push(ScheduleModule.forRoot(), SchedulersModule);
+}
+
+
 @Module({
-  imports: [
-    // Load global env
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    EventEmitterModule.forRoot(),
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGODB_URI'),
-        dbName: configService.get<string>('MONGO_DATABASE'),
-      }),
-    }),
-    MongooseModule.forFeature([
-      { name: Artist.name, schema: ArtistSchema },
-      { name: Album.name, schema: AlbumSchema },
-      { name: Song.name, schema: SongSchema },
-      { name: Connection.name, schema: ConnectionSchema },
-      { name: Chat.name, schema: ChatSchema },
-      { name: Deduplication.name, schema: DeduplicationSchema },
-    ]),
-    MpdClientModule,
-    SpotifyModule,
-    QobuzModule,
-    ElasticsearchModule,
-    MergeModule,
-    OpensearchModule,
-    ScheduleModule.forRoot(),
-    SchedulersModule,
-    PlaylogModule,
-  ],
+  imports,
   controllers: [ChatController, AuthController],
   providers: [
     AppService,

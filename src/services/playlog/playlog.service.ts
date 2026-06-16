@@ -19,6 +19,8 @@ export class PlaylogService {
 
   @Interval(10000)
   async checkCurrentSong() {
+    if (process.env.IS_CLI === 'true') return;
+
     try {
 
       const { song, mpdResponse } = await this.getMpdSong();

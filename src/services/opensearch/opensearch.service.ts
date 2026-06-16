@@ -15,6 +15,10 @@ import {
 import { SearchSongQuery } from './search-song.query';
 import { ArtistSearchQuery } from './search-artist.query';
 import { AlbumSearchQuery } from './search-album.query';
+import { generateDynamicMappings } from './dynamic-mapping.util';
+import { SongSchema } from '../../schemas/song.schema';
+import { ArtistSchema } from '../../schemas/artist.schema';
+import { AlbumSchema } from '../../schemas/albums.schema';
 
 
 export type DuplicateSongCheck = {
@@ -309,6 +313,13 @@ export class OpensearchService {
       }
 
       this.logger.log('Creating index "songs" with k-NN settings...');
+
+      const dynamicMappings = generateDynamicMappings(SongIndices.mappings, [
+        { prefix: '', schema: SongSchema as any },
+        { prefix: 'artist_info', schema: ArtistSchema as any },
+        { prefix: 'album_info', schema: AlbumSchema as any },
+      ]);
+
       await this.client.indices.create({
         index: SongIndices.name,
         body: {
@@ -316,7 +327,7 @@ export class OpensearchService {
             ...SongIndices.settings,
             default_pipeline: 'opensearch-songs-pipeline',
           },
-          mappings: SongIndices.mappings,
+          mappings: dynamicMappings,
         } as unknown as Record<string, unknown>,
       });
 
@@ -401,11 +412,17 @@ export class OpensearchService {
       };
 
       try {
+        const songObj = (typeof (song as any).toObject === 'function') ? (song as any).toObject() : song;
+
         await this.client.index({
           index: 'songs',
           id: songAttributes.songId,
           body: {
-            ...songAttributes,
+            ...songObj,
+            artist: songAttributes.artist,
+            album: songAttributes.album,
+            artist_info: songObj.artist,
+            album_info: songObj.album,
             artist_id: song.artist._id.toString() || '',
             album_id: song.album._id.toString() || '',
             song_semantic: `${songAttributes.artist} ${songAttributes.album} (track ${songAttributes.track_number}) ${songAttributes.title}`,
