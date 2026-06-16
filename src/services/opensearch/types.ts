@@ -75,6 +75,38 @@ export const MlModelSearchResponseSchema = z.object({
 
 export type MlModelSearchResponse = z.infer<typeof MlModelSearchResponseSchema>;
 
+// ML Commons Agent Register Response Schema
+export const MlAgentRegisterResponseSchema = z.object({
+  agent_id: z.string(),
+});
+
+export type MlAgentRegisterResponse = z.infer<typeof MlAgentRegisterResponseSchema>;
+
+// ML Commons Agent Search Response Schema
+export const MlAgentSearchResponseSchema = z.object({
+  hits: z.object({
+    total: z.union([
+      z.number(),
+      z.object({
+        value: z.number(),
+        relation: z.string(),
+      }),
+    ]),
+    hits: z.array(
+      z.object({
+        _id: z.string(),
+        _source: z.object({
+          name: z.string(),
+          type: z.string().optional(),
+          description: z.string().optional(),
+        }),
+      }),
+    ),
+  }),
+});
+
+export type MlAgentSearchResponse = z.infer<typeof MlAgentSearchResponseSchema>;
+
 // Song Source document fields in OpenSearch
 export const SongSourceSchema = z.object({
   year: z.string(),

@@ -8,6 +8,8 @@ import {
   MlModelGroupRegisterResponseSchema,
   MlModelGroupSearchResponseSchema,
   MlModelSearchResponseSchema,
+  MlAgentSearchResponseSchema,
+  MlAgentRegisterResponseSchema,
   OpenSearchSearchResponseSchema,
   OpenSearchSearchResponse, OpenSearchArtistSearchResponse, OpenSearchArtistSearchResponseSchema,
   OpenSearchAlbumSearchResponse, OpenSearchAlbumSearchResponseSchema,
@@ -332,6 +334,73 @@ export class OpensearchService {
       });
 
       this.logger.log('Index "songs" created successfully.');
+
+      // 6. Register Data Distribution Agent
+      this.logger.log('Checking for existing DataDistributionTool agent "song_data_distribution_agent"...');
+      let agentId: string | null = null;
+      try {
+        let agentSearchRes;
+        try {
+          agentSearchRes = await this.client.transport.request({
+            method: 'POST',
+            path: '/_plugins/_ml/agents/_search',
+            body: {
+              size: 1000,
+              query: {
+                term: {
+                  'name.keyword': 'song_data_distribution_agent',
+                },
+              },
+            },
+          });
+        } catch (searchError) {
+          const err = searchError as Error & { meta?: { statusCode?: number } };
+          if (err.meta?.statusCode === 404 || err.message.includes('index_not_found_exception')) {
+            this.logger.log('ML agent index not found. Assuming agent does not exist.');
+          } else {
+            throw searchError;
+          }
+        }
+
+        if (agentSearchRes) {
+          const parsedAgentSearch = MlAgentSearchResponseSchema.safeParse(agentSearchRes.body);
+          if (parsedAgentSearch.success && parsedAgentSearch.data.hits.hits.length > 0) {
+            agentId = parsedAgentSearch.data.hits.hits[0]._id;
+            this.logger.log(`Using existing DataDistributionTool agent: ${agentId}`);
+          }
+        }
+
+        if (!agentId) {
+          this.logger.log('Agent not found. Registering "song_data_distribution_agent"...');
+          const registerAgentRes = await this.client.transport.request({
+            method: 'POST',
+            path: '/_plugins/_ml/agents/_register',
+            body: {
+              name: 'song_data_distribution_agent',
+              type: 'flow',
+              description: 'Agent for the DataDistributionTool for songs index',
+              tools: [
+                {
+                  type: 'DataDistributionTool',
+                  parameters: {},
+                },
+              ],
+            },
+          });
+
+          const parsedRegisterAgent = MlAgentRegisterResponseSchema.safeParse(registerAgentRes.body);
+          if (!parsedRegisterAgent.success) {
+            this.logger.error('Failed to register agent: schema mismatch', parsedRegisterAgent.error);
+          } else {
+            agentId = parsedRegisterAgent.data.agent_id;
+            this.logger.log(`Registered new DataDistributionTool agent: ${agentId}`);
+          }
+        }
+      } catch (agentError) {
+        const err = agentError as Error;
+        this.logger.error(`Failed to handle agent registration: ${err.message}`);
+      }
+
       return true;
     } catch (error) {
       const err = error as Error;
@@ -386,6 +455,48 @@ export class OpensearchService {
           const err = undeployErr as Error;
           this.logger.warn(`Failed to undeploy model: ${err.message}`);
         }
+      }
+
+      // Delete DataDistributionTool agent if found
+      this.logger.log('Searching for DataDistributionTool agent to delete...');
+      try {
+        let agentSearchRes;
+        try {
+          agentSearchRes = await this.client.transport.request({
+            method: 'POST',
+            path: '/_plugins/_ml/agents/_search',
+            body: {
+              size: 1000,
+              query: {
+                term: {
+                  'name.keyword': 'song_data_distribution_agent',
+                },
+              },
+            },
+          });
+        } catch (searchError) {
+          const err = searchError as Error & { meta?: { statusCode?: number } };
+          if (err.meta?.statusCode === 404 || err.message.includes('index_not_found_exception')) {
+            this.logger.log('ML agent index not found. Nothing to delete.');
+          } else {
+            throw searchError;
+          }
+        }
+
+        if (agentSearchRes) {
+          const parsedAgentSearch = MlAgentSearchResponseSchema.safeParse(agentSearchRes.body);
+          if (parsedAgentSearch.success && parsedAgentSearch.data.hits.hits.length > 0) {
+            const agentId = parsedAgentSearch.data.hits.hits[0]._id;
+            await this.client.transport.request({
+              method: 'DELETE',
+              path: `/_plugins/_ml/agents/${agentId}`,
+            });
+            this.logger.log(`Agent ${agentId} deleted successfully.`);
+          }
+        }
+      } catch (agentErr) {
+        const err = agentErr as Error;
+        this.logger.warn(`Failed to delete agent: ${err.message}`);
       }
     } catch (error) {
       const err = error as Error;
