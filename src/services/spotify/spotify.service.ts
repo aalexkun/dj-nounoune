@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import SpotifyWebApi from 'spotify-web-api-node';
+import * as fs from 'fs';
+import * as path from 'path';
 import { SpotifyAuthUtil } from './spotify-auth.util';
 
 @Injectable()
@@ -15,8 +17,6 @@ export class SpotifyService implements OnModuleInit {
     const clientId = this.configService.get<string>('SPOTIFY_CLIENT_ID');
     const clientSecret = this.configService.get<string>('SPOTIFY_CLIENT_SECRET');
     const redirectUri = this.configService.get<string>('SPOTIFY_REDIRECT_URL');
-    const accessToken = this.configService.get<string>('SPOTIFY_ACCESS_TOKEN');
-    const refreshToken = this.configService.get<string>('SPOTIFY_REFRESH_TOKEN');
 
     this.spotifyApi = new SpotifyWebApi({
       clientId,
@@ -24,11 +24,22 @@ export class SpotifyService implements OnModuleInit {
       redirectUri,
     });
 
-    if (accessToken) {
-      this.spotifyApi.setAccessToken(accessToken);
-    }
-    if (refreshToken) {
-      this.spotifyApi.setRefreshToken(refreshToken);
+    const sessionPath = path.join(process.cwd(), '.spotify-session.json');
+    if (fs.existsSync(sessionPath)) {
+      try {
+        const data = fs.readFileSync(sessionPath, 'utf8');
+        const session = JSON.parse(data);
+        if (session.accessToken) {
+          this.spotifyApi.setAccessToken(session.accessToken);
+        }
+        if (session.refreshToken) {
+          this.spotifyApi.setRefreshToken(session.refreshToken);
+        }
+      } catch (error) {
+        this.logger.error(`Error loading Spotify session: ${error}`);
+      }
+    } else {
+      this.logger.warn('Spotify session data (.spotify-session.json) is missing. Please authenticate first by running the auth CLI command.');
     }
 
     this.auth = new SpotifyAuthUtil(this.spotifyApi, this.configService);

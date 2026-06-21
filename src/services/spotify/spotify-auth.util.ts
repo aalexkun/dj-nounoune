@@ -1,6 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import SpotifyWebApi from 'spotify-web-api-node';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class SpotifyAuthUtil {
   private readonly logger = new Logger(SpotifyAuthUtil.name);
@@ -30,7 +32,12 @@ export class SpotifyAuthUtil {
       const data = await this.spotifyApi.authorizationCodeGrant(code);
       const { access_token: accessToken, refresh_token: refreshToken } = data.body;
 
-      this.logger.log(`\nSuccess! Add these to your .env file:\nSPOTIFY_ACCESS_TOKEN=${accessToken}\nSPOTIFY_REFRESH_TOKEN=${refreshToken}`);
+      const sessionPath = path.join(process.cwd(), '.spotify-session.json');
+      fs.writeFileSync(sessionPath, JSON.stringify({ accessToken, refreshToken }, null, 2), 'utf8');
+
+      this.logger.log(
+        `\nSuccess! Authenticated with Spotify. Session saved to .spotify-session.json`,
+      );
 
       return { accessToken, refreshToken };
     } catch (error) {
