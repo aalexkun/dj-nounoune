@@ -33,6 +33,8 @@ import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcomm
 import { DedupCommand } from './music/dedup.command';
 import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
+import { ProfilerCommand } from './profiler/profiler.command';
+import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -76,5 +78,8 @@ export const CommandProviders = [
   OpensearchCreateIndexSubCommand,
   OpensearchPruneIndexSubCommand,
   OpensearchIndexSongsSubCommand,
+
+  ProfilerCommand,
+  ProfilerRunSubCommand,
 ];
 

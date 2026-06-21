@@ -41,6 +41,10 @@ export class OpensearchService {
   private readonly client: Client | null = null;
   private modelId: string | null = null;
 
+  public getClient(): Client | null {
+    return this.client;
+  }
+
 
 
 

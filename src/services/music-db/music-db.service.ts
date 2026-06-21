@@ -227,6 +227,13 @@ export class MusicDbService {
     }
   }
 
+  getSchema(collection: string): any {
+    if (collection === 'artists') return this.artistModel.schema;
+    if (collection === 'albums') return this.albumModel.schema;
+    if (collection === 'songs') return this.songModel.schema;
+    throw new Error('Unsupported collection');
+  }
+
   private getSourceId(song: Song, type: SourceType): string | null {
     return song?.source?.find((m) => m.name === type)?.sourceId || null;
   }

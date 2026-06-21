@@ -33,6 +33,7 @@ import { OpensearchModule } from './services/opensearch/opensearch.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
 import { PlaylogModule } from './services/playlog/playlog.module';
+import { ProfilerService } from './services/profiler/profiler.service';
 
 const imports: Array<any> = [
   // Load global env
@@ -88,6 +89,7 @@ if (process.env.IS_CLI !== 'true') {
     AuthService,
     ApiAuthGuard,
     SessionService,
+    ProfilerService,
   ],
 })
 export class AppModule {}

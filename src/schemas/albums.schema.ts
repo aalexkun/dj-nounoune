@@ -47,7 +47,15 @@ export class Album {
   @Prop({ type: [String], description: 'Languages associated with the album' })
   languages: string[];
 
-  @Prop({ type: Object, description: 'Album artwork image URLs in various sizes' })
+  @Prop({
+    type: {
+      small: { type: String },
+      thumbnail: { type: String },
+      large: { type: String },
+      back: { type: String },
+    },
+    description: 'Album artwork image URLs in various sizes',
+  })
   image: {
     small: string;
     thumbnail: string;
