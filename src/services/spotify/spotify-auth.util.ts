@@ -30,10 +30,11 @@ export class SpotifyAuthUtil {
 
     try {
       const data = await this.spotifyApi.authorizationCodeGrant(code);
-      const { access_token: accessToken, refresh_token: refreshToken } = data.body;
+      const { access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn } = data.body;
 
+      const expirationTime = Date.now() + expiresIn * 1000;
       const sessionPath = path.join(process.cwd(), '.spotify-session.json');
-      fs.writeFileSync(sessionPath, JSON.stringify({ accessToken, refreshToken }, null, 2), 'utf8');
+      fs.writeFileSync(sessionPath, JSON.stringify({ accessToken, refreshToken, expirationTime }, null, 2), 'utf8');
 
       this.logger.log(
         `\nSuccess! Authenticated with Spotify. Session saved to .spotify-session.json`,

@@ -1,112 +1,70 @@
-import { DuplicateSongCheck } from './opensearch.service';
 import { SearchQuery } from './query.interface';
-
-
 
 export class SearchSongQuery implements SearchQuery {
   constructor(
-    private songAttributes: DuplicateSongCheck,
-    private modelId: string,
+    private title: string,
+    private album: string,
+    private artist: string,
+    private album_id?: string | null,
+    private artist_id?: string | null,
   ) {}
 
-  // fix the return to work with the new query
   getQuery(): Record<string, any> {
+    const mustClauses: any[] = [
+      {
+        multi_match: {
+          query: this.title,
+          fields: ['title.keyword^5', 'title.normalizer', 'title.pinyin', 'title.romaji^2'],
+          type: 'best_fields',
+          operator: 'and',
+          tie_breaker: 0.3,
+        },
+      },
+    ];
 
-    const mustNotClause = this.songAttributes.songId
-      ? [
-          {
-            term: {
-              _id: this.songAttributes.songId,
-            },
-          },
-        ]
-      : [];
+    if (this.album_id) {
+      mustClauses.push({
+        term: {
+          album_id: this.album_id,
+        },
+      });
+    } else {
+      mustClauses.push({
+        multi_match: {
+          query: this.album,
+          fields: ['album.keyword^5', 'album.normalizer', 'album.pinyin', 'album.romaji^2'],
+          type: 'best_fields',
+          operator: 'and',
+          tie_breaker: 0.3,
+        },
+      });
+    }
+
+    if (this.artist_id) {
+      mustClauses.push({
+        term: {
+          artist_id: this.artist_id,
+        },
+      });
+    } else {
+      mustClauses.push({
+        multi_match: {
+          query: this.artist,
+          fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
+          type: 'best_fields',
+          operator: 'and',
+          tie_breaker: 0.3,
+        },
+      });
+    }
 
     return {
       size: 10,
       query: {
         bool: {
-          must_not: mustNotClause,
-          should: [
-            {
-              bool: {
-                boost: 100,
-                must: [
-                  {
-                    multi_match: {
-                      query: `"""${this.songAttributes.artist}"""`,
-                      fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
-                      type: 'best_fields',
-                      operator: 'and',
-                      tie_breaker: 0.3,
-                    },
-                  },
-                  {
-                    multi_match: {
-                      query: `"""${this.songAttributes.album}"""`,
-                      fields: ['album.keyword^5', 'album.normalizer', 'album.pinyin', 'album.romaji^2'],
-                      type: 'best_fields',
-                      operator: 'and',
-                      tie_breaker: 0.3,
-                    },
-                  },
-                  {
-                    bool: {
-                      must: [
-                        {
-                          multi_match: {
-                            query: `"""${this.songAttributes.title}"""`,
-                            fields: ['title.keyword^5', 'title.normalizer', 'title.pinyin', 'title.romaji^2'],
-                            type: 'best_fields',
-                            operator: 'and',
-                            tie_breaker: 0.3,
-                          },
-                        },
-                        {
-                          bool: {
-                            minimum_should_match: 1,
-                            should: [
-                              {
-                                term: {
-                                  track_number: this.songAttributes.track_number,
-                                },
-                              },
-                              {
-                                term: {
-                                  track_number: 0,
-                                },
-                              },
-                              {
-                                bool: {
-                                  must_not: {
-                                    exists: {
-                                      field: 'track_number',
-                                    },
-                                  },
-                                },
-                              },
-                            ],
-                          },
-                        },
-                      ],
-                    },
-                  },
-                ],
-              },
-            },
-            {
-              neural: {
-                song_vector: {
-                  query_text: `"""${this.songAttributes.artist} ${this.songAttributes.album} (track ${this.songAttributes.track_number}) ${this.songAttributes.title}"""`,
-                  model_id: this.modelId,
-                  k: 5,
-                },
-              },
-            },
-          ],
+          must: mustClauses,
         },
       },
     };
   }
 }
-

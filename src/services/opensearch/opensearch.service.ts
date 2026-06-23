@@ -14,6 +14,7 @@ import {
   OpenSearchSearchResponse, OpenSearchArtistSearchResponse, OpenSearchArtistSearchResponseSchema,
   OpenSearchAlbumSearchResponse, OpenSearchAlbumSearchResponseSchema,
 } from './types';
+import { SearchDeduplicationSongQuery } from './search-deduplication-song.query';
 import { SearchSongQuery } from './search-song.query';
 import { ArtistSearchQuery } from './search-artist.query';
 import { AlbumSearchQuery } from './search-album.query';
@@ -584,7 +585,7 @@ export class OpensearchService {
       this.logger.warn('Cannot query neural search duplicates: No deployed model found.');
       return null;
     }
-    const query = new SearchSongQuery(songAttributes, modelId);
+    const query = new SearchDeduplicationSongQuery(songAttributes, modelId);
 
     try {
       const response = await this.client.search({
@@ -603,6 +604,32 @@ export class OpensearchService {
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Error querying OpenSearch Neural Search: ${err.message}`);
+      return null;
+    }
+  }
+
+  async fuzzySearchSong(title: string,album:string, artist:string,albumId?: string | null , artistId?: string | null): Promise<OpenSearchSearchResponse | null> {
+    if (!this.client) return null;
+
+    const query = new SearchSongQuery(title, album, artist,  albumId, artistId);
+
+    try {
+      const response = await this.client.search({
+        index: 'songs',
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      } else {
+        this.logger.error('OpenSearch song search response validation failed', parsedResponse.error);
+        return null;
+      }
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Error querying OpenSearch Song Search: ${err.message}`);
       return null;
     }
   }
