@@ -41,8 +41,10 @@ export class QueryDatabaseHandler implements ToolHandler {
 
     let sources: PlaySource[] = [];
     for (const src of castedProperty) {
-      if ((typeof src === 'object' && typeof src.sourceId === 'string' && src.name === 'qobuz') || src.name === 'file') {
+      if ((typeof src === 'object' && typeof src.sourceId === 'string' && src.name === 'qobuz') || src.name === 'file' || src.name === 'spotify') {
         sources.push(src as PlaySource);
+      } else {
+        this.logger.warn(`Source ${JSON.stringify(src)} is not supported. Skipping.`);
       }
     }
 
