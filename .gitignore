@@ -43,6 +43,7 @@ lerna-debug.log*
 .env.local
 
 .qobuz-session.json
+.spotify-session.json
 
 # temp directory
 .temp

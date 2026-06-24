@@ -1,15 +1,32 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
-@Controller('callback')
+
+
+
+@Controller('auth')
 export class AuthController {
-  @Get()
-  handleCallback(@Query('code_autorisation') codeAutorisation: string, @Res() res: Response) {
+  
+  @Get('/spotify/callback')
+  handleSpotifyCallback(@Query('code') code: string, @Res() res: Response) {
+    if (!code) {
+      return res.status(400).send('No code provided');
+    }
+
+    res.send(this.renderAuthCodePage(code));
+  }
+  
+  @Get('/qobuz/callback')
+  handleQobuzCallback(@Query('code_autorisation') codeAutorisation: string, @Res() res: Response) {
     if (!codeAutorisation) {
       return res.status(400).send('No code_autorisation provided');
     }
 
-    const html = `
+    res.send(this.renderAuthCodePage(codeAutorisation));
+  }
+
+  private renderAuthCodePage(authCode: string): string {
+    return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -99,7 +116,7 @@ export class AuthController {
           <div class="discount-box">
               <h1>Your Authorization Code</h1>
               <div class="code-container" onclick="copyCode()">
-                  <span class="code" id="authCode">${codeAutorisation}</span>
+                  <span class="code" id="authCode">${authCode}</span>
                   <svg class="copy-icon" viewBox="0 0 24 24">
                       <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
                   </svg>
@@ -123,7 +140,5 @@ export class AuthController {
       </body>
       </html>
     `;
-
-    res.send(html);
   }
 }

@@ -31,7 +31,7 @@ export type TechnicalInfo = {
 
 export type PlaySource = {
   sourceId: string;
-  name: 'qobuz' | 'file';
+  name: 'qobuz' | 'file' | 'spotify';
   technical_info?: TechnicalInfo;
 };
 
@@ -57,7 +57,11 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
     typeof record.id === 'string' &&
     Array.isArray(record.source) &&
     record.source.every(
-      (src: any) => typeof src === 'object' && src !== null && typeof src.sourceId === 'string' && (src.name === 'qobuz' || src.name === 'file'),
+      (src: any) =>
+        typeof src === 'object' &&
+        src !== null &&
+        typeof src.sourceId === 'string' &&
+        (src.name === 'qobuz' || src.name === 'file' || src.name === 'spotify'),
     ) &&
     typeof record.title === 'string' &&
     typeof record.artist === 'string' &&

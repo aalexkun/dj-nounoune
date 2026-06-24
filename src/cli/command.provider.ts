@@ -17,6 +17,8 @@ import { MigrateSongSourceCommand } from './music/migrate-song-source.command';
 import { PromptusChatSubcommand } from './promptus/chat.subcommand';
 import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
+import { SpotifyListUserLibrarySubCommand } from './spotify/list-user-library.subcommand';
+import { SpotifyImportLikedSongsSubCommand } from './spotify/import-liked-songs.subcommand';
 import { QobuzCommand } from './qobuz/qobuz.command';
 import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
@@ -33,6 +35,8 @@ import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcomm
 import { DedupCommand } from './music/dedup.command';
 import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
+import { ProfilerCommand } from './profiler/profiler.command';
+import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -60,6 +64,8 @@ export const CommandProviders = [
 
   SpotifyCommand,
   SpotifyAuthSubCommand,
+  SpotifyListUserLibrarySubCommand,
+  SpotifyImportLikedSongsSubCommand,
 
   QobuzCommand,
   QobuzFavoritesSubCommand,
@@ -76,5 +82,8 @@ export const CommandProviders = [
   OpensearchCreateIndexSubCommand,
   OpensearchPruneIndexSubCommand,
   OpensearchIndexSongsSubCommand,
+
+  ProfilerCommand,
+  ProfilerRunSubCommand,
 ];
 
