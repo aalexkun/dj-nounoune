@@ -6,6 +6,7 @@ import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { ClearMpdRequest } from '../../../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../../../mpd-client/requests/PlayMpdRequest';
+import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdRequest';
 import { ConfigService } from '@nestjs/config';
 
 interface PlayMusicArgs {
@@ -53,6 +54,14 @@ export class PlayMusicHandler implements ToolHandler {
     return `${qobuzProxyUrl}/qobuz/track/version/1/trackId/`;
   }
 
+  private getSpotifyProxyUrl(): string {
+    const spotifyProxyUrl = this.configService.get<string>('SPOTIFY_PROXY_AUDIO');
+    if (!spotifyProxyUrl) {
+      throw new Error('SPOTIFY_PROXY_AUDIO is not defined in the environment variables');
+    }
+    return spotifyProxyUrl;
+  }
+
   private getBestSource(sources: PlaySource[]): PlaySource | undefined {
     if (!sources || sources.length === 0) {
       return undefined;
@@ -68,6 +77,7 @@ export class PlayMusicHandler implements ToolHandler {
       }
       // Default source if there is no technical info is qobuz
       if (source.name === 'qobuz') score += 10;
+      if (source.name === 'spotify') score += 3;
       return score;
     };
 
@@ -106,10 +116,29 @@ export class PlayMusicHandler implements ToolHandler {
       this.logger.debug(`Selected best source from ${song.source.length} option(s) for song: ${song.title || 'Unknown'}`);
 
 
-      const uri = bestSource.name === 'qobuz' ? `${this.getQobuzProxyUrl()}${bestSource.sourceId}` : bestSource.sourceId;
+      let uri: string;
+      if (bestSource.name === 'qobuz') {
+        uri = `${this.getQobuzProxyUrl()}${bestSource.sourceId}`;
+      } else if (bestSource.name === 'spotify') {
+        uri = `${this.getSpotifyProxyUrl()}/spotify?uri=spotify:track:${bestSource.sourceId}`;
+      } else {
+        uri = bestSource.sourceId;
+      }
 
       try {
-        await this.mpdClientService.send(new AddMpdRequest(uri));
+        const addResponse = await this.mpdClientService.send(new AddMpdRequest(uri));
+        const songId = addResponse.songId;
+        if (songId) {
+          if (song.artist) {
+            await this.mpdClientService.send(new AddTagIdMpdRequest(songId, 'Artist', song.artist));
+          }
+          if (song.title) {
+            await this.mpdClientService.send(new AddTagIdMpdRequest(songId, 'Title', song.title));
+          }
+          if (song.album) {
+            await this.mpdClientService.send(new AddTagIdMpdRequest(songId, 'Album', song.album));
+          }
+        }
         songsQueued.push(`${song.artist} - ${song.album} - ${song.title}`);
       } catch (e) {
         this.logger.debug(`Could not added to playlist: ${song.title} - ${song.artist} - ${song.album}`);

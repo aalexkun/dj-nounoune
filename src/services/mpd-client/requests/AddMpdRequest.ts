@@ -7,7 +7,7 @@ export class AddMpdRequest extends MpdRequest<AddMpdResponse> {
   }
 
   get command(): string {
-    return 'add';
+    return 'addid';
   }
 
   get args(): string[] {
