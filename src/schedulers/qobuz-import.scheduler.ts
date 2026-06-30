@@ -19,7 +19,7 @@ export class QobuzImportScheduler {
     }
   }
 
-  @Cron('*/48 * * * *')
+  @Cron('*/20 * * * *')
   async handleFrequentCron() {
     this.logger.log('Starting frequent Qobuz favorite albums import (last 15)...');
     try {
