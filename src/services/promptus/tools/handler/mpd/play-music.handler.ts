@@ -59,7 +59,7 @@ export class PlayMusicHandler implements ToolHandler {
     if (!spotifyProxyUrl) {
       throw new Error('SPOTIFY_PROXY_AUDIO is not defined in the environment variables');
     }
-    return spotifyProxyUrl;
+    return spotifyProxyUrl + '/spotify?uri=spotify:track:';
   }
 
   private getBestSource(sources: PlaySource[]): PlaySource | undefined {
@@ -120,7 +120,7 @@ export class PlayMusicHandler implements ToolHandler {
       if (bestSource.name === 'qobuz') {
         uri = `${this.getQobuzProxyUrl()}${bestSource.sourceId}`;
       } else if (bestSource.name === 'spotify') {
-        uri = `${this.getSpotifyProxyUrl()}/spotify?uri=spotify:track:${bestSource.sourceId}`;
+        uri = `${this.getSpotifyProxyUrl()}${bestSource.sourceId}`;
       } else {
         uri = bestSource.sourceId;
       }
