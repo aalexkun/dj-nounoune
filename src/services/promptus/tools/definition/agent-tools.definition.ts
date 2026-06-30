@@ -51,4 +51,20 @@ export class AgentToolsDefinition {
       required: ['natural_language_request'],
     },
   } as const;
+
+  public static readonly discJockeyBrowseDatabase: ToolDeclaration = {
+    name: 'disc_jockey_browse_database',
+    description:
+      'Use this tool to browse the music database for artists, albums, or songs based on a natural language request. This tool returns a formatted list for display only and does not start playback. Use this when the user asks "what artists are in the db?", "show me albums by..." or similar requests.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        natural_language_request: {
+          type: Type.STRING,
+          description: "The user's exact natural language intent for browsing the database.",
+        },
+      },
+      required: ['natural_language_request'],
+    },
+  } as const;
 }

@@ -15,6 +15,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     MpdToolsDefinition.stopMpdCommand,
     AgentToolsDefinition.discJockeyWhatIsPlaying,
     AgentToolsDefinition.discJockeyCreatePlaylist,
+    AgentToolsDefinition.discJockeyBrowseDatabase,
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;

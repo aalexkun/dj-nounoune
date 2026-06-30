@@ -13,6 +13,8 @@ import { FindBestArrangementRequest } from './request/find-best-arrangement.requ
 import { FindBestArrangementResponse } from './response/find-best-arrangement.response';
 import { PostFilteringRequest } from './request/post-filtering.request';
 import { PostFilteringResponse } from './response/post-filtering.response';
+import { BrowseDatabaseRequest } from './request/browse-database.request';
+import { BrowseDatabaseResponse } from './response/browse-database.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 
@@ -121,6 +123,29 @@ export class DiscJockeyAgent extends Agent {
     return await this.generate(djRequest, sessionId);
   }
 
+  async browseDatabase(request: string, sessionId?: string) {
+    const djRequest = new BrowseDatabaseRequest(request);
+    const response = await this.generate(djRequest, sessionId);
+
+    if (sessionId && response.description) {
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(response.description, sessionId));
+    }
+
+    if (sessionId && response.items.length > 0) {
+      const itemsMsg = response.items
+        .map((item, index) => {
+          let line = `${index + 1} - [${item.artist}]`;
+          if (item.title) line += ` ${item.title}`;
+          if (item.album) line += ` (${item.album})`;
+          return line;
+        })
+        .join('\n');
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(itemsMsg, sessionId));
+    }
+
+    return response;
+  }
+
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
     if (request instanceof CreatePlaylistRequest) {
       return new CreatePlaylistResponse(response) as ReqType;
@@ -136,6 +161,9 @@ export class DiscJockeyAgent extends Agent {
     }
     if (request instanceof PostFilteringRequest) {
       return new PostFilteringResponse(response) as ReqType;
+    }
+    if (request instanceof BrowseDatabaseRequest) {
+      return new BrowseDatabaseResponse(response) as ReqType;
     }
 
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);
