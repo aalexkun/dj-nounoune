@@ -9,7 +9,7 @@ import { TechnicalInfo } from '../../schemas/technical-info.schema';
 
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { FileService } from '../../services/file/file.service';
-import { getInclusivePaginationRanges } from '../../utils/array.utils';
+import { chunkArray, getInclusivePaginationRanges } from '../../utils/array.utils';
 import { PromptusService } from '../../services/promptus/promptus.service';
 import { EnrichPromptusRequest } from '../../services/promptus/request/enrich-promptus.request';
 import { enrichPromptusCachePrompt } from '../../services/promptus/request/enrich-promptus.cache.prompt';
@@ -23,6 +23,7 @@ export const AiEnrichedSongSchema = z.object({
   country: z.string().optional(),
   emotion: z.string().optional(),
   pace: z.string().optional(),
+  year: z.string().optional(),
 });
 
 export type AiEnrichedSong = z.infer<typeof AiEnrichedSongSchema>;
@@ -146,10 +147,11 @@ export class EnrichCommand extends CommandRunner {
               if (aiSong.country) songToUpdate.country = aiSong.country;
               if (aiSong.emotion) songToUpdate.emotion = aiSong.emotion;
               if (aiSong.pace) songToUpdate.pace = aiSong.pace;
+              if (aiSong.year) songToUpdate.year = aiSong.year;
 
               try {
                 await this.musicDbService.upsertSong(songToUpdate);
-                await this.musicDbService.updateEnrichStatus(songId, 'ai', 'completed');
+                await this.musicDbService.updateEnrichStatus(songId, 'ai', 'completed', undefined, aiSong);
               } catch (e) {
                 const errorMessage = e instanceof Error ? e.message : String(e);
                 await this.musicDbService.updateEnrichStatus(songId, 'ai', 'notApplicable', errorMessage);
@@ -239,7 +241,7 @@ export class EnrichCommand extends CommandRunner {
   private async updateAi(populatedSong: PopulatedSong[], cache: CachedContent): Promise<AiEnrichedSong[]> {
     const indexMap = new Map<string, string>();
 
-    const songsForPromptus: Partial<ParsedPsvRow>[] = populatedSong.map((song, index) => {
+    const songsToEnrich: Partial<ParsedPsvRow>[] = populatedSong.map((song, index) => {
       const sequentialId = index.toString();
       const originalId = song?._id?._id?.toString() ?? song._id?.toString() ?? '';
       
@@ -256,11 +258,13 @@ export class EnrichCommand extends CommandRunner {
     // Save the file as tmp and cache it for the request
 
     const enrichRequests: EnrichPromptusRequest[] = [];
-    const ranges = getInclusivePaginationRanges(songsForPromptus.length, 100);
+    const batch: EnrichPromptusRequest[] = [];
+    const pageSize = 10;
 
     if (cache) {
-      for (const range of ranges) {
-        const psvData = songsForPromptus.map((song) => `${song._id}|${song.title}|${song.artist}|${song.album}`).join('\n');
+
+      for (const batchToSend of chunkArray(songsToEnrich, pageSize)) {
+        const psvData = batchToSend.map((song) => `${song._id}|${song.title}|${song.artist}|${song.album}`).join('\n');
         const enrichRequest = new EnrichPromptusRequest(psvData);
         enrichRequest.cache = cache;
         enrichRequests.push(enrichRequest);
@@ -270,7 +274,7 @@ export class EnrichCommand extends CommandRunner {
 
       let result: AiEnrichedSong[] = [];
       for (const response of aiResponses) {
-        if (response.results) {
+        if (response?.results) {
           const remapGenre = response.results.map((s) => ({
             _id: indexMap.get(s.id),
             genre: s.genre,
@@ -278,10 +282,13 @@ export class EnrichCommand extends CommandRunner {
             country: s.country,
             emotion: s.emotion,
             pace: s.pace,
+            year: s.year,
           }));
           
           const parsedRemap = z.array(AiEnrichedSongSchema).parse(remapGenre);
           result = [...result, ...parsedRemap];
+        } else {
+          this.logger.error(`Failed to parse AI response: ${JSON.stringify(response)}`);
         }
       }
 

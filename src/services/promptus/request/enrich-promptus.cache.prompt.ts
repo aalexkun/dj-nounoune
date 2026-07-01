@@ -9,7 +9,7 @@ Header: \`id|Title|Artist|Album\`
 
 ### Instructions
 
-1. **Analyse:** For the requested rows, analyse the Artist, Title, and Album to determine the genre, language, country of origin, emotion, and pace.
+1. **Analyse:** For the requested rows, analyse the Artist, Title, and Album to determine the genre, language, country of origin, emotion, pace, and release year.
 2. **Map:** You must map the genre, emotion, and pace STRICTLY to one of the values in the allowed lists below.
 * Use the provided context definitions to choose the most accurate fit.
 * If the exact attribute isn't listed, categorise it using the closest available option.
@@ -17,6 +17,10 @@ Header: \`id|Title|Artist|Album\`
 
 
 3. **Output:** Output strictly valid JSON matching the schema.
+
+### country of origin
+
+You need to differentiate between Taiwan, Honk Kong, and China
 
 ### Allowed Emotion List & Context (Strict)
 

@@ -6,7 +6,7 @@ import { ToolDeclaration } from '../tools/tool.type';
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
   public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
-  private readonly _model = 'gemini-3-flash-preview';
+  private readonly _model = 'gemini-3.1-flash-lite'; // 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
   private readonly _context = ''; // This will be cached prior to the request
   private readonly _query: string;
@@ -45,8 +45,12 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
             type: 'STRING',
             description: 'the pace of the song',
           },
+          year: {
+            type: 'STRING',
+            description: 'the release year of the song',
+          },
         },
-        required: ['id', 'genre', 'language', 'country', 'emotion', 'pace'],
+        required: ['id', 'genre', 'language', 'country', 'emotion', 'pace', 'year'],
       },
     },
   };

@@ -8,6 +8,7 @@ export interface EnrichResponse {
   country: string;
   emotion: string;
   pace: string;
+  year?: string;
 }
 
 export class EnrichPromptusResponse extends PromptusResponse {
