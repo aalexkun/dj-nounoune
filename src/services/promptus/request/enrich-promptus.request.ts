@@ -1,7 +1,6 @@
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.request';
 import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
-import { enrichPromptusPrompt } from './enrich-promptus.prompt';
 import { ToolDeclaration } from '../tools/tool.type';
 
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
@@ -9,7 +8,7 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
   public config: Partial<GenerateContentConfig>;
   private readonly _model = 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
-  private readonly _context = enrichPromptusPrompt;
+  private readonly _context = ''; // This will be cached prior to the request
   private readonly _query: string;
   public cache: CachedContent;
   public history: Content[] = [];
@@ -18,7 +17,7 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
     responseMimeType: 'application/json',
     responseSchema: {
       type: 'ARRAY',
-      description: 'A list of if and genres.',
+      description: 'A list of song ID and enriched metadata.',
       items: {
         type: 'OBJECT',
         properties: {
@@ -30,8 +29,24 @@ export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusRespons
             type: 'STRING',
             description: 'the genre of the song',
           },
+          language: {
+            type: 'STRING',
+            description: 'the language of the song',
+          },
+          country: {
+            type: 'STRING',
+            description: 'the country of origin',
+          },
+          emotion: {
+            type: 'STRING',
+            description: 'the emotion of the song',
+          },
+          pace: {
+            type: 'STRING',
+            description: 'the pace of the song',
+          },
         },
-        required: ['id', 'genre'],
+        required: ['id', 'genre', 'language', 'country', 'emotion', 'pace'],
       },
     },
   };

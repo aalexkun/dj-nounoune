@@ -15,6 +15,7 @@ import { FileService } from './services/file/file.service';
 import { ChatGateway } from './gateway/chat.gateway';
 import { Chat, ChatSchema } from './schemas/chat.schema';
 import { Deduplication, DeduplicationSchema } from './schemas/deduplication.schema';
+import { Enrich, EnrichSchema } from './schemas/enrich.schema';
 import { ChatService } from './services/chat/chat.service';
 import { ChatController } from './controller/chat.controller';
 import { AuthController } from './controller/auth.controller';
@@ -56,6 +57,7 @@ const imports: Array<any> = [
     { name: Connection.name, schema: ConnectionSchema },
     { name: Chat.name, schema: ChatSchema },
     { name: Deduplication.name, schema: DeduplicationSchema },
+    { name: Enrich.name, schema: EnrichSchema },
   ]),
   MpdClientModule,
   SpotifyModule,

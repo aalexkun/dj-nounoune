@@ -4,15 +4,19 @@ import { PromptusResponse } from '../promptus.response';
 export interface EnrichResponse {
   id: string;
   genre: string;
+  language: string;
+  country: string;
+  emotion: string;
+  pace: string;
 }
 
 export class EnrichPromptusResponse extends PromptusResponse {
-  genre: EnrichResponse[];
+  results: EnrichResponse[];
 
   constructor(raw: GenerateContentResponse) {
     super(raw);
     if (raw?.text) {
-      this.genre = JSON.parse(raw.text) as EnrichResponse[];
+      this.results = JSON.parse(raw.text) as EnrichResponse[];
     }
   }
 }

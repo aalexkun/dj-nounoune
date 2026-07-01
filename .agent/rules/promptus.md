@@ -106,3 +106,43 @@ An advanced pattern used in this project is registering an **Agent as a Tool**. 
     2.  In the `execute` method, call the sub-agent's specialized method.
     3.  Register this handler in `ToolsService.initialiseAgent`.
     4.  Add the tool definition to the top-level request (e.g., `ChatPromptusRequest.tools`).
+
+---
+
+## 6. Context Caching (Google GenAI)
+
+For large amounts of static context (e.g., a large song database or extensive documentation), use the Context Caching mechanism to reduce latency and token costs.
+
+### Implementation Pattern
+
+1.  **Prepare Data**: Convert your large dataset into a format suitable for the LLM (e.g., PSV or JSON).
+2.  **Save & Upload**: Save the data to a file and upload it using `promptusService.cacheHandler.cache`.
+3.  **Create Cache**: The `cache` method uploads the file and creates a `CachedContent` object associated with a specific model and system instruction.
+
+```typescript
+// Example implementation in a Command or Service
+const cacheName = 'my-large-context';
+const cacheFile = 'path/to/data.psv';
+const model = 'gemini-3-flash-preview'; // Cache must match the model
+const systemInstruction = 'Instructions on how to process the data';
+
+const cache = await this.promptusService.cacheHandler.cache(
+  cacheFile, 
+  cacheName, 
+  'text/plain', 
+  model, 
+  systemInstruction
+);
+
+if (cache) {
+  const request = new MyPromptusRequest('Query about the cached data');
+  request.cache = cache; // Assign the cache to the request
+  const response = await this.promptusService.generate(request);
+}
+```
+
+### Critical Constraints
+1.  **Model Match**: The model specified when creating the cache MUST match the model used in the `PromptusRequest`.
+2.  **System Instruction Match**: The `systemInstruction` used to create the cache will be used for all requests using that cache.
+3.  **No Direct Instruction**: When `request.cache` is set, `PromptusRequest` will automatically use `cachedContent` and OMIT the `systemInstruction` from the request parameters (as it is already baked into the cache).
+4.  **Cache Duration**: Google GenAI caches have a TTL (Time To Live). The `CacheHandler` implementation currently checks for existing caches by `displayName`.

@@ -3,8 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
+import { Enrich, EnrichDocument } from '../../schemas/enrich.schema';
 import { Model } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
+import { z } from 'zod';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
 
@@ -12,6 +14,10 @@ export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
   artist: ArtistDocument;
   album: AlbumDocument;
 };
+
+export const PopulatedSongSchema = z.custom<PopulatedSong>((val: any) => {
+  return typeof val === 'object' && val !== null && 'artist' in val && typeof val.artist === 'object' && 'album' in val && typeof val.album === 'object';
+});
 
 export type QobuzLookupResult = {
   artist: string;
@@ -26,11 +32,75 @@ export class MusicDbService {
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
+    @InjectModel(Enrich.name) private enrichModel: Model<EnrichDocument>,
   ) {}
+
+  async syncEnrich(): Promise<void> {
+    await this.songModel.aggregate([
+      {
+        $project: {
+          _id: 1,
+          status: {
+            ai: 'queued',
+            bpm: 'queued',
+            ffprobe: 'queued'
+          },
+          createdAt: '$$NOW',
+          updatedAt: '$$NOW'
+        }
+      },
+      {
+        $merge: {
+          into: this.enrichModel.collection.name,
+          on: '_id',
+          whenMatched: 'keepExisting',
+          whenNotMatched: 'insert'
+        }
+      }
+    ]).exec();
+  }
+
+  async updateEnrichStatus(
+    songId: string,
+    type: 'ai' | 'bpm' | 'ffprobe',
+    status: 'completed' | 'queued' | 'notApplicable',
+    message?: string,
+    response?: any,
+  ): Promise<void> {
+    const update: any = { [`status.${type}`]: status };
+    if (message !== undefined) update.message = message;
+    if (response !== undefined) update.response = response;
+    await this.enrichModel.updateOne(
+      { _id: songId },
+      { $set: update },
+      { upsert: true }
+    );
+  }
+
+  getEnrichCursor(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued', limit?: number) {
+    let query = this.enrichModel.find({ [`status.${type}`]: status });
+    if (limit && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.cursor();
+  }
+
+  async getEnrichItems(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued'): Promise<EnrichDocument[]> {
+    return this.enrichModel.find({ [`status.${type}`]: status }).exec();
+  }
+
+  async getPopulatedSongsByIds(ids: string[]): Promise<PopulatedSong[]> {
+    const results = await this.songModel.find({ _id: { $in: ids } }).populate('artist').populate('album').exec();
+    return z.array(PopulatedSongSchema).parse(results);
+  }
 
   async getSongs(createdAt?: Date): Promise<SongDocument[]> {
     const filter = createdAt ? { createdAt: { $gte: createdAt } } : {};
     return await this.songModel.find(filter).exec();
+  }
+
+  async getSongById(id: string): Promise<SongDocument | null> {
+    return await this.songModel.findById(id).exec();
   }
 
   async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
@@ -195,7 +265,8 @@ export class MusicDbService {
 
   async getAllPopulatedSongs(createdAfter?: Date): Promise<PopulatedSong[]> {
     const filter = createdAfter ? { createdAt: { $gte: createdAfter } } : {};
-    return (await this.songModel.find(filter).populate('artist').populate('album').exec()) as any;
+    const results = await this.songModel.find(filter).populate('artist').populate('album').exec();
+    return z.array(PopulatedSongSchema).parse(results);
   }
 
   async upsertSong(song: SongDocument): Promise<SongDocument> {

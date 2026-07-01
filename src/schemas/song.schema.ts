@@ -40,6 +40,18 @@ export class Song {
   @Prop({ index: true, description: 'High-level category of the track (like genre but with less segmentation)' })
   category: string;
 
+  @Prop({ description: 'Language of the song' })
+  language?: string;
+
+  @Prop({ description: 'Country of origin' })
+  country?: string;
+
+  @Prop({ description: 'Emotion of the song' })
+  emotion?: string;
+
+  @Prop({ description: 'Pace of the song' })
+  pace?: string;
+
   @Prop({ type: [SongSourceSchema], default: [], description: 'List of playback sources where the track is available' })
   source: SongSource[];
 

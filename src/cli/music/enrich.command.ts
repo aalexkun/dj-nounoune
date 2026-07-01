@@ -12,6 +12,20 @@ import { FileService } from '../../services/file/file.service';
 import { getInclusivePaginationRanges } from '../../utils/array.utils';
 import { PromptusService } from '../../services/promptus/promptus.service';
 import { EnrichPromptusRequest } from '../../services/promptus/request/enrich-promptus.request';
+import { enrichPromptusCachePrompt } from '../../services/promptus/request/enrich-promptus.cache.prompt';
+import { CachedContent } from '@google/genai';
+import { z } from 'zod';
+
+export const AiEnrichedSongSchema = z.object({
+  _id: z.string().optional(),
+  genre: z.string().optional(),
+  language: z.string().optional(),
+  country: z.string().optional(),
+  emotion: z.string().optional(),
+  pace: z.string().optional(),
+});
+
+export type AiEnrichedSong = z.infer<typeof AiEnrichedSongSchema>;
 
 interface EnrichCommandOptions {
   ai?: boolean;
@@ -19,6 +33,8 @@ interface EnrichCommandOptions {
   Ffprobe?: boolean;
   bpm?: boolean;
   createdAt?: Date;
+  limit?: number;
+  batch?: number;
 }
 
 @SubCommand({
@@ -27,8 +43,8 @@ interface EnrichCommandOptions {
 })
 export class EnrichCommand extends CommandRunner {
   private readonly logger = new Logger(EnrichCommand.name);
-  private readonly cacheName = 'enrich-songs-library-psv';
-  private readonly cacheFile = 'files/enrich-songs-library-psv';
+  private readonly cacheName = 'enrich-instruction';
+
   constructor(
     private shellService: ShellService,
     private musicDbService: MusicDbService,
@@ -41,7 +57,6 @@ export class EnrichCommand extends CommandRunner {
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
     this.logger.log(`Starting enrich command with options: ${JSON.stringify(options)}`);
-    let aiEnrichedSongs: Partial<ParsedPsvRow>[] = [];
 
     if (options.clearCache) {
       this.logger.log('Clearing cache requested...');
@@ -50,33 +65,110 @@ export class EnrichCommand extends CommandRunner {
       return;
     }
 
-    // Generate the PSV file for batch processing.
-    if (options.ai) {
-      this.logger.log('Fetching populated songs from MusicDbService for AI enrichment...');
-      const populatedSong = await this.musicDbService.getAllPopulatedSongs(options.createdAt);
-      aiEnrichedSongs = await this.updateAi(populatedSong);
+    // Sync queue
+    this.logger.log('Syncing enrich queue...');
+    await this.musicDbService.syncEnrich();
+
+    if (options.Ffprobe) {
+      this.logger.log(`Processing songs for Ffprobe enrichment...`);
+      const queuedFfprobeCursor = this.musicDbService.getEnrichCursor('ffprobe', 'queued', options.limit);
+      for await (const queueItem of queuedFfprobeCursor) {
+        const songId = queueItem._id;
+        const song = await this.musicDbService.getSongById(songId.toString());
+        if (!song) continue;
+
+        const fileSource = song.source.find((s) => s.name === 'file');
+        if (!fileSource || !fileSource.sourceId) {
+          await this.musicDbService.updateEnrichStatus(songId, 'ffprobe', 'notApplicable', 'no file source');
+          continue;
+        }
+
+        try {
+          const updatedSong = await this.updateFfprobe(song);
+          await this.musicDbService.upsertSong(updatedSong);
+          await this.musicDbService.updateEnrichStatus(songId, 'ffprobe', 'completed');
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          await this.musicDbService.updateEnrichStatus(songId, 'ffprobe', 'notApplicable', errorMessage);
+        }
+      }
     }
 
-    const songs = await this.musicDbService.getSongs(options.createdAt);
-    for (let song of songs) {
-      if (options.Ffprobe) {
-        song = await this.updateFfprobe(song);
+    if (options.bpm) {
+      this.logger.log(`Processing songs for BPM enrichment...`);
+      const queuedBpmCursor = this.musicDbService.getEnrichCursor('bpm', 'queued', options.limit);
+      for await (const queueItem of queuedBpmCursor) {
+        const songId = queueItem._id;
+        const song = await this.musicDbService.getSongById(songId.toString());
+        if (!song) continue;
+
+        const fileSource = song.source.find((s) => s.name === 'file');
+        if (!fileSource || !fileSource.sourceId) {
+          await this.musicDbService.updateEnrichStatus(songId, 'bpm', 'notApplicable', 'no file source');
+          continue;
+        }
+
+        try {
+          const updatedSong = await this.updateBpm(song);
+          await this.musicDbService.upsertSong(updatedSong);
+          await this.musicDbService.updateEnrichStatus(songId, 'bpm', 'completed');
+        } catch (e) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          await this.musicDbService.updateEnrichStatus(songId, 'bpm', 'notApplicable', errorMessage);
+        }
+      }
+    }
+
+    if (options.ai) {
+      this.logger.log(`Processing songs for AI enrichment...`);
+      const queuedAiCursor = this.musicDbService.getEnrichCursor('ai', 'queued', options.limit);
+      let batchIds: string[] = [];
+
+      // Add system instruction caching
+
+      const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
+      await this.fileService.saveFile(this.cacheName, enrichPromptusCachePrompt);
+      const cache = await this.promptusService.cacheHandler.cache(`files/${this.cacheName}`, this.cacheName, 'text/plain', template.model, '');
+
+      const processAiBatch = async (ids: string[]) => {
+        const toEnrichAi = await this.musicDbService.getPopulatedSongsByIds(ids);
+        if (toEnrichAi.length > 0 && cache) {
+          const aiEnrichedSongs = await this.updateAi(toEnrichAi, cache);
+
+          for (const aiSong of aiEnrichedSongs) {
+            const songId = aiSong._id;
+            if (!songId) continue;
+
+            const songToUpdate = await this.musicDbService.getSongById(songId.toString());
+            if (songToUpdate) {
+              if (aiSong.genre) songToUpdate.genre = aiSong.genre;
+              if (aiSong.language) songToUpdate.language = aiSong.language;
+              if (aiSong.country) songToUpdate.country = aiSong.country;
+              if (aiSong.emotion) songToUpdate.emotion = aiSong.emotion;
+              if (aiSong.pace) songToUpdate.pace = aiSong.pace;
+
+              try {
+                await this.musicDbService.upsertSong(songToUpdate);
+                await this.musicDbService.updateEnrichStatus(songId, 'ai', 'completed');
+              } catch (e) {
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                await this.musicDbService.updateEnrichStatus(songId, 'ai', 'notApplicable', errorMessage);
+              }
+            }
+          }
+        }
+      };
+
+      for await (const queueItem of queuedAiCursor) {
+        batchIds.push(queueItem._id.toString());
+        if (batchIds.length >= (options.batch ?? 100)) {
+          await processAiBatch(batchIds);
+          batchIds = [];
+        }
       }
 
-      if (options.ai) {
-        const aiEnrichedSong = aiEnrichedSongs.find((s) => s._id === song._id.toString());
-        song.genre = aiEnrichedSong?.genre || song.genre;
-      }
-
-      if (options.bpm) {
-        song = await this.updateBpm(song);
-      }
-
-      try {
-        const dbResult = await this.musicDbService.upsertSong(song);
-        this.logger.log(`Updated song ${dbResult.title} (${dbResult._id}) ${dbResult.genre}`);
-      } catch (e) {
-        this.logger.error(e);
+      if (batchIds.length > 0) {
+        await processAiBatch(batchIds);
       }
     }
   }
@@ -144,13 +236,15 @@ export class EnrichCommand extends CommandRunner {
     return song;
   }
 
-  private async updateAi(populatedSong: PopulatedSong[]): Promise<Partial<ParsedPsvRow>[]> {
+  private async updateAi(populatedSong: PopulatedSong[], cache: CachedContent): Promise<AiEnrichedSong[]> {
     const indexMap = new Map<string, string>();
 
     const songsForPromptus: Partial<ParsedPsvRow>[] = populatedSong.map((song, index) => {
-      const originalId = song?._id?._id.toString() || '';
-      const sequentialId = (index++).toString();
+      const sequentialId = index.toString();
+      const originalId = song?._id?._id?.toString() ?? song._id?.toString() ?? '';
+      
       indexMap.set(sequentialId, originalId);
+      
       return {
         _id: sequentialId,
         title: song.title,
@@ -161,29 +255,34 @@ export class EnrichCommand extends CommandRunner {
 
     // Save the file as tmp and cache it for the request
 
-    await this.fileService.saveFile(this.cacheName, this.toPsv(songsForPromptus, true));
-
     const enrichRequests: EnrichPromptusRequest[] = [];
-    const ranges = getInclusivePaginationRanges(songsForPromptus.length, 1000);
-    //const ranges = getInclusivePaginationRanges(1204, 200);
-
-    const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
-    const templateInstruction = template.context;
-    const cache = await this.promptusService.cacheHandler.cache(this.cacheFile, this.cacheName, 'text/plain', template.model, templateInstruction);
+    const ranges = getInclusivePaginationRanges(songsForPromptus.length, 100);
 
     if (cache) {
       for (const range of ranges) {
-        const enrichRequest = new EnrichPromptusRequest('Process rows ' + range.join(' to ') + '');
+        const psvData = songsForPromptus.map((song) => `${song._id}|${song.title}|${song.artist}|${song.album}`).join('\n');
+        const enrichRequest = new EnrichPromptusRequest(psvData);
         enrichRequest.cache = cache;
         enrichRequests.push(enrichRequest);
       }
 
-      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests,5);
+      const aiResponses = await this.promptusService.parallelGenerate(enrichRequests, 5);
 
-      let result: Partial<ParsedPsvRow>[] = [];
+      let result: AiEnrichedSong[] = [];
       for (const response of aiResponses) {
-        const remapGenre = response.genre.map((s) => ({ _id: indexMap.get(s.id), genre: s.genre }));
-        result = [...result, ...remapGenre];
+        if (response.results) {
+          const remapGenre = response.results.map((s) => ({
+            _id: indexMap.get(s.id),
+            genre: s.genre,
+            language: s.language,
+            country: s.country,
+            emotion: s.emotion,
+            pace: s.pace,
+          }));
+          
+          const parsedRemap = z.array(AiEnrichedSongSchema).parse(remapGenre);
+          result = [...result, ...parsedRemap];
+        }
       }
 
       return result;
@@ -192,37 +291,6 @@ export class EnrichCommand extends CommandRunner {
     }
   }
 
-
-  /* todo merge with psv service */
-  toPsv(records: Partial<ParsedPsvRow>[], addHeader = false): string {
-    const raw = records.map((record) => this.mapToRaw(record));
-    let psv = '';
-
-    if (addHeader) {
-      psv = Object.keys(raw[0]).join('|') + '\n';
-    }
-
-    psv += raw.map((row) => Object.values(row).join('|')).join('\n');
-
-    return psv;
-  }
-
-  private mapToRaw(song: Partial<ParsedPsvRow>): any {
-    const raw: any = {};
-
-    // Helper to add property only if value is not null/undefined
-    const addIfSet = (key: string, value: any) => {
-      if (value !== null && value !== undefined) {
-        raw[key] = value;
-      }
-    };
-
-    addIfSet('id', song._id);
-    addIfSet('Title', song.title);
-    addIfSet('Artist', song.artist);
-    addIfSet('Album', song.album);
-    return raw;
-  }
 
   @Option({
     flags: ', --ai',
@@ -258,6 +326,23 @@ export class EnrichCommand extends CommandRunner {
   })
   parseClearCache(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '-l, --limit [limit]',
+    description: 'Limit the number of items to process',
+  })
+  parseLimit(limit: string): number {
+    return parseInt(limit, 10);
+  }
+
+  @Option({
+    flags: '-b, --batch [batch]',
+    description: 'Number of items to load before processing',
+    defaultValue: 100,
+  })
+  parseBatch(batch: string): number {
+    return parseInt(batch, 10);
   }
 
   @Option({
