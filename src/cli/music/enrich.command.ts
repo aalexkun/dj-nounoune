@@ -15,6 +15,7 @@ import { EnrichPromptusRequest } from '../../services/promptus/request/enrich-pr
 import { enrichPromptusCachePrompt } from '../../services/promptus/request/enrich-promptus.cache.prompt';
 import { CachedContent } from '@google/genai';
 import { z } from 'zod';
+import { Cron } from '@nestjs/schedule';
 
 export const AiEnrichedSongSchema = z.object({
   _id: z.string().optional(),
@@ -54,6 +55,25 @@ export class EnrichCommand extends CommandRunner {
     private fileService: FileService,
   ) {
     super();
+  }
+
+  // Process 2000 new songs a day
+  @Cron('* 2 * * *')
+  async handleCron() {
+    this.logger.log('Starting internal EnrichCommand execution...');
+
+    try {
+      await this.run([], {
+        ai: true,
+        Ffprobe: false,
+        bpm: false,
+        limit: 2000,
+      });
+
+      this.logger.log('EnrichCommand completed successfully.');
+    } catch (error) {
+      this.logger.error('EnrichCommand execution failed', error);
+    }
   }
 
   async run(inputs: string[], options: EnrichCommandOptions): Promise<void> {
@@ -244,9 +264,9 @@ export class EnrichCommand extends CommandRunner {
     const songsToEnrich: Partial<ParsedPsvRow>[] = populatedSong.map((song, index) => {
       const sequentialId = index.toString();
       const originalId = song?._id?._id?.toString() ?? song._id?.toString() ?? '';
-      
+
       indexMap.set(sequentialId, originalId);
-      
+
       return {
         _id: sequentialId,
         title: song.title,
@@ -262,7 +282,6 @@ export class EnrichCommand extends CommandRunner {
     const pageSize = 10;
 
     if (cache) {
-
       for (const batchToSend of chunkArray(songsToEnrich, pageSize)) {
         const psvData = batchToSend.map((song) => `${song._id}|${song.title}|${song.artist}|${song.album}`).join('\n');
         const enrichRequest = new EnrichPromptusRequest(psvData);
@@ -284,7 +303,7 @@ export class EnrichCommand extends CommandRunner {
             pace: s.pace,
             year: s.year,
           }));
-          
+
           const parsedRemap = z.array(AiEnrichedSongSchema).parse(remapGenre);
           result = [...result, ...parsedRemap];
         } else {
@@ -297,7 +316,6 @@ export class EnrichCommand extends CommandRunner {
       throw new Error('No cache found for enrich songs library promptus');
     }
   }
-
 
   @Option({
     flags: ', --ai',

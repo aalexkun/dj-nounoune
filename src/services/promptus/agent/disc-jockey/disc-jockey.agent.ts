@@ -84,6 +84,13 @@ export class DiscJockeyAgent extends Agent {
     this.initialiseAgent(apiKey, toolService, eventEmitter);
   }
 
+  /**
+   * [Nest] 59588  - 07/01/2026, 7:28:22 PM   ERROR [PromptusService] ApiError: {"error":{"code":403,"message":"CachedContent not found (or permission denied)","status":"PERMISSION_DENIED"}}
+   *     at throwErrorIfNotOK (C:\Users\Alexandre\WebstormProjects\dj-nounoune\node_modules\@google\genai\dist\node\index.cjs:12224:30)
+   *     at processTicksAndRejections (node:internal/process/task_queues:105:5)
+   * @param naturalLanguageRequest
+   * @param sessionId
+   */
   async createPlaylist(naturalLanguageRequest: string, sessionId?: string) {
     // Get the Request Category
     const categorisedInfo = await this.categorisePlaylist(naturalLanguageRequest, sessionId);

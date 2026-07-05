@@ -26,9 +26,10 @@ export class ProfilerRunSubCommand extends CommandRunner {
       if (collection === 'songs') {
         // Common fields in the schema to analyze
         const fieldsToAnalyze = [
-          'genre', 'category', 'year', 'artist', 'album', 'source.name', 'created_by',
+          'genre', 'country', 'year', 'artist', 'album', 'source.name',
           'source.technical_info.encoding', 'source.technical_info.extension',
-          'source.technical_info.is_high_res', 'source.technical_info.is_cd_quality'
+          'source.technical_info.is_high_res', 'source.technical_info.is_cd_quality',
+          'emotion','language','pace'
         ];
         
         console.log('\n--- B. Cardinality and Facet Generation ---');
