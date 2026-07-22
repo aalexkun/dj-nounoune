@@ -3,11 +3,12 @@ import { Injectable } from '@nestjs/common';
 import { PromptusPlaySubcommand } from './play.subcommand';
 import { PromptusSearchCommand } from './search.command';
 import { PromptusChatSubcommand } from './chat.subcommand';
+import { PromptusClearCacheSubcommand } from './clear-cache.subcommand';
 
 @Command({
   name: 'promptus',
   description: 'Ai inquiry commands',
-  subCommands: [PromptusPlaySubcommand, PromptusSearchCommand, PromptusChatSubcommand],
+  subCommands: [PromptusPlaySubcommand, PromptusSearchCommand, PromptusChatSubcommand, PromptusClearCacheSubcommand],
 })
 @Injectable()
 export class PromptusCommand extends CommandRunner {

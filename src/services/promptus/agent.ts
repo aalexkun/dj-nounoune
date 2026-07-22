@@ -1,4 +1,4 @@
-import { ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { CachedContent, ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import { ThrottleHandler } from './handler/throttle.handler';
@@ -7,6 +7,20 @@ import { PromptusRequest } from './promptus.request';
 import { FunctionCallResult } from './tools/tool.type';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatMessageResponseEvent, ChatMessageResponseEventName, ChatStatusResponseEvent, ChatStatusResponseEventName } from '../chat/chat.event';
+import { CacheHandler } from './handler/cache.handler';
+
+type ReadonlyExcept<T, K extends keyof T> = Readonly<Omit<T, K>> & Pick<T, K>;
+type cacheName = string;
+type AgentCache = {
+  name: cacheName;
+  file: `files/${cacheName}`;
+  fileMineType?: string;
+  model: string;
+  systemInstruction: string;
+  cacheContent: CachedContent | undefined;
+};
+
+export type ReadonlyAgentCache = ReadonlyExcept<AgentCache, 'cacheContent'>
 
 export abstract class Agent {
   public readonly name: string;
@@ -16,6 +30,7 @@ export abstract class Agent {
   protected toolService: ToolsService;
   protected eventEmitter: EventEmitter2;
   private throttleHandler: ThrottleHandler;
+  public cacheHandler: CacheHandler;
 
   protected abstract wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType;
 
@@ -24,6 +39,7 @@ export abstract class Agent {
     this.toolService = toolService;
     this.eventEmitter = eventEmitter;
     this.throttleHandler = new ThrottleHandler(this.client);
+    this.cacheHandler = new CacheHandler(this.client);
   }
 
   async generate<ReqType>(request: PromptusRequest<ReqType>, sessionId?: string): Promise<ReqType> {

@@ -10,13 +10,13 @@ export type SongDocument = HydratedDocument<Song>;
   versionKey: '__v',
 })
 export class Song {
-  @Prop({ type: Types.ObjectId, ref: 'Artist', required: true, description: 'Reference to the Artist that performed the song' })
+  @Prop({ type: Types.ObjectId, ref: 'artists', required: true, description: 'Reference to the Artist that performed the song' })
   artist: Types.ObjectId;
 
   @Prop({ description: 'Name of the album artist' })
   album_artist: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Album', required: true, description: 'Reference to the Album the song belongs to' })
+  @Prop({ type: Types.ObjectId, ref: 'albums', required: true, description: 'Reference to the Album the song belongs to' })
   album: Types.ObjectId;
 
   @Prop({ required: true, index: true, description: 'Title of the track' })

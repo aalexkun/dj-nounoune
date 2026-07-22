@@ -17,11 +17,15 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
     }
 
     try {
+
+
+
       const djResult = await this.djAgent.createPlaylist(args.natural_language_request, sessionId);
 
+
       return {
-        description: djResult.description,
-        items: djResult.items,
+        description: 'Songs returned from Disc Jockey agent',
+        items: djResult,
         type: 'playlist',
       };
     } catch (error) {

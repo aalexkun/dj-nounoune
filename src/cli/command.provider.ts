@@ -10,6 +10,7 @@ import { ShuffleMpdSubCommand } from './mpd/shuffle.subcommand';
 import { PlaylistMpdSubCommand } from './mpd/playlist.subcommand';
 import { PromptusPlaySubcommand } from './promptus/play.subcommand';
 import { PromptusCommand } from './promptus/promptus.command';
+import { PromptusClearCacheSubcommand } from './promptus/clear-cache.subcommand';
 import { MusicCommand } from './music/music.command';
 import { EnrichCommand } from './music/enrich.command';
 import { MigrateTechnicalInfoCommand } from './music/migrate-technical-info.command';
@@ -61,6 +62,7 @@ export const CommandProviders = [
   PromptusPlaySubcommand,
   PromptusSearchCommand,
   PromptusChatSubcommand,
+  PromptusClearCacheSubcommand,
 
   SpotifyCommand,
   SpotifyAuthSubCommand,

@@ -36,28 +36,30 @@ export class MusicDbService {
   ) {}
 
   async syncEnrich(): Promise<void> {
-    await this.songModel.aggregate([
-      {
-        $project: {
-          _id: 1,
-          status: {
-            ai: 'queued',
-            bpm: 'queued',
-            ffprobe: 'queued'
+    await this.songModel
+      .aggregate([
+        {
+          $project: {
+            _id: 1,
+            status: {
+              ai: 'queued',
+              bpm: 'queued',
+              ffprobe: 'queued',
+            },
+            createdAt: '$$NOW',
+            updatedAt: '$$NOW',
           },
-          createdAt: '$$NOW',
-          updatedAt: '$$NOW'
-        }
-      },
-      {
-        $merge: {
-          into: this.enrichModel.collection.name,
-          on: '_id',
-          whenMatched: 'keepExisting',
-          whenNotMatched: 'insert'
-        }
-      }
-    ]).exec();
+        },
+        {
+          $merge: {
+            into: this.enrichModel.collection.name,
+            on: '_id',
+            whenMatched: 'keepExisting',
+            whenNotMatched: 'insert',
+          },
+        },
+      ])
+      .exec();
   }
 
   async updateEnrichStatus(
@@ -70,11 +72,7 @@ export class MusicDbService {
     const update: any = { [`status.${type}`]: status };
     if (message !== undefined) update.message = message;
     if (response !== undefined) update.response = response;
-    await this.enrichModel.updateOne(
-      { _id: songId },
-      { $set: update },
-      { upsert: true }
-    );
+    await this.enrichModel.updateOne({ _id: songId }, { $set: update }, { upsert: true });
   }
 
   getEnrichCursor(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued', limit?: number) {
@@ -90,7 +88,11 @@ export class MusicDbService {
   }
 
   async getPopulatedSongsByIds(ids: string[]): Promise<PopulatedSong[]> {
-    const results = await this.songModel.find({ _id: { $in: ids } }).populate('artist').populate('album').exec();
+    const results = await this.songModel
+      .find({ _id: { $in: ids } })
+      .populate('artists')
+      .populate('albums')
+      .exec();
     return z.array(PopulatedSongSchema).parse(results);
   }
 
@@ -149,20 +151,18 @@ export class MusicDbService {
         }
       }
 
-      if ('album_info' in songModel){
+      if ('album_info' in songModel) {
         const albumInfo = Array.isArray(songModel.album_info) ? songModel.album_info[0] : songModel.album_info;
-        if(albumInfo && typeof albumInfo === 'object' && 'title' in albumInfo && typeof albumInfo.title === 'string') {
+        if (albumInfo && typeof albumInfo === 'object' && 'title' in albumInfo && typeof albumInfo.title === 'string') {
           album = albumInfo.title;
         }
       }
-
 
       return {
         artist,
         album,
         title,
       };
-
     } else {
       this.logger.error('getSongByQobuzId: Unexpected song model:', songModel);
       return null;

@@ -1,4 +1,5 @@
 import { CachedContent, createPartFromUri, createUserContent, GoogleGenAI } from '@google/genai';
+import { ReadonlyAgentCache } from '../agent';
 
 export class CacheHandler {
   constructor(private client: GoogleGenAI) {}
@@ -27,13 +28,17 @@ export class CacheHandler {
     }
   }
 
-  public async cache(
-    file: string,
-    cacheName: string,
-    fileMineType: string,
-    modelName: string,
-    systemInstruction: string,
-  ): Promise<CachedContent | undefined> {
+  public async listCache(): Promise<CachedContent[]> {
+    const cachedContents = await this.client.caches.list();
+    const existingCaches = cachedContents.page;
+    while (cachedContents.hasNextPage()) {
+      const nextItems = await cachedContents.nextPage();
+      existingCaches.push(...nextItems);
+    }
+    return existingCaches;
+  }
+
+  public async cache( cacheSetting: ReadonlyAgentCache): Promise<CachedContent | undefined> {
     const cachedFiles = await this.client.files.list();
     let existingFiles = cachedFiles.page;
     while (cachedFiles.hasNextPage()) {
@@ -41,14 +46,14 @@ export class CacheHandler {
       existingFiles = [...existingFiles, ...nextItems];
     }
 
-    let existingFile = cachedFiles.page.find((cachedFile) => cachedFile.name === file);
+    let existingFile = cachedFiles.page.find((cachedFile) => cachedFile.name === cacheSetting.file);
 
     if (!existingFile) {
       existingFile = await this.client.files.upload({
-        file: file,
+        file: cacheSetting.file,
         config: {
-          name: cacheName,
-          mimeType: fileMineType,
+          name: cacheSetting.name,
+          mimeType: cacheSetting.fileMineType,
         },
       });
     }
@@ -60,17 +65,17 @@ export class CacheHandler {
       cachedContents = [...cachedContents, ...nextItems];
     }
 
-    const existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheName);
+    const existingCacheContent = cachedContents.find((cache) => cache.displayName === cacheSetting.name);
 
     if (existingCacheContent) {
       return existingCacheContent;
     } else if (existingFile && existingFile.uri && existingFile.mimeType) {
       return await this.client.caches.create({
-        model: modelName,
+        model: cacheSetting.model,
         config: {
-          displayName: cacheName,
+          displayName: cacheSetting.name,
           contents: createUserContent(createPartFromUri(existingFile.uri, existingFile.mimeType)),
-          systemInstruction,
+          systemInstruction: cacheSetting.systemInstruction || '',
         },
       });
     } else {

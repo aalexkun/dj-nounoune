@@ -19,6 +19,9 @@ import { DiscJockeyWhatIsPlayingHandler } from './tools/handler/agent/disc-jocke
 import { DiscJockeyBrowseDatabaseHandler } from './tools/handler/agent/disc-jockey-browse-database.handler';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
+import { ProfilerService } from '../profiler/profiler.service';
+import { FileService } from '../file/file.service';
+import { OpensearchService } from '../opensearch/opensearch.service';
 
 @Injectable()
 export class ToolsService {
@@ -28,6 +31,9 @@ export class ToolsService {
     private mpdClientService: MpdClientService,
     private musicDbService: MusicDbService,
     private configService: ConfigService,
+    private profilerService: ProfilerService,
+    private fileService: FileService,
+    private opensearchService: OpensearchService,
   ) {
     // Generic and global accessible Tool and function
     this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService));
@@ -43,7 +49,11 @@ export class ToolsService {
     // const chatTitleAgent = new ChatTitleAgent(apiKey, this, this.chatService);
     // this.registerTool(new ChatTitleHandler(chatTitleAgent));
 
-    const discJokeyAgent = new DiscJockeyAgent(apiKey, this, eventEmitter);
+    const discJokeyAgent = new DiscJockeyAgent(apiKey, this,
+      this.profilerService,
+      this.fileService,
+      this.musicDbService,
+      this.opensearchService,eventEmitter);
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyBrowseDatabaseHandler(discJokeyAgent));

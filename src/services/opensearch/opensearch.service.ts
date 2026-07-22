@@ -22,6 +22,7 @@ import { generateDynamicMappings } from './dynamic-mapping.util';
 import { SongSchema } from '../../schemas/song.schema';
 import { ArtistSchema } from '../../schemas/artist.schema';
 import { AlbumSchema } from '../../schemas/albums.schema';
+import { SearchFuzzyQuery } from './search-fuzzy.query';
 
 
 export type DuplicateSongCheck = {
@@ -606,6 +607,39 @@ export class OpensearchService {
       this.logger.error(`Error querying OpenSearch Neural Search: ${err.message}`);
       return null;
     }
+  }
+
+  async fuzzySearch(keywords: [string], limit = 100): Promise<OpenSearchSearchResponse | null> {
+    if (!this.client) return null;
+
+    const modelId = await this.getDeployedModelId();
+    if(!modelId){
+      throw new Error('No deployed model found :: fuzzySearch');
+    }
+    const query = new SearchFuzzyQuery(keywords,modelId, limit);
+
+
+    try {
+      const response = await this.client.search({
+        index: 'songs',
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      } else {
+        this.logger.error('OpenSearch song search response validation failed', parsedResponse.error);
+        return null;
+      }
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Error querying OpenSearch Song Search: ${err.message}`);
+      return null;
+    }
+
+
   }
 
   async fuzzySearchSong(title: string,album:string, artist:string,albumId?: string | null , artistId?: string | null): Promise<OpenSearchSearchResponse | null> {

@@ -7,6 +7,7 @@ export interface ProfilerOptions {
 export interface InferredField {
   name: string;
   type: string; // 'string', 'number', 'boolean', 'object', 'array', 'date', 'unknown'
+  ref?: string;
 }
 
 export interface SchemaInferenceResult {

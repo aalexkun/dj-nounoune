@@ -1,4 +1,5 @@
 import { MusicSearchResult } from '../agent/disc-jockey/disc-jockey.agent';
+import { PopulatedSong } from '../../music-db/music-db.service';
 
 export interface ToolDeclaration {
   name: string;
@@ -16,7 +17,7 @@ export type FunctionCallResultString = {
 
 export type FunctionCallPlaylistResult = {
   description: string;
-  items: MusicSearchResult[];
+  items: PopulatedSong[];
   type: 'playlist';
 };
 

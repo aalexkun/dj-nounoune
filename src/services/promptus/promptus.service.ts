@@ -16,7 +16,7 @@ import { EnrichPromptusResponse } from './response/enrich.promptus.response';
 export class PromptusService extends Agent {
   readonly name = 'Promptus';
   protected readonly logger = new Logger('PromptusService');
-  public readonly cacheHandler: CacheHandler;
+
 
   constructor(
     appService: AppService,
@@ -27,7 +27,7 @@ export class PromptusService extends Agent {
 
     this.initialiseAgent(appService.getGenAiApiKey(), this.toolService, this.eventEmitter);
     this.toolService.initialiseAgent(appService.getGenAiApiKey(), this.eventEmitter);
-    this.cacheHandler = new CacheHandler(this.client);
+
   }
 
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {

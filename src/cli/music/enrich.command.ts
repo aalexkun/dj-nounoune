@@ -16,6 +16,7 @@ import { enrichPromptusCachePrompt } from '../../services/promptus/request/enric
 import { CachedContent } from '@google/genai';
 import { z } from 'zod';
 import { Cron } from '@nestjs/schedule';
+import { ReadonlyAgentCache } from '../../services/promptus/agent';
 
 export const AiEnrichedSongSchema = z.object({
   _id: z.string().optional(),
@@ -145,11 +146,20 @@ export class EnrichCommand extends CommandRunner {
       const queuedAiCursor = this.musicDbService.getEnrichCursor('ai', 'queued', options.limit);
       let batchIds: string[] = [];
 
-      // Add system instruction caching
-
       const template = new EnrichPromptusRequest('Process songs from range: {{start}} to {{end}}');
       await this.fileService.saveFile(this.cacheName, enrichPromptusCachePrompt);
-      const cache = await this.promptusService.cacheHandler.cache(`files/${this.cacheName}`, this.cacheName, 'text/plain', template.model, '');
+      // Add system instruction caching
+      const cacheSettings: ReadonlyAgentCache = {
+        name: this.cacheName,
+        file: `files/${this.cacheName}`,
+        fileMineType: 'text/plain',
+        model: template.model,
+        systemInstruction: '',
+        cacheContent: undefined,
+      };
+
+
+      const cache = await this.promptusService.cacheHandler.cache(cacheSettings);
 
       const processAiBatch = async (ids: string[]) => {
         const toEnrichAi = await this.musicDbService.getPopulatedSongsByIds(ids);

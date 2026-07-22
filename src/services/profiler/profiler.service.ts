@@ -7,12 +7,10 @@ import {
   SchemaInferenceResult,
   InferredField,
   CardinalityResult,
-  FieldCardinality,
   CompletenessResult,
-  FieldCompleteness,
   DistributionResult,
-  NumericDistribution,
 } from './profiler.types';
+import { SONGS_EMOTIONS_DESCRIPTION, SONGS_GENRE_DESCRIPTION, SONGS_PACE_DESCRIPTION } from '../../lexic/songs.description';
 
 @Injectable()
 export class ProfilerService {
@@ -22,6 +20,79 @@ export class ProfilerService {
     private readonly musicDbService: MusicDbService,
     private readonly opensearchService: OpensearchService,
   ) {}
+
+  // todo replace for dynamic fields
+  private getFieldsToAnalyze(collection: 'songs' | 'artists' | 'albums'): string[] {
+
+    if(collection === 'songs'){
+      return [
+        'genre',
+        'emotion',
+        'language',
+        'pace',
+        'year',
+        'artist',
+        'album',
+        'source.name',
+        'source.technical_info.is_high_res',
+        'source.technical_info.is_cd_quality',
+      ];
+    }
+
+    if(collection === 'artists'){
+      return [
+        'artist'
+      ]
+    } if(collection === 'albums'){
+      return [
+        'title'
+      ];
+    }
+
+    return []
+
+  }
+
+  async getDatabaseProfileForPrompt(): Promise<string> {
+    let output = '';
+    const appendLine = (str: string) => (output += str + '\n');
+    const appendJson = (obj: any) => (output += '```JSON\n' + JSON.stringify(obj, null, 2) + '\n```\n\n');
+    const collections: Array<'songs' | 'artists' | 'albums'> = ['songs', 'artists', 'albums']; //
+
+    for (const collection of collections) {
+      appendLine(`# Analysis for ${collection} collection.\n`);
+
+      appendLine(`## ${collection} Schema`);
+      const schema = await this.inferSchema({ collection });
+      appendJson(schema);
+
+      if (collection === 'songs') {
+        const fieldsToAnalyze = this.getFieldsToAnalyze(collection);
+
+        appendLine(`## ${collection} Schema  Cardinality and Facet Generation`);
+        const cardinality = await this.getCardinality({ collection }, fieldsToAnalyze);
+        appendJson(cardinality);
+
+        appendLine(`## ${collection} Schema Completeness and Null Tracking`);
+        const completeness = await this.getCompleteness({ collection }, fieldsToAnalyze);
+        appendJson(completeness);
+      }
+    }
+
+    appendLine(`# Song Lexic\n`);
+    appendLine(`## Genre List`);
+    appendLine(`${SONGS_GENRE_DESCRIPTION}`);
+
+    appendLine(`## Pace List`);
+    appendLine(`${SONGS_PACE_DESCRIPTION}`);
+
+    appendLine(`## Emotion List`);
+    appendLine(`${SONGS_EMOTIONS_DESCRIPTION}`);
+
+
+    return output;
+    }
+
 
   // A. Schema Inference
   async inferSchema(options: ProfilerOptions): Promise<SchemaInferenceResult> {
@@ -33,18 +104,21 @@ export class ProfilerService {
         const fullPath = prefix ? `${prefix}.${path}` : path;
         let typeStr = 'unknown';
 
-        if (schemaType.instance) {
+        if (schemaType.instance && schemaType.instance.toLowerCase() !== 'mixed') {
           typeStr = schemaType.instance.toLowerCase();
         } else if (schemaType.options && schemaType.options.type) {
           if (typeof schemaType.options.type === 'function') {
             typeStr = schemaType.options.type.name.toLowerCase();
           } else if (Array.isArray(schemaType.options.type)) {
             typeStr = 'array';
+          } else if (schemaType.options.type instanceof Object) {
+            typeStr = 'mongoose.Schema.Types.ObjectId';
           }
         }
 
-        // Filter out ObjectIds
-        if (typeStr !== 'objectid') {
+        if (typeStr === 'mongoose.Schema.Types.ObjectId') {
+          fields.push({ name: fullPath, type: 'mongoose.Schema.Types.ObjectId', ref: schemaType.options.ref });
+        } else {
           fields.push({ name: fullPath, type: typeStr });
         }
 
@@ -86,7 +160,7 @@ export class ProfilerService {
   }
 
   // B. Cardinality and Facet Generation
-  async getCardinality(options: ProfilerOptions, fields: string[], threshold: number = 50): Promise<CardinalityResult> {
+  async getCardinality(options: ProfilerOptions, fields: string[], threshold: number = 100): Promise<CardinalityResult> {
     const client = this.opensearchService.getClient();
     if (!client) throw new Error('OpenSearch client not available');
 
