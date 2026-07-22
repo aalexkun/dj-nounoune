@@ -30,7 +30,7 @@ export class PostFilteringRequest extends PromptusRequest<PostFilteringResponse>
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-3-flash-preview';
+  private readonly _model = 'gemini-flash-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context = postFilteringPrompt;
   private readonly _query: string;

@@ -72,7 +72,7 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-3-flash-preview';
+  private readonly _model = 'gemini-flash-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context: string;
   private readonly _query: string;

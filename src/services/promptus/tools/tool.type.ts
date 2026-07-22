@@ -17,7 +17,7 @@ export type FunctionCallResultString = {
 
 export type FunctionCallPlaylistResult = {
   description: string;
-  items: PopulatedSong[];
+  items: MusicSearchResult[];
   type: 'playlist';
 };
 

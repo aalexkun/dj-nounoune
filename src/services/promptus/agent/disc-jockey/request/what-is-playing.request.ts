@@ -10,7 +10,7 @@ export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse>
   public config: Partial<GenerateContentConfig> = {};
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-3-flash-preview';
+  private readonly _model = 'gemini-flash-lite-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context = WhatIsPlayingPrompt;
   private readonly _query: string;

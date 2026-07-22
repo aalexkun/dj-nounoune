@@ -6,7 +6,7 @@ import { ToolDeclaration } from '../tools/tool.type';
 export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
   public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
-  private readonly _model = 'gemini-3.1-flash-lite'; // 'gemini-3-flash-preview';
+  private readonly _model = 'gemini-flash-lite-latest'; // 'gemini-3-flash-preview';
   private readonly _role: RequestRole = 'user';
   private readonly _context = ''; // This will be cached prior to the request
   private readonly _query: string;

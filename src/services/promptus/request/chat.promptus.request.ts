@@ -19,7 +19,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;
-  private readonly _model = 'gemini-3.5-flash';
+  private readonly _model = 'gemini-flash-latest';
   private readonly _role: RequestRole = 'user';
   private readonly _context = chatPromptusPrompt;
 

@@ -90,8 +90,8 @@ export class MusicDbService {
   async getPopulatedSongsByIds(ids: string[]): Promise<PopulatedSong[]> {
     const results = await this.songModel
       .find({ _id: { $in: ids } })
-      .populate('artists')
-      .populate('albums')
+      .populate('artist')
+      .populate('album')
       .exec();
     return z.array(PopulatedSongSchema).parse(results);
   }

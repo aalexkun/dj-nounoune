@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { ToolsService } from '../../tools.service';
 import { PromptusRequest } from '../../promptus.request';
 import { GenerateContentResponse } from '@google/genai';
+import { z } from 'zod';
 import { CreatePlaylistRequest } from './request/create-playlist.request';
 import { CreatePlaylistResponse } from './response/create-playlist.response';
 import { WhatIsPlayingRequest } from './request/what-is-playing.request';
@@ -50,6 +51,26 @@ export type MusicSearchResult = {
   artist: string;
   album: string;
 };
+
+export const PopulatedSongToMusicSearchResultSchema = z.object({
+  id: z.any().transform((val) => val.toString()),
+  source: z.array(
+    z.object({
+      sourceId: z.string().optional().default(''),
+      name: z.enum(['file', 'spotify', 'qobuz'], {
+        message: 'source name is not valid',
+      }),
+    }).passthrough()
+  ).transform((sources) =>
+    sources.map((source) => ({
+      sourceId: source.sourceId || '',
+      name: source.name,
+    }))
+  ),
+  title: z.string(),
+  artist: z.object({ artist: z.string() }).transform((val) => val.artist),
+  album: z.object({ title: z.string() }).transform((val) => val.title),
+});
 
 export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
   // Check if it's a non-null object
@@ -109,13 +130,14 @@ export class DiscJockeyAgent extends Agent {
    * @param naturalLanguageRequest
    * @param sessionId
    */
-  async createPlaylist(naturalLanguageRequest: string, sessionId?: string) {
+  async createPlaylist(naturalLanguageRequest: string, sessionId?: string): Promise<MusicSearchResult[]> {
     if (!sessionId) {
       throw new Error('sessionId is required to createPlaylist');
     }
 
-    let arrangePopulatedSongs: PopulatedSong[] = [];
-    if (new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
+
+
+    if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
       const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
       await this.fileService.saveFile(this.cache.name, dbProfile);
 
@@ -127,47 +149,49 @@ export class DiscJockeyAgent extends Agent {
         throw new Error(error);
       }
       this.cache.cacheContent = cacheContent;
-
-      const generateQueryWithCacheRequest = new GenerateQueryWithCacheRequest(naturalLanguageRequest, cacheContent);
-      const generateQueryWithCacheResponse = await this.generate(generateQueryWithCacheRequest, sessionId);
-
-      let musicResult = new Map<string, PopulatedSong | null>();
-      if (generateQueryWithCacheResponse.aggregate) {
-        // get the songs
-        const searchResult = await this.musicDBService.aggregate('songs', generateQueryWithCacheResponse.aggregate);
-
-        searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
       }
 
-      if (generateQueryWithCacheResponse.fulltext && generateQueryWithCacheResponse.fulltext.length > 0) {
-        const fullTextResult = await this.opensearchService.fuzzySearch(generateQueryWithCacheResponse.fulltext);
-        if (fullTextResult && fullTextResult.hits.hits.length > 0) {
-          fullTextResult.hits.hits.map(
-            (song) =>
-              song._score > 0.5 && // todo test that
-              !musicResult.has(song._id.toString()) &&
-              musicResult.set(song._id.toString(), null),
-          );
-        }
-      }
+    const generateQueryWithCacheRequest = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
+    const generateQueryWithCacheResponse = await this.generate(generateQueryWithCacheRequest, sessionId);
 
-      if (musicResult.size == 0) {
-        this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent('No Songs Found', sessionId));
-        return arrangePopulatedSongs;
-      }
+    let musicResult = new Map<string, PopulatedSong | null>();
+    if (generateQueryWithCacheResponse.aggregate) {
+      // get the songs
+      const searchResult = await this.musicDBService.aggregate('songs', generateQueryWithCacheResponse.aggregate);
 
-      const populatedSongs = await this.musicDBService.getPopulatedSongsByIds(Array.from(musicResult.keys()));
-      if (!populatedSongs || populatedSongs.length == 0) {
-        throw new Error('getPopulatedSongsByIds resulted in error. length ');
-      }
-
-      arrangePopulatedSongs = await this.findBestArrangement(populatedSongs);
-
-      const playlistItemMsg = arrangePopulatedSongs.map((item, index) => `${index + 1} - [${item.artist}] ${item.title}`).join('\n');
-      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
+      searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
     }
 
-    return arrangePopulatedSongs;
+    if (generateQueryWithCacheResponse.fulltext && generateQueryWithCacheResponse.fulltext.length > 0) {
+      const fullTextResult = await this.opensearchService.fuzzySearch(generateQueryWithCacheResponse.fulltext);
+      if (fullTextResult && fullTextResult.hits.hits.length > 0) {
+        fullTextResult.hits.hits.map(
+          (song) =>
+            song._score > 0.5 && // todo test that
+            !musicResult.has(song._id.toString()) &&
+            musicResult.set(song._id.toString(), null),
+        );
+      }
+    }
+
+    if (musicResult.size == 0) {
+      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent('No Songs Found', sessionId));
+      return [];
+    }
+
+    const populatedSongs = await this.musicDBService.getPopulatedSongsByIds(Array.from(musicResult.keys()));
+    if (!populatedSongs || populatedSongs.length == 0) {
+      throw new Error('getPopulatedSongsByIds resulted in error. length ');
+    }
+
+    const arrangePopulatedSongs = await this.findBestArrangement(populatedSongs);
+
+    const playlistItemMsg = arrangePopulatedSongs.map((item, index) => `${index + 1} - [${item.artist}] ${item.title}`).join('\n');
+    this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
+
+
+
+    return z.array(PopulatedSongToMusicSearchResultSchema).parse(arrangePopulatedSongs);
   }
 
   private async findBestArrangement(populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
@@ -176,8 +200,8 @@ export class DiscJockeyAgent extends Agent {
     // Generate the map for efficient token usage
     let prompt = 'id|artist|album|title|emotion|pace|disc_number|language|country\n';
     populatedSongs.forEach((song, index) => {
-      aiRequestMap.set(index, song.id.toString());
-      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.disc_number}|${song.language}|${song.country}\n`;
+      aiRequestMap.set(index+1, song.id.toString());
+      prompt += `${index+1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.disc_number}|${song.language}|${song.country}\n`;
     });
 
     const response = await this.generate(new FindBestArrangementRequest(prompt));
@@ -185,7 +209,10 @@ export class DiscJockeyAgent extends Agent {
     response.items.forEach((item) => {
       const id = aiRequestMap.get(Number(item));
       if (id) {
-        arrangedSongs.push(populatedSongs[id]);
+        const song = populatedSongs.find((song) => song.id.toString() === id);
+        if (song){
+          arrangedSongs.push(song);
+        }
       }
     });
 
