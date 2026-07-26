@@ -72,7 +72,7 @@ export class MusicDbService {
     const update: any = { [`status.${type}`]: status };
     if (message !== undefined) update.message = message;
     if (response !== undefined) update.response = response;
-    await this.enrichModel.updateOne({ _id: songId }, { $set: update }, { upsert: true });
+    await this.enrichModel.updateOne({ _id: songId as any }, { $set: update }, { upsert: true });
   }
 
   getEnrichCursor(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued', limit?: number) {

@@ -154,11 +154,12 @@ export class DiscJockeyAgent extends Agent {
     const generateQueryWithCacheRequest = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
     const generateQueryWithCacheResponse = await this.generate(generateQueryWithCacheRequest, sessionId);
 
+    this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
+    this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2))
+
     let musicResult = new Map<string, PopulatedSong | null>();
     if (generateQueryWithCacheResponse.aggregate) {
-      // get the songs
       const searchResult = await this.musicDBService.aggregate('songs', generateQueryWithCacheResponse.aggregate);
-
       searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
     }
 
@@ -186,7 +187,7 @@ export class DiscJockeyAgent extends Agent {
 
     const arrangePopulatedSongs = await this.findBestArrangement(populatedSongs);
 
-    const playlistItemMsg = arrangePopulatedSongs.map((item, index) => `${index + 1} - [${item.artist}] ${item.title}`).join('\n');
+    const playlistItemMsg = arrangePopulatedSongs.map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`).join('\n');
     this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
 
 

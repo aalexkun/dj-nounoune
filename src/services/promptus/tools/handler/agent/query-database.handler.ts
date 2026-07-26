@@ -5,6 +5,7 @@ import { JSONPath } from 'jsonpath-plus';
 import { MusicDbAggregateResult } from '../../../../music-db/music-db.service';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 import { Logger } from '@nestjs/common';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 
 
@@ -144,7 +145,7 @@ export class QueryDatabaseHandler implements ToolHandler {
       };
     } catch (error) {
       return {
-        message: `Error executing query: ${error.message}`,
+        message: `Error executing query: ${getErrorMessage(error)}`,
         name: this.name,
         type: 'string',
       };

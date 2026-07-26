@@ -5,6 +5,7 @@ import { ZentityResolutionResponseSchema, ZentityResolutionResponse, ZentityHitS
 import { PopulatedSong } from '../music-db/music-db.service';
 import { SongEntity } from './models/SongEntity';
 import { SongIndices } from './models/SongIndices';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class ElasticsearchService {
@@ -67,7 +68,7 @@ export class ElasticsearchService {
       this.logger.log('Songs index created successfully.');
       return true;
     } catch (error) {
-      this.logger.error(`Failed to create index "songs": ${error.message}`, error.stack);
+      this.logger.error(`Failed to create index "songs": ${getErrorMessage(error)}`, error instanceof Error ? error.stack : undefined);
       return false;
     }
   }
@@ -126,7 +127,7 @@ export class ElasticsearchService {
           },
         });
       } catch (error) {
-        this.logger.error(`Failed to index song ${song._id}: ${error.message}`);
+        this.logger.error(`Failed to index song ${song._id}: ${getErrorMessage(error)}`);
       }
 
     }
@@ -178,7 +179,7 @@ export class ElasticsearchService {
         return null;
       }
     } catch (error) {
-      this.logger.error('Error querying Zentity API', error.message);
+      this.logger.error('Error querying Zentity API', getErrorMessage(error));
       this.logger.error('Error querying Zentity API', attributes);
       return null;
     }

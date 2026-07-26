@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { MpdToolsDefinition } from '../../definition/mpd-tools.definition';
 import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { PlaylistMpdRequest } from '../../../../mpd-client/requests/PlaylistMpdRequest';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 export class CurrentPlaylistHandler implements ToolHandler {
   readonly name = MpdToolsDefinition.playlistMpdCommand.name;
@@ -20,7 +21,7 @@ export class CurrentPlaylistHandler implements ToolHandler {
         type: 'string',
       };
     } catch (e) {
-      const msg = 'Getting playlist function failed. ' + e.message;
+      const msg = 'Getting playlist function failed. ' + getErrorMessage(e);
       this.logger.error(msg);
       return {
         message: msg,

@@ -93,15 +93,19 @@ export class ChatService {
     this.logger.log(`Unsubscribed from session ${sessionId}`);
   }
 
-  public subscribeToFeedback(sessionId: SessionId): Subject<ChatFeedbackEvent> {
-    const subject = new Subject<ChatFeedbackEvent>();
+  public subscribeToFeedback(sessionId: SessionId): Subject<ChatEvent> {
+    // The channel is keyed into a Map of Subject<ChatEvent>, so anything can be
+    // pushed in. Narrow to feedback events before counting, otherwise a stray
+    // event would register an `undefined` reaction type.
+    const subject = new Subject<ChatEvent>();
     const subscription = subject
       .pipe(
+        filter((message): message is ChatFeedbackEvent => 'feedback' in message),
         bufferTime(5000),
         filter((bufferedMessages) => bufferedMessages?.length > 0),
         map((bufferedMessages) => {
           // 2. Reduce the array into an object that counts each feedback type
-          return bufferedMessages.reduce((acc, message) => {
+          return bufferedMessages.reduce<Record<string, number>>((acc, message) => {
             const type = message.feedback;
             // Initialise at 0 if it doesn't exist, then increment by 1
             acc[type] = (acc[type] || 0) + 1;

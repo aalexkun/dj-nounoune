@@ -13,13 +13,26 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
-    "incremental": true,
+    // NOT `incremental`: nest-cli.json sets `deleteOutDir: true`, but the
+    // .tsbuildinfo lives outside outDir and survives the wipe. tsc then sees an
+    // up-to-date program, skips emit, and `nest build` exits 0 having produced
+    // no dist/main.js at all. Incremental buys nothing here anyway, since
+    // deleteOutDir forces a full re-emit on every build.
     "skipLibCheck": true,
-    "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": false,
+
+    // TypeScript 6 flipped `strict` to default true. This project has always run
+    // on the NestJS scaffold settings (strictNullChecks only), so `strict` is
+    // pinned off and the checks we actually want are opted into individually.
+    "strict": false,
+    "strictNullChecks": true,
+    "useUnknownInCatchVariables": true,
+    "strictFunctionTypes": true,
+    // Off deliberately: Mongoose @Prop / DTO classes are populated by the ODM
+    // and the GenAI SDK, so they never initialise in a constructor.
+    "strictPropertyInitialization": false,
     "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "strictBindCallApply": false
   }
 }

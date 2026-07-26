@@ -6,6 +6,7 @@ import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { CurrentSongMpdRequest } from '../../../../mpd-client/requests/CurrentSongMpdRequest';
 import { CurrentSongInfo } from '../../../../mpd-client/responses/CurrentSongMpdResponse';
 import { MusicDbService } from '../../../../music-db/music-db.service';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 export class CurrentSongHandler implements ToolHandler {
   readonly name = MpdToolsDefinition.currentMpdCommand.name;
@@ -42,7 +43,7 @@ export class CurrentSongHandler implements ToolHandler {
         type: 'string',
       };
     } catch (e) {
-      const msg = 'Function call failed with error: ' + e.message;
+      const msg = 'Function call failed with error: ' + getErrorMessage(e);
       this.logger.error(msg);
       return {
         message: msg,

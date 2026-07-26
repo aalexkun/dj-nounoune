@@ -61,7 +61,7 @@ export abstract class Agent {
 
       if (response.functionCalls) {
         const responseContent: any = {
-          role: 'tool',
+          role: 'MODEL',
           parts: [],
         };
 

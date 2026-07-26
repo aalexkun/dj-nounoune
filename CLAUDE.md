@@ -84,6 +84,8 @@ REST (`ChatController`, `/chatroom`) is CRUD-only and guarded by `ApiAuthGuard` 
 Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. The non-obvious ones:
 
 - **No `any`.** Use `unknown` plus narrowing. Note `noImplicitAny` is off in tsconfig and the eslint rule is disabled, so nothing enforces this — it is on you.
+- **TypeScript 6 pins `strict: false` deliberately.** TS6 flipped `strict` to default `true`; this project runs the NestJS scaffold posture instead, so `tsconfig.json` sets `strict: false` and opts individual checks back in. `strictNullChecks`, `useUnknownInCatchVariables` and `strictFunctionTypes` are **on**; `strictPropertyInitialization` is **off** because Mongoose `@Prop` and GenAI request/response classes are populated by the framework, never in a constructor. Don't "tidy" this by deleting `strict: false` — that reintroduces 116 property-init errors.
+- **Catch variables are `unknown`.** Use `getErrorMessage(e)` from `src/utils/error.utils.ts` rather than reaching for `e.message`.
 - **Zod at every external boundary.** Third-party API responses and untrusted JSON start as `unknown`, get parsed by a Zod schema, and only then propagate as `z.infer<...>`. This is followed consistently in the Spotify/Qobuz/OpenSearch services; match it.
 - **CLI commands are thin.** Parse options, call a service. All logic lives in `src/services/`. Register every command class in `src/cli/command.provider.ts` or it will not exist.
 - **Gemini models**: use `gemini-3-flash-preview` / `gemini-3-pro-preview`. The 1.5 series and the legacy `@google/generative-ai` SDK are prohibited.

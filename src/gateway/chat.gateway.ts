@@ -20,6 +20,7 @@ import {
   ChatStatusResponseEvent,
   ChatStatusResponseEventName,
 } from '../services/chat/chat.event';
+import { getErrorMessage } from '../utils/error.utils';
 
 @WebSocketGateway({
   cors: true,
@@ -75,7 +76,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.join(session.id);
       }
     } catch (error) {
-      this.logger.error(`Error handleConnection session: ${error.message}`);
+      this.logger.error(`Error handleConnection session: ${getErrorMessage(error)}`);
       client.disconnect();
       return;
     }

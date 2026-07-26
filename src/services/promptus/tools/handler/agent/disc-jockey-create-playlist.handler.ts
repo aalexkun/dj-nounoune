@@ -1,6 +1,7 @@
 import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
 import { DiscJockeyAgent } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
   readonly name = AgentToolsDefinition.discJockeyCreatePlaylist.name;
@@ -31,7 +32,7 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
     } catch (error) {
       console.error('Error executing query:', error);
       return {
-        message: `Error executing query: ${error.message}`,
+        message: `Error executing query: ${getErrorMessage(error)}`,
         name: this.name,
         type: 'string',
       };

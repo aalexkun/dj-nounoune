@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { MpdToolsDefinition } from '../../definition/mpd-tools.definition';
 import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { StopMpdRequest } from '../../../../mpd-client/requests/StopMpdRequest';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 export class StopPlaybackHandler implements ToolHandler {
   readonly name = MpdToolsDefinition.stopMpdCommand.name;
@@ -19,7 +20,7 @@ export class StopPlaybackHandler implements ToolHandler {
         type: 'string',
       };
     } catch (e) {
-      const msg = 'StopMpdRequest failled ' + e.message;
+      const msg = 'StopMpdRequest failled ' + getErrorMessage(e);
       this.logger.error(msg);
       return {
         message: msg,

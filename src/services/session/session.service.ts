@@ -5,6 +5,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Socket } from 'socket.io';
 import { BehaviorSubject, Subscription, timer } from 'rxjs';
 import { randomUUID } from 'node:crypto';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const FIVE_MIN_IN_MS = 5 * 60 * 1000;
 
@@ -36,7 +37,7 @@ export class SessionService implements OnModuleInit {
 
       this.logger.log(`Successfully cleared ${result.deletedCount} stale connections.`);
     } catch (error) {
-      this.logger.error(`Failed to clear connections: ${error.message}`);
+      this.logger.error(`Failed to clear connections: ${getErrorMessage(error)}`);
     }
   }
 
@@ -102,7 +103,7 @@ export class SessionService implements OnModuleInit {
           sessionCleanupCallback(sessionInfo.id);
         }
       } catch (err) {
-        this.logger.error(`Failed to logout user ${clientId}: ${err.message}`);
+        this.logger.error(`Failed to logout user ${clientId}: ${getErrorMessage(err)}`);
       } finally {
         this.pendingLogouts.get(deviceConnectionId)?.unsubscribe();
         this.pendingLogouts.delete(deviceConnectionId);
