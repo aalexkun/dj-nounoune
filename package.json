@@ -42,6 +42,7 @@
     "jsonpath-plus": "^10.4.0",
     "mongoose": "^9.2.0",
     "nest-commander": "^3.20.1",
+    "redis": "^6.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",

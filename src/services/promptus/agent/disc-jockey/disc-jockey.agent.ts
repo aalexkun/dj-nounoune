@@ -24,6 +24,7 @@ import { GenerateQueryWithCacheRequest } from './request/generate-query-with-cac
 import { GenerateQueryWithCacheResponse } from './response/generate-query-with-cache.response';
 import { MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
 import { OpensearchService } from '../../../opensearch/opensearch.service';
+import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
 
 export type TechnicalInfo = {
   size?: number;
@@ -51,6 +52,47 @@ export type MusicSearchResult = {
   artist: string;
   album: string;
 };
+
+const TechnicalInfoSchema = z.object({
+  size: z.number().optional(),
+  encoding: z.string().optional(),
+  bitrate: z.number().optional(),
+  sample_rate: z.number().optional(),
+  is_high_res: z.boolean().optional(),
+  is_cd_quality: z.boolean().optional(),
+  duration: z.number().optional(),
+  bit_depth: z.number().optional(),
+  extension: z.string().optional(),
+  bpm: z.number().optional(),
+});
+
+const PlaySourceSchema = z.object({
+  sourceId: z.string(),
+  name: z.enum(['file', 'spotify', 'qobuz'], {
+    message: 'source name is not valid',
+  }),
+  technical_info: TechnicalInfoSchema.optional(),
+});
+
+/**
+ * Validates an already-flattened {@link MusicSearchResult}, i.e. what
+ * {@link PopulatedSongToMusicSearchResultSchema} *produced* and what is stored
+ * in Redis — `artist` and `album` are plain strings here, not populated refs.
+ *
+ * Use this on cache reads. Feeding a cached playlist back through
+ * `PopulatedSongToMusicSearchResultSchema` always fails, because that schema
+ * expects `artist: { artist: string }` / `album: { title: string }`.
+ */
+export const MusicSearchResultSchema = z.object({
+  id: z.string(),
+  source: z.array(PlaySourceSchema),
+  title: z.string(),
+  artist: z.string(),
+  album: z.string(),
+});
+
+/** Cache-read schema for a whole playlist. See {@link MusicSearchResultSchema}. */
+export const MusicSearchResultsSchema: z.ZodType<MusicSearchResult[]> = z.array(MusicSearchResultSchema);
 
 export const PopulatedSongToMusicSearchResultSchema = z.object({
   id: z.any().transform((val) => val.toString()),
@@ -117,6 +159,7 @@ export class DiscJockeyAgent extends Agent {
     protected fileService: FileService,
     protected musicDBService: MusicDbService,
     protected opensearchService: OpensearchService,
+    protected redisCacheService: RedisCacheService,
     protected eventEmitter: EventEmitter2,
   ) {
     super();
@@ -130,12 +173,10 @@ export class DiscJockeyAgent extends Agent {
    * @param naturalLanguageRequest
    * @param sessionId
    */
-  async createPlaylist(naturalLanguageRequest: string, sessionId?: string): Promise<MusicSearchResult[]> {
+  async createPlaylist(naturalLanguageRequest: string, sessionId?: string): Promise<RedisCacheKey> {
     if (!sessionId) {
       throw new Error('sessionId is required to createPlaylist');
     }
-
-
 
     if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
       const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
@@ -149,13 +190,13 @@ export class DiscJockeyAgent extends Agent {
         throw new Error(error);
       }
       this.cache.cacheContent = cacheContent;
-      }
+    }
 
     const generateQueryWithCacheRequest = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
     const generateQueryWithCacheResponse = await this.generate(generateQueryWithCacheRequest, sessionId);
 
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
-    this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2))
+    this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2));
 
     let musicResult = new Map<string, PopulatedSong | null>();
     if (generateQueryWithCacheResponse.aggregate) {
@@ -177,7 +218,7 @@ export class DiscJockeyAgent extends Agent {
 
     if (musicResult.size == 0) {
       this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent('No Songs Found', sessionId));
-      return [];
+      throw new Error('No songs found');
     }
 
     const populatedSongs = await this.musicDBService.getPopulatedSongsByIds(Array.from(musicResult.keys()));
@@ -185,24 +226,29 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('getPopulatedSongsByIds resulted in error. length ');
     }
 
-    const arrangePopulatedSongs = await this.findBestArrangement(populatedSongs);
+    const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, populatedSongs);
 
-    const playlistItemMsg = arrangePopulatedSongs.map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`).join('\n');
+    const playlistItemMsg = arrangePopulatedSongs
+      .map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`)
+      .join('\n');
     this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
 
-
-
-    return z.array(PopulatedSongToMusicSearchResultSchema).parse(arrangePopulatedSongs);
+    // todo remove the extra cast since it is not required after the use of cache.
+    const cachedResult = z.array(PopulatedSongToMusicSearchResultSchema).parse(arrangePopulatedSongs);
+    const cacheKey = sessionId + ':playlist' + new Date().getTime();
+    await this.redisCacheService.set(cacheKey, cachedResult);
+    return cacheKey;
   }
 
-  private async findBestArrangement(populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
+  private async findBestArrangement(naturalLanguageRequest: string, populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
     let arrangedSongs: PopulatedSong[] = [];
     let aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
-    let prompt = 'id|artist|album|title|emotion|pace|disc_number|language|country\n';
+    let prompt = `# Query \n${naturalLanguageRequest} \n`
+    prompt = `# PSV\nid|artist|album|title|emotion|pace|disc_number|language|country\n`;
     populatedSongs.forEach((song, index) => {
-      aiRequestMap.set(index+1, song.id.toString());
-      prompt += `${index+1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.disc_number}|${song.language}|${song.country}\n`;
+      aiRequestMap.set(index + 1, song.id.toString());
+      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.disc_number}|${song.language}|${song.country}\n`;
     });
 
     const response = await this.generate(new FindBestArrangementRequest(prompt));
@@ -211,7 +257,7 @@ export class DiscJockeyAgent extends Agent {
       const id = aiRequestMap.get(Number(item));
       if (id) {
         const song = populatedSongs.find((song) => song.id.toString() === id);
-        if (song){
+        if (song) {
           arrangedSongs.push(song);
         }
       }

@@ -7,44 +7,20 @@ export class MpdToolsDefinition {
   public static readonly playMpdCommand: ToolDeclaration = {
     name: 'start_playback',
     description:
-      'Send a list of songs to the MPD music server to begin playback. You must provide an array of song objects, exactly as returned by the disc_jockey_create_playlist tool.',
+      'Send a list of songs to the MPD music server to begin playback. You must provide The cache key, exactly as returned by the disc_jockey_create_playlist tool.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        songs: {
-          type: Type.ARRAY,
-          description: 'The array of song objects to play. Must contain the sourceId.',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              source: {
-                type: Type.ARRAY,
-                description: 'The sources for the song',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: {
-                      type: Type.STRING,
-                      description: 'The name of the source (e.g. qobuz, file)',
-                    },
-                    sourceId: {
-                      type: Type.STRING,
-                      description: 'The identifier within the source',
-                    },
-                  },
-                  required: ['name', 'sourceId'],
-                },
-              },
-              title: { type: Type.STRING },
-              artist: { type: Type.STRING },
-              album: { type: Type.STRING },
-            },
-            required: ['source'], // sourceId is usually the most critical for playback
-          },
+        cacheKey: {
+          type: Type.STRING,
+          description: 'The cache key to retrieve the array of songs to play.',
+        },
+        clearQueue: {
+          type: Type.BOOLEAN,
+          description: 'Whether to clear the queue before playing the new songs.',
         },
       },
-      required: ['songs'],
+      required: ['cacheKey', 'clearQueue'],
     },
   };
 

@@ -23,7 +23,7 @@ export class AgentToolsDefinition {
   public static readonly discJockeyCreatePlaylist: ToolDeclaration = {
     name: 'disc_jockey_create_playlist',
     description:
-      'Use this tool to request a curated list of songs from the music expert agent based on a natural language prompt. Pass the resulting array of songs directly to the start_playback tool.',
+      'Use this tool to request a curated list of songs from the music expert agent based on a natural language prompt. The tool return a cache key value that can be passed directly to the start_playback tool.',
     parameters: {
       type: Type.OBJECT,
       properties: {

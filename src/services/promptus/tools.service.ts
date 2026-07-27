@@ -22,6 +22,7 @@ import { ConfigService } from '@nestjs/config';
 import { ProfilerService } from '../profiler/profiler.service';
 import { FileService } from '../file/file.service';
 import { OpensearchService } from '../opensearch/opensearch.service';
+import { RedisCacheService } from '../redis-cache/redis-cache.service';
 
 @Injectable()
 export class ToolsService {
@@ -34,9 +35,10 @@ export class ToolsService {
     private profilerService: ProfilerService,
     private fileService: FileService,
     private opensearchService: OpensearchService,
+    private redisCacheService: RedisCacheService,
   ) {
     // Generic and global accessible Tool and function
-    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService));
+    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService,this.redisCacheService));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
     this.registerTool(new CurrentSongHandler(this.mpdClientService, this.musicDbService));
     this.registerTool(new CurrentPlaylistHandler(this.mpdClientService));
@@ -49,11 +51,16 @@ export class ToolsService {
     // const chatTitleAgent = new ChatTitleAgent(apiKey, this, this.chatService);
     // this.registerTool(new ChatTitleHandler(chatTitleAgent));
 
-    const discJokeyAgent = new DiscJockeyAgent(apiKey, this,
+    const discJokeyAgent = new DiscJockeyAgent(
+      apiKey,
+      this,
       this.profilerService,
       this.fileService,
       this.musicDbService,
-      this.opensearchService,eventEmitter);
+      this.opensearchService,
+      this.redisCacheService,
+      eventEmitter,
+    );
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyBrowseDatabaseHandler(discJokeyAgent));

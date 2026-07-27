@@ -7,7 +7,7 @@ export interface ToolDeclaration {
   parameters: Record<string, any>;
 }
 
-export type FunctionCallResult = FunctionCallResultString | FunctionCallPlaylistResult;
+export type FunctionCallResult = FunctionCallResultString | FunctionCallCacheResult;
 
 export type FunctionCallResultString = {
   message: string;
@@ -15,9 +15,9 @@ export type FunctionCallResultString = {
   type: 'string';
 };
 
-export type FunctionCallPlaylistResult = {
+export type FunctionCallCacheResult = {
   description: string;
-  items: MusicSearchResult[];
+  cache: string;
   type: 'playlist';
 };
 

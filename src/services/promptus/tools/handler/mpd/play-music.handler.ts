@@ -1,16 +1,18 @@
 import { Logger } from '@nestjs/common';
 import { FunctionCallResult, ToolHandler } from '../../tool.type';
 import { MpdToolsDefinition } from '../../definition/mpd-tools.definition';
-import { MusicSearchResult, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
+import { MusicSearchResultsSchema, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { ClearMpdRequest } from '../../../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../../../mpd-client/requests/PlayMpdRequest';
 import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdRequest';
 import { ConfigService } from '@nestjs/config';
+import { RedisCacheService } from '../../../../redis-cache/redis-cache.service';
 
 interface PlayMusicArgs {
-  songs: Partial<MusicSearchResult>[];
+  cacheKey: string;
+  clearQueue: boolean;
 }
 
 export class PlayMusicHandler implements ToolHandler {
@@ -18,7 +20,7 @@ export class PlayMusicHandler implements ToolHandler {
   private readonly logger = new Logger('PlayMusicHandler');
 
 
-  constructor(private mpdClientService: MpdClientService, private configService: ConfigService) {}
+  constructor(private mpdClientService: MpdClientService, private configService: ConfigService, private redisCacheService: RedisCacheService) {}
 
   isPlayMusicArgs(args: unknown): args is PlayMusicArgs {
     if (!args || typeof args !== 'object') {
@@ -26,23 +28,8 @@ export class PlayMusicHandler implements ToolHandler {
     }
 
     const record = args as Record<string, unknown>;
+    return typeof record.cacheKey === 'string' && typeof record.clearQueue === 'boolean';
 
-    if (!Array.isArray(record.songs)) {
-      return false;
-    }
-
-    return record.songs.every((song: unknown) => {
-      if (!song || typeof song !== 'object') return false;
-      const songRecord = song as Record<string, unknown>;
-
-      if (!Array.isArray(songRecord.source)) return false;
-
-      return songRecord.source.every((src: unknown) => {
-        if (!src || typeof src !== 'object') return false;
-        const srcRecord = src as Record<string, unknown>;
-        return typeof srcRecord.name === 'string' && typeof srcRecord.sourceId === 'string';
-      });
-    });
   }
 
   private getQobuzProxyUrl(): string {
@@ -89,14 +76,23 @@ export class PlayMusicHandler implements ToolHandler {
     if (!this.isPlayMusicArgs(args)) {
       throw new Error(`Invalid arguments provided to play_music. Expected an array of songs with sourceIds.`);
     }
-    const songs = args.songs;
+
+
     const songsQueued: string[] = [];
 
-    try {
-      await this.mpdClientService.send(new ClearMpdRequest());
-    } catch (e) {
-      this.logger.error(e);
-      this.logger.error('Failed to clear MPD playlist');
+    if(args.clearQueue){
+      try {
+        await this.mpdClientService.send(new ClearMpdRequest());
+      } catch (e) {
+        this.logger.error(e);
+        this.logger.error('Failed to clear MPD playlist');
+      }
+    }
+
+    const songs = await this.redisCacheService.get(args.cacheKey, MusicSearchResultsSchema);
+
+    if(!songs){
+      throw new Error(`No songs found for cacheKey: ${args.cacheKey}`);
     }
 
     for (const song of songs) {

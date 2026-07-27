@@ -34,6 +34,7 @@ import { OpensearchModule } from './services/opensearch/opensearch.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
 import { PlaylogModule } from './services/playlog/playlog.module';
+import { RedisCacheModule } from './services/redis-cache/redis-cache.module';
 import { ProfilerService } from './services/profiler/profiler.service';
 
 const imports: Array<any> = [
@@ -66,6 +67,7 @@ const imports: Array<any> = [
   MergeModule,
   OpensearchModule,
   PlaylogModule,
+  RedisCacheModule,
 ];
 
 if (process.env.IS_CLI !== 'true') {
