@@ -23,8 +23,23 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
       type: 'OBJECT',
       properties: {
         aggregate: {
-          type: 'STRING',
-          description: 'MongoDB Aggregation Query',
+          type: 'ARRAY',
+          description: 'List of MongoDB Aggregation Queries',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              description: {
+                type: 'STRING',
+                description: 'intent of the query',
+              },
+              query: {
+                type: 'STRING',
+                description: 'MongoDB Aggregation Query (JSON string of the pipeline)',
+              },
+            },
+            propertyOrdering: ['description', 'query'],
+            required: ['description', 'query'],
+          },
         },
         fulltext: {
           type: 'ARRAY',
@@ -45,3 +60,45 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
     this.cache = cache;
   }
 }
+
+
+/*
+aistudio
+{
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "type": "array",
+      "description": "List of MongoDB Aggregation Queries",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Description of the query"
+          },
+          "query": {
+            "type": "string",
+            "description": "MongoDB Aggregation Query (JSON string of the pipeline)"
+          }
+        },
+        "required": [
+          "description",
+          "query"
+        ]
+      }
+    },
+    "fulltext": {
+      "type": "array",
+      "description": "List of fulltext search terms",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "aggregate",
+    "fulltext"
+  ]
+}
+ */

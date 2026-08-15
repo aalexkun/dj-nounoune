@@ -200,8 +200,11 @@ export class DiscJockeyAgent extends Agent {
 
     let musicResult = new Map<string, PopulatedSong | null>();
     if (generateQueryWithCacheResponse.aggregate) {
-      const searchResult = await this.musicDBService.aggregate('songs', generateQueryWithCacheResponse.aggregate);
-      searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
+      for (const agg of generateQueryWithCacheResponse.aggregate) {
+        // Need to cast the new structure to zod, implement the new patern to cast in the .response
+        const searchResult = await this.musicDBService.aggregate('songs', agg.query);
+        searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
+      }
     }
 
     if (generateQueryWithCacheResponse.fulltext && generateQueryWithCacheResponse.fulltext.length > 0) {
