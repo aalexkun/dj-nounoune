@@ -10,12 +10,8 @@ export class PostFilteringRequest extends PromptusRequest<PostFilteringResponse>
     responseMimeType: 'application/json',
     responseSchema: {
       type: 'OBJECT',
-      description: 'An object containing the filtered list of songs.',
+      description: 'An object containing the filtered list of songs ID.',
       properties: {
-        description: {
-          type: 'STRING',
-          description: 'A description of the filtering process.',
-        },
         items: {
           type: 'ARRAY',
           description: 'A list of song IDs that passed the filter.',
@@ -24,7 +20,7 @@ export class PostFilteringRequest extends PromptusRequest<PostFilteringResponse>
           },
         },
       },
-      required: ['description', 'items'],
+      required: ['items'],
     },
   };
   public config: Partial<GenerateContentConfig>;

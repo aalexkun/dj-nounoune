@@ -1,21 +1,30 @@
 import { PromptusResponse } from '../../../promptus.response';
 import { GenerateContentResponse } from '@google/genai';
+import { z } from 'zod';
+import { MongoQueryDefinition, MongoQueryDefinitionSchema } from '../../../../music-db/mongo-filter.type';
+import { getErrorMessage } from '../../../../../utils/error.utils';
+
+const schema = z.object({
+  aggregate: z.array(MongoQueryDefinitionSchema).default([]).describe('Structured database queries to compile into $match'),
+  fulltext: z.array(z.string()).default([]).describe('List of fulltext search terms'),
+});
 
 export class GenerateQueryWithCacheResponse extends PromptusResponse {
-  readonly aggregate: [Record<string, unknown>] | null;
-  readonly fulltext: [string] | null;
+  /** Empty rather than null when the model returned nothing usable, so callers can iterate unconditionally. */
+  readonly aggregate: MongoQueryDefinition[] = [];
+  readonly fulltext: string[] = [];
 
   constructor(raw: GenerateContentResponse) {
     super(raw);
     if (typeof raw.text === 'string') {
       const cleanJson = raw.text.replace(/```json\n?|\n?```/g, '').trim();
       try {
-        const parsed = JSON.parse(cleanJson);
+        const parsed = schema.parse(JSON.parse(cleanJson));
 
-        this.aggregate = JSON.parse(parsed.aggregate) || null;
-        this.fulltext = parsed.fulltext || null;
-      } catch (e: any) {
-        throw new Error(`Failed to parse GenAI response: ${e.message}. Raw: ${raw}`);
+        this.aggregate = parsed.aggregate;
+        this.fulltext = parsed.fulltext;
+      } catch (e: unknown) {
+        throw new Error(`Failed to parse GenAI response: ${getErrorMessage(e)}. Raw: ${cleanJson}`);
       }
     }
   }

@@ -36,6 +36,7 @@ import { SchedulersModule } from './schedulers/schedulers.module';
 import { PlaylogModule } from './services/playlog/playlog.module';
 import { RedisCacheModule } from './services/redis-cache/redis-cache.module';
 import { ProfilerService } from './services/profiler/profiler.service';
+import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
 
 const imports: Array<any> = [
   // Load global env
@@ -59,6 +60,7 @@ const imports: Array<any> = [
     { name: Chat.name, schema: ChatSchema },
     { name: Deduplication.name, schema: DeduplicationSchema },
     { name: Enrich.name, schema: EnrichSchema },
+    { name: Playlog.name, schema: PlaylogSchema },
   ]),
   MpdClientModule,
   SpotifyModule,
