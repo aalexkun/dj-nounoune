@@ -22,7 +22,7 @@ import { ProfilerService } from '../../../profiler/profiler.service';
 import { FileService } from '../../../file/file.service';
 import { GenerateQueryWithCacheRequest } from './request/generate-query-with-cache.request';
 import { GenerateQueryWithCacheResponse } from './response/generate-query-with-cache.response';
-import { MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
+import { MongoWrapperResult, MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
 import { OpensearchService } from '../../../opensearch/opensearch.service';
 import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
 
@@ -198,24 +198,24 @@ export class DiscJockeyAgent extends Agent {
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2));
 
-    let musicResult = new Map<string, PopulatedSong | null>();
-    if (generateQueryWithCacheResponse.aggregate) {
-      for (const agg of generateQueryWithCacheResponse.aggregate) {
-        // Need to cast the new structure to zod, implement the new patern to cast in the .response
-        const searchResult = await this.musicDBService.aggregate('songs', agg.query);
-        searchResult.map((song) => !musicResult.has(song._id.toString()) && musicResult.set(song._id.toString(), null));
-      }
+    // Each definition is sampled on its own, so the same song can come back from several
+    // intents — the map collapses them while keeping the first populated copy.
+    const musicResult = new Map<string, { intent: string; song: PopulatedSong }>();
+    const groupedResults = await this.musicDBService.findByMongoWrapper(generateQueryWithCacheResponse.aggregate,50);
+    for (const group of groupedResults) {
+      this.logger.log(`${group.intent}: ${group.items.length} songs`);
+      group.items.forEach((song) => musicResult.set(song.id.toString(), { intent: group.intent, song }));
     }
 
-    if (generateQueryWithCacheResponse.fulltext && generateQueryWithCacheResponse.fulltext.length > 0) {
-      const fullTextResult = await this.opensearchService.fuzzySearch(generateQueryWithCacheResponse.fulltext);
+    if (generateQueryWithCacheResponse.fulltext.length > 0) {
+      const fullTextResult = await this.opensearchService.fuzzySearch(generateQueryWithCacheResponse.fulltext, 50);
       if (fullTextResult && fullTextResult.hits.hits.length > 0) {
-        fullTextResult.hits.hits.map(
-          (song) =>
-            song._score > 0.5 && // todo test that
-            !musicResult.has(song._id.toString()) &&
-            musicResult.set(song._id.toString(), null),
-        );
+        for (const hit of fullTextResult.hits.hits) {
+          if (hit._score > 0.5 && !musicResult.has(hit._id.toString())) {
+            const fullTextSong = await this.musicDBService.getPopulatedSongsByIds([hit._id.toString()]);
+            musicResult.set(hit._id.toString(), { intent: `Fulltext Match Score = ${hit._score}`, song: fullTextSong[0] });
+          }
+        }
       }
     }
 
@@ -224,12 +224,9 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('No songs found');
     }
 
-    const populatedSongs = await this.musicDBService.getPopulatedSongsByIds(Array.from(musicResult.keys()));
-    if (!populatedSongs || populatedSongs.length == 0) {
-      throw new Error('getPopulatedSongsByIds resulted in error. length ');
-    }
+    const postFiltering = await this.postFilteringSong(naturalLanguageRequest,musicResult);
+    const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering);
 
-    const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, populatedSongs);
 
     const playlistItemMsg = arrangePopulatedSongs
       .map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`)
@@ -247,7 +244,7 @@ export class DiscJockeyAgent extends Agent {
     let arrangedSongs: PopulatedSong[] = [];
     let aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
-    let prompt = `# Query \n${naturalLanguageRequest} \n`
+    let prompt = `# Query \n${naturalLanguageRequest} \n`;
     prompt = `# PSV\nid|artist|album|title|emotion|pace|disc_number|language|country\n`;
     populatedSongs.forEach((song, index) => {
       aiRequestMap.set(index + 1, song.id.toString());
@@ -268,6 +265,52 @@ export class DiscJockeyAgent extends Agent {
 
     return arrangedSongs;
   }
+
+  async postFilteringSong(request: string, candidates: Map<string, { intent: string; song: PopulatedSong }>){
+
+    const recentlyPlayed = await this.musicDBService.getRecentlyPlayedArtist();
+
+    const intents = {};
+    const idRemap = new Map<string, string>();
+    let inc = 0;
+    for (const curr of candidates.values()) {
+      inc++;
+      idRemap.set(inc.toString(), curr.song.id.toString());
+
+      if (intents[curr.intent]){
+        intents[curr.intent] += `${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}\n`;
+      } else {
+        intents[curr.intent] = `ID|Artist|Album|Title\n${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}\n`;
+      }
+    }
+
+    const prompt = `
+# User Request: 
+${request}
+# Recently Played Artists
+Artist|Last Played
+${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n')}
+    
+# Songs 
+    ${Object.entries(intents).map(([intent, songs ]) => `### ${intent}\n${songs}\n\n`).join('\n')}
+    `;
+
+    const response = await this.generate(new PostFilteringRequest(prompt));
+
+    const result: PopulatedSong[] = [];
+
+    for(const filteredCandidate of response.items){
+      const id = idRemap.get(filteredCandidate) || '';
+      const song = candidates.get(id);
+      if (song) {
+        result.push(song.song);
+      }
+    }
+
+    return result;
+  }
+
+
 
   async whatIsPlaying(request: string, sessionId?: string) {
     const wip = new WhatIsPlayingRequest(request);

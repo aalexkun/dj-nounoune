@@ -1,4 +1,4 @@
-const MAX_MONGO_DB_QUERY = 3;
+export const MAX_MONGO_DB_QUERY = 3;
 export const generateQueryWithCache = `
 # MAIN INSTRUCTION
 You are a tool agent used by specialised music dj agent. Your goal is to understand the data structures of a *large multi-language database* and generate db request queries that will wield enough data to be then sampled for the best result. 
@@ -30,14 +30,16 @@ Is the user want a specific subset, like only Hi-res songs, or songs from a spec
 1. **Identify Dimensions:** Determine the best dimensions to query based on the schema and the 'Cardinality and Facet Generation' guidelines.
 2. **Validate Yield:** Use the 'Completeness and Null Tracking' rules to ensure the selected dimensions will yield between 20 and 200 songs.
 3. **Validate Values:** Check against the lexicon to ensure your search terms match the existing list of valid values.
-4. **Sample and Limit:** Always include \`{ $sample: { size: 200 } }\` at the end of the aggregation pipeline to sample and limit the results.
+4. **Emit Filters, Not Pipelines:** Describe each query as a list of \`filters\`. Never write raw MongoDB syntax — the backend compiles the filters into a \`$match\` and appends the sampling stage itself.
 
-#### MongoDB Query Output Format  
+Each filter names the \`collection\` it applies to (\`songs\`, \`artists\` or \`albums\`), the \`field\` as a dotted path taken verbatim from that collection's schema, an \`operator\`, and a \`value\` array. Filters within a query are combined with AND. A field that does not exist in the schema is discarded, so never invent one.
+
+#### MongoDB Query Output Format
 
 *Example: Get me some high res tune for vibe codding that would wake me up*
 
 json
-{"aggregate":[{"description":"High-res fast and ultra-fast tracks with high vitality or euphoria to wake you up for coding","query":"[{\\"$match\\":{\\"source.technical_info.is_high_res\\":true,\\"pace\\":{\\"$in\\":[\\"fast\\",\\"ultra fast\\"]},\\"emotion\\":{\\"$in\\":[\\"Vitality\\",\\"Euphoria\\"]}}},{\\"$sample\\":{\\"size\\":200}}]"},{"description":"High-res electronic and upbeat genres suitable for focused coding sessions","query":"[{\\"$match\\":{\\"source.technical_info.is_high_res\\":true,\\"genre\\":{\\"$in\\":[\\"Synthwave\\",\\"Drum and Bass (DnB)\\",\\"Techno\\",\\"IDM\\",\\"Synth-Pop\\",\\"Glitch Hop\\",\\"Trance\\"]},\\"pace\\":{\\"$in\\":[\\"fast\\",\\"ultra fast\\"]}}},{\\"$sample\\":{\\"size\\":200}}]"},{"description":"High-res intense energetic tunes with empowering or cathartic mood","query":"[{\\"$match\\":{\\"source.technical_info.is_high_res\\":true,\\"pace\\":{\\"$in\\":[\\"fast\\",\\"ultra fast\\",\\"madness\\"]},\\"emotion\\":{\\"$in\\":[\\"Empowerment\\",\\"Vitality\\",\\"Catharsis\\"]}}},{\\"$sample\\":{\\"size\\":200}}]"}],"fulltext":[]}
+{"aggregate":[{"description":"High-res fast and ultra-fast tracks with high vitality or euphoria to wake you up for coding","filters":[{"collection":"songs","field":"source.technical_info.is_high_res","operator":"$eq","value":[true]},{"collection":"songs","field":"pace","operator":"$in","value":["fast","ultra fast"]},{"collection":"songs","field":"emotion","operator":"$in","value":["Vitality","Euphoria"]}]},{"description":"High-res electronic and upbeat genres suitable for focused coding sessions","filters":[{"collection":"songs","field":"source.technical_info.is_high_res","operator":"$eq","value":[true]},{"collection":"songs","field":"genre","operator":"$in","value":["Synthwave","Drum and Bass (DnB)","Techno","IDM","Synth-Pop","Glitch Hop","Trance"]},{"collection":"songs","field":"pace","operator":"$in","value":["fast","ultra fast"]}]},{"description":"Recent high-energy tracks that are not ambient, for an empowering coding session","filters":[{"collection":"songs","field":"pace","operator":"$in","value":["fast","ultra fast","madness"]},{"collection":"songs","field":"emotion","operator":"$in","value":["Empowerment","Vitality","Catharsis"]},{"collection":"songs","field":"genre","operator":"$regex","value":["ambient"],"negate":true},{"collection":"albums","field":"release_year","operator":"$gte","value":["2015"]}]}],"fulltext":[]}
 
 
 

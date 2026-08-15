@@ -4,11 +4,20 @@ import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Enrich, EnrichDocument } from '../../schemas/enrich.schema';
-import { Model } from 'mongoose';
+import { Model, QueryFilter, Types } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
 import { z } from 'zod';
+import { FilterCollection, FilterCondition, MongoQueryDefinition } from './mongo-filter.type';
+import { buildMatch, MongoMatch, SchemaPathResolver } from './mongo-filter.util';
+import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
+
+/** One resolved LLM query: the intent it was generated for, and the songs it yielded. */
+export type MongoWrapperResult = {
+  intent: string;
+  items: PopulatedSong[];
+};
 
 export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
   artist: ArtistDocument;
@@ -25,6 +34,14 @@ export type QobuzLookupResult = {
   title: string;
 }
 
+/** One row of the recently-played aggregation: artist name and the minute-precision timestamp it was last played at. */
+export const RecentlyPlayedArtistSchema = z.object({
+  artist: z.string(),
+  playedAt: z.string(),
+});
+
+export type RecentlyPlayedArtist = z.infer<typeof RecentlyPlayedArtistSchema>;
+
 @Injectable()
 export class MusicDbService {
   private readonly logger = new Logger(MusicDbService.name);
@@ -33,6 +50,7 @@ export class MusicDbService {
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
     @InjectModel(Enrich.name) private enrichModel: Model<EnrichDocument>,
+    @InjectModel(Playlog.name) private playlogModel: Model<PlaylogDocument>,
   ) {}
 
   async syncEnrich(): Promise<void> {
@@ -94,6 +112,63 @@ export class MusicDbService {
       .populate('album')
       .exec();
     return z.array(PopulatedSongSchema).parse(results);
+  }
+
+  async getRecentlyPlayedArtist(): Promise<RecentlyPlayedArtist[]> {
+    const results: unknown[] = await this.playlogModel.aggregate([
+        {
+          $group: {
+            _id: '$artist',
+            lastPlayedAt: { $max: '$playedAt' },
+          },
+        },
+        { $sort: { lastPlayedAt: -1 } },
+        { $limit: 50 },
+        {
+          $lookup: {
+            from: 'artists',
+            let: { artistIdStr: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $or: [{ $eq: ['$_id', '$$artistIdStr'] }, { $eq: [{ $toString: '$_id' }, '$$artistIdStr'] }],
+                  },
+                },
+              },
+            ],
+            as: 'artistDetails',
+          },
+        },
+        {
+          $unwind: {
+            path: '$artistDetails',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            artist: '$artistDetails.artist',
+            playedAt: {
+              $substrCP: [{ $toString: '$lastPlayedAt' }, 0, 16],
+            },
+          },
+        },
+      ]).exec();
+
+    // The $lookup preserves playlog rows whose artist document is gone, so those come back
+    // without an `artist` field — drop them instead of failing the whole batch.
+    const parsed = results.flatMap((row) => {
+      const result = RecentlyPlayedArtistSchema.safeParse(row);
+      return result.success ? [result.data] : [];
+    });
+
+    if (parsed.length !== results.length) {
+      this.logger.warn(`Discarded ${results.length - parsed.length} recently played rows with no resolvable artist`);
+    }
+
+    return parsed;
   }
 
   async getSongs(createdAt?: Date): Promise<SongDocument[]> {
@@ -296,6 +371,87 @@ export class MusicDbService {
     } else {
       throw new Error('Unsupported collection');
     }
+  }
+
+  /**
+   * Runs LLM-authored filter definitions and returns the songs each one yielded,
+   * tagged with the intent it was generated for.
+   *
+   * Conditions targeting `artists` / `albums` are resolved to ids first and folded into
+   * the song match through the `artist` / `album` refs. Unknown fields are dropped by
+   * {@link buildMatch}, so a definition whose filters were all hallucinated returns
+   * nothing rather than sampling the entire library.
+   *
+   * @param definitions - Query definitions as parsed from the model response
+   * @param sampleSize - Upper bound of songs drawn per definition via `$sample`
+   */
+  async findByMongoWrapper(definitions: MongoQueryDefinition[], sampleSize = 300): Promise<MongoWrapperResult[]> {
+    const results: MongoWrapperResult[] = [];
+
+    for (const definition of definitions) {
+      const items = await this.runQueryDefinition(definition, sampleSize);
+      this.logger.log(`"${definition.description}" -> ${items.length} songs`);
+      results.push({ intent: definition.description, items });
+    }
+
+    return results;
+  }
+
+  private async runQueryDefinition(definition: MongoQueryDefinition, sampleSize: number): Promise<PopulatedSong[]> {
+    const conditionsFor = (collection: FilterCollection): FilterCondition[] =>
+      definition.filters.filter((filter) => filter.collection === collection);
+
+    const match: MongoMatch = buildMatch(this.songModel.schema as SchemaPathResolver, conditionsFor('songs')) ?? {};
+    let constrained = Object.keys(match).length > 0;
+
+    const artistIds = await this.resolveRefIds(this.artistModel, conditionsFor('artists'));
+    if (artistIds) {
+      if (artistIds.length === 0) {
+        this.logger.warn(`No artist matched for "${definition.description}"`);
+        return [];
+      }
+      match.artist = { $in: artistIds };
+      constrained = true;
+    }
+
+    const albumIds = await this.resolveRefIds(this.albumModel, conditionsFor('albums'));
+    if (albumIds) {
+      if (albumIds.length === 0) {
+        this.logger.warn(`No album matched for "${definition.description}"`);
+        return [];
+      }
+      match.album = { $in: albumIds };
+      constrained = true;
+    }
+
+    // Never fall through to an unfiltered $sample of the whole collection.
+    if (!constrained) {
+      this.logger.warn(`No usable filter survived for "${definition.description}" - skipping`);
+      return [];
+    }
+
+    const sampled = await this.songModel.aggregate([{ $match: match }, { $sample: { size: sampleSize } }]).exec();
+    const ids = sampled.map((song) => song._id.toString());
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return this.getPopulatedSongsByIds(ids);
+  }
+
+  /**
+   * @returns the matching ids, or `null` when there was nothing usable to resolve —
+   *   which the caller must distinguish from an empty match (no such artist/album).
+   */
+  private async resolveRefIds<T>(model: Model<T>, conditions: FilterCondition[]): Promise<Types.ObjectId[] | null> {
+    if (conditions.length === 0) {
+      return null;
+    }
+    const match = buildMatch(model.schema as SchemaPathResolver, conditions);
+    if (!match) {
+      return null;
+    }
+    return (await model.distinct('_id', match as QueryFilter<T>).exec()) as Types.ObjectId[];
   }
 
   getSchema(collection: string): any {

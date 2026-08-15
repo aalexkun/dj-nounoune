@@ -609,7 +609,7 @@ export class OpensearchService {
     }
   }
 
-  async fuzzySearch(keywords: string[], limit = 100): Promise<OpenSearchSearchResponse | null> {
+  async fuzzySearch(keywords: string[], limit = 200): Promise<OpenSearchSearchResponse | null> {
     if (!this.client) return null;
 
     const modelId = await this.getDeployedModelId();
