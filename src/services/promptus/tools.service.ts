@@ -27,6 +27,7 @@ import { RedisCacheService } from '../redis-cache/redis-cache.service';
 @Injectable()
 export class ToolsService {
   private toolRegistry = new Map<string, ToolHandler>();
+  private discJockeyAgent: DiscJockeyAgent | undefined;
 
   constructor(
     private mpdClientService: MpdClientService,
@@ -61,12 +62,22 @@ export class ToolsService {
       this.redisCacheService,
       eventEmitter,
     );
+    this.discJockeyAgent = discJokeyAgent;
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyBrowseDatabaseHandler(discJokeyAgent));
 
     const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));
+  }
+
+  /**
+   * The disc jockey built in `initialiseAgent`, for callers that drive it directly rather than
+   * through a function call — the now-playing enrichment in `PlaylogService`, for instance.
+   * Undefined until `PromptusService` has been constructed.
+   */
+  public getDiscJockeyAgent(): DiscJockeyAgent | undefined {
+    return this.discJockeyAgent;
   }
 
   private registerTool(handler: ToolHandler) {

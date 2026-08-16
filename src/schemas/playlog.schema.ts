@@ -53,6 +53,12 @@ export class Playlog {
 
   @Prop({ description: 'Identifier of the playlist request that triggered this play' })
   playlistRequestId?: string;
+
+  @Prop({ description: 'Album artwork URL shown on the public now-playing page' })
+  coverUrl?: string;
+
+  @Prop({ description: 'Disc jockey commentary about the played track, in markdown' })
+  description?: string;
 }
 
 export const PlaylogSchema = SchemaFactory.createForClass(Playlog);

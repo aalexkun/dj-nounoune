@@ -16,6 +16,8 @@ import { PostFilteringRequest } from './request/post-filtering.request';
 import { PostFilteringResponse } from './response/post-filtering.response';
 import { BrowseDatabaseRequest } from './request/browse-database.request';
 import { BrowseDatabaseResponse } from './response/browse-database.response';
+import { AlbumCoverRequest } from './request/album-cover.request';
+import { AlbumCoverResponse } from './response/album-cover.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 import { ProfilerService } from '../../../profiler/profiler.service';
@@ -331,6 +333,16 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
     return await this.generate(wip, sessionId);
   }
 
+  /**
+   * Resolve the artwork for a release through a grounded web search. Called directly on a song change,
+   * so it is not exposed as a tool. Returns null rather than throwing when nothing is found.
+   */
+  async findAlbumCover(artist: string, album: string, sessionId?: string): Promise<string | null> {
+    const coverRequest = new AlbumCoverRequest(artist, album);
+    const response = await this.generate(coverRequest, sessionId);
+    return response.imageUrl;
+  }
+
   async categorisePlaylist(request: string, sessionId?: string) {
     const djRequest = new CategorisePlaylistRequest(request);
     return await this.generate(djRequest, sessionId);
@@ -386,6 +398,10 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
 
     if (request instanceof GenerateQueryWithCacheRequest) {
       return new GenerateQueryWithCacheResponse(response) as ReqType;
+    }
+
+    if (request instanceof AlbumCoverRequest) {
+      return new AlbumCoverResponse(response) as ReqType;
     }
 
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);

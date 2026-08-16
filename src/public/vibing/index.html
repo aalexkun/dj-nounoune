@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>vibing on</title>
+  <link rel="stylesheet" href="/vibing-on/assets/vibing.css" />
+</head>
+<body>
+<main class="board">
+  <header class="rail">
+    <div class="rail-left">
+      <span id="live-dot" class="dot offline"></span>
+      <span class="rail-label">vibing on</span>
+    </div>
+    <div class="rail-right" id="rail-status">connecting</div>
+  </header>
+
+  <section class="hero">
+    <div class="cover-panel">
+      <img id="cover" class="cover" alt="" referrerpolicy="no-referrer" hidden />
+      <div id="cover-placeholder" class="cover cover-placeholder"></div>
+    </div>
+    <div class="hero-text">
+      <div id="eyebrow" class="eyebrow"></div>
+      <h1 id="title" class="title">nothing playing</h1>
+      <div id="artist" class="artist"></div>
+      <div id="badges" class="badges"></div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="narration">
+      <div class="section-label">nounoune says</div>
+      <div id="description" class="prose"><p class="waiting">waiting for the disc jockey…</p></div>
+    </div>
+    <aside class="details">
+      <div class="section-label">details</div>
+      <dl id="details-grid" class="details-grid"></dl>
+    </aside>
+  </section>
+
+  <section id="recent-section" class="recent" hidden>
+    <div class="section-label">just played</div>
+    <div id="recent" class="recent-grid"></div>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/vibing-on/assets/vibing.js"></script>
+</body>
+</html>

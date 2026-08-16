@@ -1,0 +1,355 @@
+:root {
+  --bg: #0c0c0d;
+  --bg-sunk: #0a0a0b;
+  --bg-panel: #141416;
+  --bg-tile: #1e1e21;
+  --line: #232325;
+  --ink: #f1efe8;
+  --ink-2: #d3d1c7;
+  --ink-3: #9c9b95;
+  --ink-4: #5f5e5a;
+  --accent: #5dcaa5;
+  --accent-bg: #04342c;
+  --accent-ink: #9fe1cb;
+  --serif: Georgia, 'Times New Roman', serif;
+
+  /* Everything below is sized in rem, so this one line scales the whole page with the display:
+     16px on a laptop, ~21px on 1440p, ~32px on a 4K television. */
+  font-size: clamp(16px, 0.84vw, 34px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* The cover swap relies on the hidden attribute, and the display rules below would otherwise
+   out-specify the user agent's [hidden] rule and lay both boxes out side by side. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* One screenful: the board owns the viewport and the narration takes whatever the fixed rows leave. */
+.board {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--bg);
+}
+
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.rail-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.rail-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  color: #b4b2a9;
+}
+
+.rail-right {
+  font-size: 0.75rem;
+  color: var(--ink-4);
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--accent);
+}
+
+.dot.offline {
+  background: #4a4a4d;
+}
+
+.hero {
+  display: flex;
+  align-items: stretch;
+}
+
+.cover-panel {
+  background: var(--bg-panel);
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cover {
+  width: min(26vw, 34vh);
+  height: min(26vw, 34vh);
+  border-radius: 0.5rem;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-tile);
+  border: 1px solid #2c2c2f;
+}
+
+.cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-placeholder::after {
+  content: '';
+  display: block;
+  width: 20%;
+  aspect-ratio: 1;
+  border: 0.12rem solid #4a4a4d;
+  border-radius: 50%;
+}
+
+.hero-text {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin-bottom: 0.65rem;
+  min-height: 0.9rem;
+}
+
+.title {
+  font-family: var(--serif);
+  font-size: clamp(1.75rem, 3.4vw, 3.6rem);
+  font-weight: 400;
+  line-height: 1.1;
+  margin: 0 0 0.5rem;
+}
+
+.artist {
+  font-size: 1.25rem;
+  color: var(--ink-2);
+  margin-bottom: 1.1rem;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.25rem;
+  background: var(--bg-tile);
+  color: #b4b2a9;
+}
+
+.badge.accent {
+  background: var(--accent-bg);
+  color: var(--accent-ink);
+}
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+  min-height: 0;
+}
+
+.narration {
+  padding: 1.4rem 1.5rem;
+  border-right: 1px solid var(--line);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2c2c2f transparent;
+}
+
+.details {
+  padding: 1.4rem 1.5rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.section-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  color: var(--ink-4);
+  margin-bottom: 0.75rem;
+}
+
+.prose h3 {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+  margin: 1.15rem 0 0.5rem;
+}
+
+.prose p {
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #e4e2da;
+  margin: 0 0 0.9rem;
+  max-width: 62ch;
+}
+
+.prose strong {
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.prose ul {
+  margin: 0 0 0.9rem;
+  padding-left: 1.1rem;
+  max-width: 62ch;
+}
+
+.prose li {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--ink-3);
+  margin-bottom: 0.35rem;
+}
+
+.prose .waiting {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--ink-4);
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.details-grid dt {
+  color: var(--ink-4);
+}
+
+.details-grid dd {
+  color: var(--ink-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.recent {
+  padding: 1.1rem 1.5rem 1.3rem;
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunk);
+}
+
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.8rem;
+}
+
+.recent-item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.recent-cover {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.25rem;
+  background: var(--bg-tile);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.recent-meta {
+  min-width: 0;
+}
+
+.recent-title {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-artist {
+  font-size: 0.7rem;
+  color: var(--ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Portrait and phones: give up the one-screenful rule, stack and let the page scroll. */
+@media (max-width: 800px), (orientation: portrait) {
+  body {
+    overflow: auto;
+  }
+
+  .board {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-rows: none;
+  }
+
+  .hero {
+    flex-wrap: wrap;
+  }
+
+  .cover-panel {
+    width: 100%;
+  }
+
+  .cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 22rem;
+  }
+
+  .band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .narration,
+  .details {
+    overflow-y: visible;
+  }
+
+  .narration {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}

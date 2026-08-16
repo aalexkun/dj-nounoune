@@ -13,12 +13,14 @@ import { MpdClientModule } from './services/mpd-client/mpd-client.module';
 import { ShellService } from './services/shell/shell.service';
 import { FileService } from './services/file/file.service';
 import { ChatGateway } from './gateway/chat.gateway';
+import { VibingGateway } from './gateway/vibing.gateway';
 import { Chat, ChatSchema } from './schemas/chat.schema';
 import { Deduplication, DeduplicationSchema } from './schemas/deduplication.schema';
 import { Enrich, EnrichSchema } from './schemas/enrich.schema';
 import { ChatService } from './services/chat/chat.service';
 import { ChatController } from './controller/chat.controller';
 import { AuthController } from './controller/auth.controller';
+import { VibingController } from './controller/vibing.controller';
 import { AuthService } from './services/auth/auth.service';
 import { ApiAuthGuard } from './services/auth/api-auth.guard';
 import { MpdClientService } from './services/mpd-client/mpd-client.service';
@@ -33,7 +35,7 @@ import { MergeModule } from './services/merge/merge.module';
 import { OpensearchModule } from './services/opensearch/opensearch.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
-import { PlaylogModule } from './services/playlog/playlog.module';
+import { PlaylogService } from './services/playlog/playlog.service';
 import { RedisCacheModule } from './services/redis-cache/redis-cache.module';
 import { ProfilerService } from './services/profiler/profiler.service';
 import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
@@ -68,7 +70,6 @@ const imports: Array<any> = [
   ElasticsearchModule,
   MergeModule,
   OpensearchModule,
-  PlaylogModule,
   RedisCacheModule,
 ];
 
@@ -79,7 +80,7 @@ if (process.env.IS_CLI !== 'true') {
 
 @Module({
   imports,
-  controllers: [ChatController, AuthController],
+  controllers: [ChatController, AuthController, VibingController],
   providers: [
     AppService,
     PromptusService,
@@ -91,11 +92,13 @@ if (process.env.IS_CLI !== 'true') {
     MpdClientService,
     FileService,
     ChatGateway,
+    VibingGateway,
     ToolsService,
     AuthService,
     ApiAuthGuard,
     SessionService,
     ProfilerService,
+    PlaylogService,
   ],
 })
 export class AppModule {}
