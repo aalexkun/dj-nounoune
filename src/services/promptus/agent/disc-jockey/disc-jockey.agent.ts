@@ -245,10 +245,10 @@ export class DiscJockeyAgent extends Agent {
     let aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
     let prompt = `# Query \n${naturalLanguageRequest} \n`;
-    prompt = `# PSV\nid|artist|album|title|emotion|pace|disc_number|language|country\n`;
+    prompt = `# PSV\nid|artist|album|title|emotion|pace|track_number|language|country\n`;
     populatedSongs.forEach((song, index) => {
       aiRequestMap.set(index + 1, song.id.toString());
-      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.disc_number}|${song.language}|${song.country}\n`;
+      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.track_number}|${song.language}|${song.country}\n`;
     });
 
     const response = await this.generate(new FindBestArrangementRequest(prompt));
@@ -276,11 +276,11 @@ export class DiscJockeyAgent extends Agent {
     for (const curr of candidates.values()) {
       inc++;
       idRemap.set(inc.toString(), curr.song.id.toString());
-
+      const psvline = `${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}|${curr.song.emotion}|${curr.song.pace}|${curr.song.genre}|${curr.song.track_number}|${curr.song.language}`;
       if (intents[curr.intent]){
-        intents[curr.intent] += `${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}\n`;
+        intents[curr.intent] += `${psvline}\n`;
       } else {
-        intents[curr.intent] = `ID|Artist|Album|Title\n${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}\n`;
+        intents[curr.intent] = `ID|Artist|Album|Title|emotion|pace|genre|track_number|language\n${psvline}\n`;
       }
     }
 
