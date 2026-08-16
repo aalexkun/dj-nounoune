@@ -49,3 +49,30 @@ export interface NowPlaying {
 export class NowPlayingEvent {
   constructor(public readonly nowPlaying: NowPlaying) {}
 }
+
+/**
+ * The two enrichments are resolved independently and announced on their own events, so a slow
+ * artwork search never holds back the commentary and neither delays the base snapshot. Each carries
+ * the songId it belongs to: a viewer that has already moved on to the next track ignores it.
+ */
+export const NowPlayingCommentaryEventName = 'playlog.now-playing.commentary';
+export const NowPlayingCoverEventName = 'playlog.now-playing.cover';
+
+export interface NowPlayingCommentary {
+  songId: string;
+  /** The disc jockey's markdown narration of the track. */
+  description: string;
+}
+
+export interface NowPlayingCover {
+  songId: string;
+  coverUrl: string;
+}
+
+export class NowPlayingCommentaryEvent {
+  constructor(public readonly commentary: NowPlayingCommentary) {}
+}
+
+export class NowPlayingCoverEvent {
+  constructor(public readonly cover: NowPlayingCover) {}
+}

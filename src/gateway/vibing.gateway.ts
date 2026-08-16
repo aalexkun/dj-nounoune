@@ -3,7 +3,14 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PlaylogService } from '../services/playlog/playlog.service';
-import { NowPlayingEvent, NowPlayingEventName } from '../services/playlog/now-playing.event';
+import {
+  NowPlayingCommentaryEvent,
+  NowPlayingCommentaryEventName,
+  NowPlayingCoverEvent,
+  NowPlayingCoverEventName,
+  NowPlayingEvent,
+  NowPlayingEventName,
+} from '../services/playlog/now-playing.event';
 import { getErrorMessage } from '../utils/error.utils';
 
 /**
@@ -54,5 +61,17 @@ export class VibingGateway implements OnGatewayConnection, OnGatewayDisconnect {
   broadcastNowPlaying(payload: NowPlayingEvent) {
     this.logger.debug(`${NowPlayingEventName}: ${payload.nowPlaying.title}`);
     this.server.emit('now-playing', payload.nowPlaying);
+  }
+
+  @OnEvent(NowPlayingCommentaryEventName)
+  broadcastCommentary(payload: NowPlayingCommentaryEvent) {
+    this.logger.debug(`${NowPlayingCommentaryEventName}: ${payload.commentary.songId}`);
+    this.server.emit('now-playing-commentary', payload.commentary);
+  }
+
+  @OnEvent(NowPlayingCoverEventName)
+  broadcastCover(payload: NowPlayingCoverEvent) {
+    this.logger.debug(`${NowPlayingCoverEventName}: ${payload.cover.coverUrl}`);
+    this.server.emit('now-playing-cover', payload.cover);
   }
 }

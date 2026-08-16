@@ -230,8 +230,46 @@
     state.timer = setTimeout(begin, HOLD_MS);
   }
 
+  var current = { songId: null, description: null, coverUrl: null };
+
+  /**
+   * Entry point for a whole snapshot, from the socket or the poll. A new track repaints everything;
+   * the same track only takes the parts that changed, so a late commentary or cover does not restart
+   * the narration drift.
+   */
+  function apply(song) {
+    if (!song || !song.songId) return;
+
+    if (song.songId !== current.songId) {
+      render(song);
+      return;
+    }
+
+    applyCommentary(song);
+    applyCover(song);
+  }
+
+  function applyCommentary(payload) {
+    if (!payload || payload.songId !== current.songId) return;
+    if (!payload.description || payload.description === current.description) return;
+
+    current.description = payload.description;
+    el.description.innerHTML = renderMarkdown(payload.description);
+    driftNarration();
+  }
+
+  function applyCover(payload) {
+    if (!payload || payload.songId !== current.songId) return;
+    if (!payload.coverUrl || payload.coverUrl === current.coverUrl) return;
+
+    current.coverUrl = payload.coverUrl;
+    setCover(payload.coverUrl);
+  }
+
   function render(song) {
-    if (!song) return;
+    if (!song || !song.songId) return;
+
+    current = { songId: song.songId, description: song.description || null, coverUrl: song.coverUrl || null };
 
     document.title = song.title + ' — ' + song.artist;
 
@@ -266,7 +304,12 @@
     el.status.textContent = label;
   }
 
-  var socket = io('/vibing');
+  var socket = io('/vibing', {
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+  });
 
   socket.on('connect', function () {
     setConnected(true, 'live');
@@ -277,8 +320,45 @@
   });
 
   socket.on('connect_error', function () {
-    setConnected(false, 'offline');
+    setConnected(false, 'reconnecting');
   });
 
-  socket.on('now-playing', render);
+  socket.on('now-playing', apply);
+  socket.on('now-playing-commentary', applyCommentary);
+  socket.on('now-playing-cover', applyCover);
+
+  /**
+   * Safety net for an unattended display. The websocket carries the same engine ping settings as the
+   * chat gateway, which are aggressive enough that a throttled or backgrounded tab gets dropped, and a
+   * silently half-open socket would leave the screen showing a track that finished long ago. Polling
+   * the snapshot costs a few hundred bytes a minute and `render` ignores anything unchanged.
+   */
+  function poll() {
+    fetch('/vibing-on/now-playing', { cache: 'no-store' })
+      .then(function (response) {
+        // Empty body rather than JSON when nothing has played yet.
+        return response.ok ? response.text() : '';
+      })
+      .then(function (body) {
+        if (!socket.connected) setConnected(false, 'polling');
+        if (body) apply(JSON.parse(body));
+      })
+      .catch(function () {
+        if (!socket.connected) setConnected(false, 'offline');
+      });
+  }
+
+  function revive() {
+    if (!socket.connected) socket.connect();
+    poll();
+  }
+
+  setInterval(revive, 20000);
+
+  // Coming back from a screensaver or a background tab: catch up immediately rather than in 20s.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) revive();
+  });
+
+  window.addEventListener('online', revive);
 })();
