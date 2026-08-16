@@ -35,8 +35,18 @@ export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse>
     return this._query;
   }
 
-  constructor(query: string) {
+  /**
+   * @param query the question, which may name the track to analyse.
+   * @param options.withoutCurrentSongTool drop the MPD tool so the answer can only describe the track
+   *   named in the query. The tool reports whatever is playing at the moment the model calls it, which
+   *   is later than the moment the caller asked — for a specific track that is the wrong answer.
+   */
+  constructor(query: string, options?: { withoutCurrentSongTool?: boolean }) {
     super();
     this._query = query;
+
+    if (options?.withoutCurrentSongTool) {
+      this.tools = [];
+    }
   }
 }

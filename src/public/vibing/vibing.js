@@ -153,20 +153,36 @@
     return html;
   }
 
+  // Nothing to show beats an empty square: the cat holds the panel until artwork turns up.
+  var DEFAULT_COVER = '/vibing-on/assets/vibe-cat.gif';
+
+  /**
+   * With a cover the image is the square and the placeholder is gone; without one the cat takes the
+   * whole panel and the placeholder stays behind it, drawing nothing, purely to hold that square open
+   * so the panel does not resize under the artwork arriving.
+   */
   function setCover(url) {
-    if (!url) {
-      el.cover.hidden = true;
-      el.cover.removeAttribute('src');
-      el.coverPlaceholder.hidden = false;
-      return;
-    }
-    el.cover.src = url;
+    el.cover.src = url || DEFAULT_COVER;
+    el.cover.classList.toggle('cover-default', !url);
     el.cover.hidden = false;
-    el.coverPlaceholder.hidden = true;
+    el.coverPlaceholder.hidden = !!url;
+    el.coverPlaceholder.classList.toggle('spacer', !url);
   }
 
   el.cover.addEventListener('error', function () {
     // Discogs' CDN blocks hotlinking, so a resolved URL can still fail to load.
+    if (el.cover.getAttribute('src') === DEFAULT_COVER) {
+      // The fallback itself is missing — hand the square back to the drawn placeholder rather than
+      // loop on the error.
+      el.cover.hidden = true;
+      el.cover.removeAttribute('src');
+      el.cover.classList.remove('cover-default');
+      el.coverPlaceholder.hidden = false;
+      el.coverPlaceholder.classList.remove('spacer');
+      return;
+    }
+
+    report('cover', 'failed to load ' + el.cover.getAttribute('src'));
     setCover(null);
   });
 
@@ -262,8 +278,8 @@
     if (node.scrollHeight <= node.clientHeight + 4) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    // Roughly a line per second, whatever the display scales the text to.
-    var pixelsPerSecond = parseFloat(getComputedStyle(document.documentElement).fontSize) * 1.01;
+    // Roughly a line every two seconds, whatever the display scales the text to.
+    var pixelsPerSecond = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.505;
     var HOLD_MS = 8000;
     var state = { frame: 0, timer: 0 };
     var offset = 0;

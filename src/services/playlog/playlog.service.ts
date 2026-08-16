@@ -11,6 +11,7 @@ import { MpdClientService } from '../mpd-client/mpd-client.service';
 import { CurrentSongMpdResponse } from '../mpd-client/responses/CurrentSongMpdResponse';
 import { MusicDbService, PopulatedSong } from '../music-db/music-db.service';
 import { ToolsService } from '../promptus/tools.service';
+import { AppService } from '../../app.service';
 import { DiscJockeyAgent } from '../promptus/agent/disc-jockey/disc-jockey.agent';
 import { getErrorMessage } from '../../utils/error.utils';
 import { isReachableImageUrl } from '../../utils/image-url.util';
@@ -55,6 +56,7 @@ export class PlaylogService {
     private musicDbService: MusicDbService,
     private toolsService: ToolsService,
     private eventEmitter: EventEmitter2,
+    private appService: AppService,
   ) {}
 
   get nowPlaying(): NowPlaying | null {
@@ -74,9 +76,15 @@ export class PlaylogService {
     if (this.viewerCount === 0) return;
     if (!this.currentNowPlaying || !this.currentPlaylog) return;
     if (this.enrichingSongId === this.currentNowPlaying.songId) return;
-    if (this.currentNowPlaying.description && this.currentNowPlaying.coverUrl) return;
+    if (!this.needsEnrichment(this.currentNowPlaying)) return;
 
     await this.enrichNowPlaying(this.currentPlaylog, this.currentNowPlaying);
+  }
+
+  /** A missing cover is only worth another pass while the search that could fill it is switched on. */
+  private needsEnrichment(snapshot: NowPlaying): boolean {
+    if (!snapshot.description) return true;
+    return !snapshot.coverUrl && this.appService.isAlbumCoverSearchEnabled();
   }
 
   @Interval(10000)
@@ -271,7 +279,9 @@ export class PlaylogService {
     if (snapshot.description) return;
 
     try {
-      const description = cached ?? (await discJockey.whatIsPlaying('What is currently playing?')).text;
+      // Name the track rather than letting the agent ask MPD: by the time the model calls the tool the
+      // track may have advanced, and the commentary would then describe a song the page is not showing.
+      const description = cached ?? (await discJockey.whatIsPlaying(this.describeTrack(snapshot), undefined, { withoutCurrentSongTool: true })).text;
 
       if (!description || !this.isStillPlaying(snapshot, 'commentary')) return;
 
@@ -294,7 +304,16 @@ export class PlaylogService {
     if (snapshot.coverUrl) return;
 
     try {
-      const coverUrl = cached ?? (await this.searchAlbumCover(discJockey, snapshot));
+      let coverUrl = cached;
+
+      if (!coverUrl) {
+        if (!this.appService.isAlbumCoverSearchEnabled()) {
+          this.logger.debug('Album cover search is disabled, leaving the artwork empty');
+          return;
+        }
+
+        coverUrl = (await this.searchAlbumCover(discJockey, snapshot)) ?? undefined;
+      }
 
       if (!coverUrl || !this.isStillPlaying(snapshot, 'cover')) return;
 
@@ -305,6 +324,17 @@ export class PlaylogService {
     } catch (error: unknown) {
       this.logger.error(`Error resolving the album cover: ${getErrorMessage(error)}`);
     }
+  }
+
+  /** Pins the commentary to one track, so it cannot drift onto whatever started in the meantime. */
+  private describeTrack(snapshot: NowPlaying): string {
+    const facts = [`"${snapshot.title}" by ${snapshot.artist}`];
+
+    if (snapshot.album) facts.push(`from the album "${snapshot.album}"`);
+    if (snapshot.year) facts.push(`released ${snapshot.year}`);
+    if (snapshot.genre) facts.push(`genre ${snapshot.genre}`);
+
+    return `Tell me about this track: ${facts.join(', ')}.`;
   }
 
   private isStillPlaying(snapshot: NowPlaying, what: string): boolean {
