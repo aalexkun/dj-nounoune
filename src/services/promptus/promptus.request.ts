@@ -1,4 +1,13 @@
-import { GenerateContentConfig, GenerateContentParameters, SchemaUnion, CachedContent, ContentListUnion, FunctionCall, Content } from '@google/genai';
+import {
+  GenerateContentConfig,
+  GenerateContentParameters,
+  SchemaUnion,
+  CachedContent,
+  ContentListUnion,
+  FunctionCall,
+  Content,
+  ToolListUnion,
+} from '@google/genai';
 import { ToolDeclaration } from './tools/tool.type';
 
 export type RequestRole = 'user' | 'model';
@@ -22,6 +31,13 @@ export abstract class PromptusRequest<TResponse> {
   public abstract config: Partial<GenerateContentConfig>;
   public abstract tools: ToolDeclaration[];
   public abstract history: Content[];
+
+  /**
+   * Opt a single request into Google Search grounding. Off by default: every existing request keeps
+   * its ungrounded behaviour. A grounded request must declare neither `tools` (function declarations)
+   * nor a `structuredResponse` — Gemini rejects both combinations — and it cannot use a `cache`.
+   */
+  public grounded: boolean = false;
 
   public get contextContent(): string {
     return this.context;
@@ -76,6 +92,12 @@ export abstract class PromptusRequest<TResponse> {
                 functionDeclarations: this.tools,
               },
             ];
+          }
+
+          // opt-in per request, see `grounded`
+          if (this.grounded) {
+            const tools: ToolListUnion = this.genaiRequest.config['tools'] ?? [];
+            this.genaiRequest.config['tools'] = [...tools, { googleSearch: {} }];
           }
         }
       }

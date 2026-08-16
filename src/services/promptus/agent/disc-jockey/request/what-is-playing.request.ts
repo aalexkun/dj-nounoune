@@ -1,13 +1,17 @@
 import { WhatIsPlayingResponse } from '../response/what-is-playing.response';
 import { PromptusRequest, RequestRole } from '../../../promptus.request';
-import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { MpdToolsDefinition } from '../../../tools/definition/mpd-tools.definition';
 import { WhatIsPlayingPrompt } from './what-is-playing.prompt';
 
 export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse> {
   public tools = [MpdToolsDefinition.currentMpdCommand];
   public structuredResponse = undefined;
-  public config: Partial<GenerateContentConfig> = {};
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = 'gemini-flash-lite-latest';

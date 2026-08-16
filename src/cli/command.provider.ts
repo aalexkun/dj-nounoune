@@ -38,6 +38,7 @@ import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
 import { ProfilerCommand } from './profiler/profiler.command';
 import { ProfilerRunSubCommand } from './profiler/run.subcommand';
+import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -49,6 +50,7 @@ export const CommandProviders = [
   DedupCommand,
   DedupSearchCommand,
   DedupProcessCommand,
+  WhatsPlayingCommand,
 
   MpdCommand,
   TestMpdSubCommand,
