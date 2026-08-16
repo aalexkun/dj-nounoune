@@ -1,14 +1,21 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { TechnicalInfo, TechnicalInfoSchema } from './technical-info.schema';
 
-export type SourceType = 'file' | 'spotify' | 'applemusic' | 'youtube' | 'qobuz';
+/**
+ * Every source type the platform supports. This list is exhaustive and stays exhaustive —
+ * which of these are currently reachable is a runtime concern driven by `ACTIVE_SOURCE_TYPES`,
+ * see `src/config/active-source.util.ts`.
+ */
+export const SOURCE_TYPES = ['file', 'spotify', 'applemusic', 'youtube', 'qobuz'] as const;
+
+export type SourceType = (typeof SOURCE_TYPES)[number];
 
 @Schema({ _id: false })
 export class Source {
   @Prop({
     type: String,
     required: true,
-    enum: ['file', 'spotify', 'applemusic', 'youtube', 'qobuz'],
+    enum: [...SOURCE_TYPES],
     description: 'Name of the playback source provider',
   })
   name: SourceType;

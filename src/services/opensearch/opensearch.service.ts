@@ -23,6 +23,7 @@ import { SongSchema } from '../../schemas/song.schema';
 import { ArtistSchema } from '../../schemas/artist.schema';
 import { AlbumSchema } from '../../schemas/albums.schema';
 import { SearchFuzzyQuery } from './search-fuzzy.query';
+import { getActiveSourceTypes } from '../../config/active-source.util';
 
 
 export type DuplicateSongCheck = {
@@ -616,7 +617,9 @@ export class OpensearchService {
     if(!modelId){
       throw new Error('No deployed model found :: fuzzySearch');
     }
-    const query = new SearchFuzzyQuery(keywords,modelId, limit);
+    // Only this search is on the agentic path. The dedup and importer searches below stay
+    // unfiltered on purpose - they must keep seeing every row in the index.
+    const query = new SearchFuzzyQuery(keywords, modelId, limit, getActiveSourceTypes());
 
 
     try {
