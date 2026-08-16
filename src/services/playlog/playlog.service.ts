@@ -14,7 +14,16 @@ import { ToolsService } from '../promptus/tools.service';
 import { DiscJockeyAgent } from '../promptus/agent/disc-jockey/disc-jockey.agent';
 import { getErrorMessage } from '../../utils/error.utils';
 import { isReachableImageUrl } from '../../utils/image-url.util';
-import { NowPlaying, NowPlayingEvent, NowPlayingEventName, RecentlyPlayed } from './now-playing.event';
+import {
+  NowPlaying,
+  NowPlayingCommentaryEvent,
+  NowPlayingCommentaryEventName,
+  NowPlayingCoverEvent,
+  NowPlayingCoverEventName,
+  NowPlayingEvent,
+  NowPlayingEventName,
+  RecentlyPlayed,
+} from './now-playing.event';
 
 type MpdSongLookup = {
   song?: SongDocument | null;
@@ -36,7 +45,8 @@ export class PlaylogService {
   /** Viewers on the /vibing namespace, reported by `VibingGateway`. No viewers, no model calls. */
   private viewerCount = 0;
 
-  private enriching = false;
+  /** Song currently being enriched, so a second viewer joining does not start the work again. */
+  private enrichingSongId: string | null = null;
 
   constructor(
     @InjectModel(Playlog.name) private playlogModel: Model<PlaylogDocument>,
@@ -57,13 +67,14 @@ export class PlaylogService {
   }
 
   /**
-   * Called when someone opens the page. The track playing at that moment was published without
-   * commentary — nobody was watching to read it — so fetch it now that there is an audience.
+   * Called when someone opens the page. The track playing at that moment was published without its
+   * enrichments — nobody was watching to read them — so fetch whichever is still missing.
    */
   async enrichCurrentIfNeeded(): Promise<void> {
-    if (this.viewerCount === 0 || this.enriching) return;
+    if (this.viewerCount === 0) return;
     if (!this.currentNowPlaying || !this.currentPlaylog) return;
-    if (this.currentNowPlaying.description) return;
+    if (this.enrichingSongId === this.currentNowPlaying.songId) return;
+    if (this.currentNowPlaying.description && this.currentNowPlaying.coverUrl) return;
 
     await this.enrichNowPlaying(this.currentPlaylog, this.currentNowPlaying);
   }
@@ -219,54 +230,88 @@ export class PlaylogService {
   }
 
   /**
-   * Fill in the artwork and the disc jockey commentary, reusing a previous play of the same song
-   * when there is one, and push the completed snapshot.
+   * Start both enrichments and let each announce itself the moment it lands. They share nothing but
+   * the reuse lookup, so the commentary is not held behind an artwork search that may take just as
+   * long and fail, and neither of them delays the snapshot that already went out.
    */
   private async enrichNowPlaying(playlog: PlaylogDocument, snapshot: NowPlaying): Promise<void> {
-    this.enriching = true;
+    this.enrichingSongId = snapshot.songId;
 
     try {
-      let coverUrl = snapshot.coverUrl;
-      let description: string | undefined;
+      const discJockey = this.toolsService.getDiscJockeyAgent();
 
-      const previous = await this.playlogModel
-        .findOne({ songId: playlog.songId, description: { $exists: true, $ne: null } })
-        .sort({ playedAt: -1 })
-        .exec();
-
-      if (previous) {
-        coverUrl = coverUrl || previous.coverUrl;
-        description = previous.description;
-      } else {
-        const discJockey = this.toolsService.getDiscJockeyAgent();
-
-        if (!discJockey) {
-          this.logger.warn('Disc jockey agent is not available yet, skipping now-playing enrichment');
-          return;
-        }
-
-        const [cover, whatIsPlaying] = await Promise.all([
-          coverUrl ? Promise.resolve(coverUrl) : this.searchAlbumCover(discJockey, snapshot),
-          discJockey.whatIsPlaying('What is currently playing?'),
-        ]);
-
-        coverUrl = cover ?? undefined;
-        description = whatIsPlaying.text;
-      }
-
-      if (this.currentNowPlaying?.songId !== snapshot.songId) {
-        this.logger.debug(`Track changed while enriching ${snapshot.songId}, discarding the result`);
+      if (!discJockey) {
+        this.logger.warn('Disc jockey agent is not available yet, skipping now-playing enrichment');
         return;
       }
 
-      await this.playlogModel.updateOne({ _id: playlog._id }, { $set: { coverUrl, description } }).exec();
+      // One cheap lookup up front: an earlier play of the same song spares both model calls.
+      const previous = await this.playlogModel
+        .findOne({ _id: { $ne: playlog._id }, songId: playlog.songId, description: { $exists: true, $ne: null } })
+        .sort({ playedAt: -1 })
+        .exec();
 
-      this.emitNowPlaying({ ...snapshot, coverUrl, description });
+      await Promise.allSettled([
+        this.resolveCommentary(discJockey, playlog, snapshot, previous?.description),
+        this.resolveCover(discJockey, playlog, snapshot, previous?.coverUrl),
+      ]);
     } catch (error: unknown) {
       this.logger.error(`Error enriching now-playing: ${getErrorMessage(error)}`);
     } finally {
-      this.enriching = false;
+      this.enrichingSongId = null;
     }
+  }
+
+  private async resolveCommentary(
+    discJockey: DiscJockeyAgent,
+    playlog: PlaylogDocument,
+    snapshot: NowPlaying,
+    cached?: string,
+  ): Promise<void> {
+    if (snapshot.description) return;
+
+    try {
+      const description = cached ?? (await discJockey.whatIsPlaying('What is currently playing?')).text;
+
+      if (!description || !this.isStillPlaying(snapshot, 'commentary')) return;
+
+      await this.playlogModel.updateOne({ _id: playlog._id }, { $set: { description } }).exec();
+      this.currentNowPlaying = { ...this.currentNowPlaying, description } as NowPlaying;
+
+      this.eventEmitter.emit(NowPlayingCommentaryEventName, new NowPlayingCommentaryEvent({ songId: snapshot.songId, description }));
+    } catch (error: unknown) {
+      this.logger.error(`Error resolving the commentary: ${getErrorMessage(error)}`);
+    }
+  }
+
+  private async resolveCover(
+    discJockey: DiscJockeyAgent,
+    playlog: PlaylogDocument,
+    snapshot: NowPlaying,
+    cached?: string,
+  ): Promise<void> {
+    // Already carried by the base snapshot, straight off the album document.
+    if (snapshot.coverUrl) return;
+
+    try {
+      const coverUrl = cached ?? (await this.searchAlbumCover(discJockey, snapshot));
+
+      if (!coverUrl || !this.isStillPlaying(snapshot, 'cover')) return;
+
+      await this.playlogModel.updateOne({ _id: playlog._id }, { $set: { coverUrl } }).exec();
+      this.currentNowPlaying = { ...this.currentNowPlaying, coverUrl } as NowPlaying;
+
+      this.eventEmitter.emit(NowPlayingCoverEventName, new NowPlayingCoverEvent({ songId: snapshot.songId, coverUrl }));
+    } catch (error: unknown) {
+      this.logger.error(`Error resolving the album cover: ${getErrorMessage(error)}`);
+    }
+  }
+
+  private isStillPlaying(snapshot: NowPlaying, what: string): boolean {
+    if (this.currentNowPlaying?.songId === snapshot.songId) return true;
+
+    this.logger.debug(`Track changed while resolving the ${what} for ${snapshot.songId}, discarding it`);
+    return false;
   }
 
   /**
