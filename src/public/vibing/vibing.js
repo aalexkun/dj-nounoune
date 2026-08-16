@@ -17,6 +17,73 @@
     recent: document.getElementById('recent'),
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // Trace. The display runs unattended on a television, so a disconnect nobody saw is the whole
+  // problem: keep a ring buffer in the page, mirror it to the console, ship the meaningful lines up
+  // to the server, and put it on screen when the url carries ?debug.
+  // ---------------------------------------------------------------------------------------------
+
+  var LOG_LIMIT = 200;
+  var SHIP_LIMIT = 100;
+  var DEBUG_OVERLAY = /(^|[?&])debug($|[=&])/.test(window.location.search);
+
+  var trace = { logs: [], pending: [], overlay: null };
+
+  function stamp() {
+    return new Date().toTimeString().slice(0, 8);
+  }
+
+  /** Console and ring buffer only. Use for anything that fires every second. */
+  function log(kind, message) {
+    var entry = { at: stamp(), kind: kind, message: String(message) };
+
+    trace.logs.push(entry);
+    if (trace.logs.length > LOG_LIMIT) trace.logs.shift();
+
+    console.log('[vibing ' + entry.at + '] ' + entry.kind + ': ' + entry.message);
+    paintOverlay();
+
+    return entry;
+  }
+
+  /** Logged here and queued for the server, so an unattended display leaves a trail behind it. */
+  function report(kind, message) {
+    var entry = log(kind, message);
+
+    trace.pending.push(entry);
+    if (trace.pending.length > SHIP_LIMIT) trace.pending.shift();
+
+    shipLogs();
+  }
+
+  function shipLogs() {
+    if (trace.pending.length === 0) return;
+    if (!socket || !socket.connected) return;
+
+    var entries = trace.pending.splice(0, 25);
+    socket.emit('vibing-client-log', { entries: entries });
+  }
+
+  function paintOverlay() {
+    if (!DEBUG_OVERLAY) return;
+
+    if (!trace.overlay) {
+      trace.overlay = document.createElement('pre');
+      trace.overlay.style.cssText =
+        'position:fixed;left:0;bottom:0;z-index:9999;margin:0;padding:8px 12px;max-height:38vh;' +
+        'overflow:hidden;font:11px/1.45 ui-monospace,monospace;color:#9fe8c0;background:rgba(0,0,0,.72);' +
+        'white-space:pre-wrap;pointer-events:none;max-width:min(680px,100vw)';
+      document.body.appendChild(trace.overlay);
+    }
+
+    trace.overlay.textContent = trace.logs
+      .slice(-14)
+      .map(function (entry) {
+        return entry.at + ' ' + entry.kind + ': ' + entry.message;
+      })
+      .join('\n');
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (char) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
@@ -311,21 +378,129 @@
     reconnectionDelayMax: 5000,
   });
 
+  /**
+   * The engine is rebuilt on every reconnect, so the transport level listeners have to be reattached
+   * each time. This is where a drop is actually explained: `close` carries engine.io's reason, and
+   * the ping/pong pair shows whether the tab was still being scheduled at all.
+   */
+  function traceEngine() {
+    var engine = socket.io && socket.io.engine;
+    if (!engine || engine.__vibingTraced) return;
+    engine.__vibingTraced = true;
+
+    log('engine', 'transport=' + engine.transport.name + ' pingInterval=' + engine.pingInterval + 'ms pingTimeout=' + engine.pingTimeout + 'ms');
+
+    engine.on('upgrade', function () {
+      report('engine', 'transport upgraded to ' + engine.transport.name);
+    });
+
+    engine.on('close', function (reason) {
+      report('engine', 'closed: ' + reason);
+    });
+
+    engine.on('error', function (error) {
+      report('engine', 'error: ' + (error && error.message ? error.message : error));
+    });
+
+    // One line a second at the current server settings — noise, but it is the only way to see a
+    // throttled tab miss its pong window.
+    engine.on('ping', function () {
+      log('engine', 'ping received');
+    });
+
+    engine.on('heartbeat', function () {
+      log('engine', 'pong sent');
+    });
+  }
+
   socket.on('connect', function () {
     setConnected(true, 'live');
+    report('socket', 'connected as ' + socket.id + ' via ' + (socket.io.engine && socket.io.engine.transport.name));
+    traceEngine();
+    heartbeat();
   });
 
-  socket.on('disconnect', function () {
+  socket.on('disconnect', function (reason, description) {
     setConnected(false, 'reconnecting');
+    report('socket', 'disconnected: ' + reason + (description ? ' — ' + description : ''));
   });
 
-  socket.on('connect_error', function () {
+  socket.on('connect_error', function (error) {
     setConnected(false, 'reconnecting');
+    report('socket', 'connect_error: ' + (error && error.message ? error.message : error));
   });
 
-  socket.on('now-playing', apply);
-  socket.on('now-playing-commentary', applyCommentary);
-  socket.on('now-playing-cover', applyCover);
+  socket.io.on('reconnect_attempt', function (attempt) {
+    log('socket', 'reconnect attempt ' + attempt);
+  });
+
+  socket.io.on('reconnect', function (attempt) {
+    report('socket', 'reconnected after ' + attempt + ' attempt(s)');
+  });
+
+  socket.io.on('reconnect_error', function (error) {
+    log('socket', 'reconnect_error: ' + (error && error.message ? error.message : error));
+  });
+
+  socket.io.on('reconnect_failed', function () {
+    report('socket', 'reconnect gave up');
+  });
+
+  /**
+   * Every push is addressed and acknowledged per socket on the server side, so the ack has to be
+   * called back or the server records the delivery as failed.
+   */
+  function received(name, describe, handle) {
+    return function (payload, ack) {
+      report('recv', name + ' ' + describe(payload));
+      handle(payload);
+      if (typeof ack === 'function') ack({ ok: true, at: Date.now() });
+    };
+  }
+
+  socket.on(
+    'now-playing',
+    received('now-playing', function (song) {
+      return song && song.songId ? song.songId + ' "' + song.title + '"' : 'empty payload';
+    }, apply),
+  );
+
+  socket.on(
+    'now-playing-commentary',
+    received('now-playing-commentary', function (payload) {
+      return (payload && payload.songId) + ' (' + ((payload && payload.description) || '').length + ' chars)';
+    }, applyCommentary),
+  );
+
+  socket.on(
+    'now-playing-cover',
+    received('now-playing-cover', function (payload) {
+      return (payload && payload.songId) + ' ' + (payload && payload.coverUrl);
+    }, applyCover),
+  );
+
+  /** Application level round trip, so a socket both sides still believe in can be caught not answering. */
+  var beat = { sentAt: 0, timer: null };
+
+  function heartbeat() {
+    if (!socket.connected) {
+      log('heartbeat', 'skipped, socket is down');
+      return;
+    }
+
+    beat.sentAt = Date.now();
+    socket.emit('vibing-ping', beat.sentAt);
+
+    clearTimeout(beat.timer);
+    beat.timer = setTimeout(function () {
+      report('heartbeat', 'no pong within 5000ms — the socket looks half open');
+    }, 5000);
+  }
+
+  socket.on('vibing-pong', function () {
+    clearTimeout(beat.timer);
+    log('heartbeat', 'round trip ' + (Date.now() - beat.sentAt) + 'ms');
+  });
 
   /**
    * Safety net for an unattended display. The websocket carries the same engine ping settings as the
@@ -341,15 +516,38 @@
       })
       .then(function (body) {
         if (!socket.connected) setConnected(false, 'polling');
-        if (body) apply(JSON.parse(body));
+
+        if (!body) {
+          log('poll', 'server has no snapshot');
+          return;
+        }
+
+        var song = JSON.parse(body);
+        var stale = song.songId !== current.songId;
+
+        // A snapshot the socket never delivered is the symptom this whole trace exists for.
+        if (stale) report('poll', 'snapshot differs from the page: ' + song.songId + ' "' + song.title + '" (page has ' + current.songId + ')');
+        else log('poll', 'snapshot matches the page');
+
+        apply(song);
       })
-      .catch(function () {
+      .catch(function (error) {
         if (!socket.connected) setConnected(false, 'offline');
+        report('poll', 'failed: ' + (error && error.message ? error.message : error));
       });
   }
 
   function revive() {
-    if (!socket.connected) socket.connect();
+    log('watchdog', 'tick — socket ' + (socket.connected ? 'up (' + socket.id + ')' : 'down'));
+
+    if (!socket.connected) {
+      report('watchdog', 'socket is down, reconnecting');
+      socket.connect();
+    } else {
+      heartbeat();
+      shipLogs();
+    }
+
     poll();
   }
 
@@ -357,8 +555,36 @@
 
   // Coming back from a screensaver or a background tab: catch up immediately rather than in 20s.
   document.addEventListener('visibilitychange', function () {
+    report('page', document.hidden ? 'hidden' : 'visible');
     if (!document.hidden) revive();
   });
 
-  window.addEventListener('online', revive);
+  window.addEventListener('online', function () {
+    report('page', 'browser back online');
+    revive();
+  });
+
+  window.addEventListener('offline', function () {
+    report('page', 'browser went offline');
+  });
+
+  // `window.vibingDebug.dump()` in the television's console, or ?debug for the on-screen overlay.
+  window.vibingDebug = {
+    logs: trace.logs,
+    socket: socket,
+    state: function () {
+      return current;
+    },
+    heartbeat: heartbeat,
+    poll: poll,
+    dump: function () {
+      return trace.logs
+        .map(function (entry) {
+          return entry.at + ' ' + entry.kind + ': ' + entry.message;
+        })
+        .join('\n');
+    },
+  };
+
+  report('page', 'loaded, connecting to /vibing');
 })();
