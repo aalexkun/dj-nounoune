@@ -1,11 +1,39 @@
 import { SearchQuery } from './query.interface';
 
 export class SearchFuzzyQuery implements SearchQuery {
+  /**
+   * @param activeSources - source types the agentic client may play, or `null` for no restriction.
+   *   Applied as a `filter` clause so it is score-neutral.
+   */
   constructor(
     private keywords: string[],
     private modelId: string,
     private size: number = 100,
+    private activeSources: string[] | null = null,
   ) {}
+
+  /**
+   * Documents indexed incrementally by the importers carry no `source` array at all - only the
+   * full reindex writes it. Excluding them here would hide most of the recent library, so they are
+   * let through and the caller re-checks them against Mongo, which is the authority.
+   */
+  private buildSourceFilter(): Record<string, any>[] {
+    if (!this.activeSources || this.activeSources.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        bool: {
+          should: [
+            { terms: { 'source.name': this.activeSources } },
+            { bool: { must_not: { exists: { field: 'source.name' } } } },
+          ],
+          minimum_should_match: 1,
+        },
+      },
+    ];
+  }
 
   getQuery(): Record<string, any> {
     const keywordList = Array.isArray(this.keywords) ? this.keywords : [this.keywords];
@@ -44,12 +72,15 @@ export class SearchFuzzyQuery implements SearchQuery {
       });
     }
 
+    const sourceFilter = this.buildSourceFilter();
+
     return {
       size: this.size,
       query: {
         bool: {
           should: shouldClauses,
           minimum_should_match: 1,
+          ...(sourceFilter.length > 0 ? { filter: sourceFilter } : {}),
         },
       },
     };

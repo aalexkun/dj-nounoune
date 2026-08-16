@@ -4,8 +4,9 @@ import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Enrich, EnrichDocument } from '../../schemas/enrich.schema';
-import { Model, QueryFilter, Types } from 'mongoose';
+import { Model, PipelineStage, QueryFilter, Types } from 'mongoose';
 import { SourceType } from '../../schemas/source.schema';
+import { buildActiveSourceMatch, getActiveSourceTypes, isSourceActive } from '../../config/active-source.util';
 import { z } from 'zod';
 import { FilterCollection, FilterCondition, MongoQueryDefinition } from './mongo-filter.type';
 import { buildMatch, MongoMatch, SchemaPathResolver } from './mongo-filter.util';
@@ -105,9 +106,20 @@ export class MusicDbService {
     return this.enrichModel.find({ [`status.${type}`]: status }).exec();
   }
 
-  async getPopulatedSongsByIds(ids: string[]): Promise<PopulatedSong[]> {
+  /**
+   * @param ids
+   * @param activeSourcesOnly - when `true`, songs that are not available on any source listed in
+   *   `ACTIVE_SOURCE_TYPES` are dropped. The agentic path passes `true`; the CLI keeps the default
+   *   so enrichment and maintenance still see the whole library.
+   */
+  async getPopulatedSongsByIds(ids: string[], activeSourcesOnly = false): Promise<PopulatedSong[]> {
+    const filter: Record<string, unknown> = { _id: { $in: ids } };
+    if (activeSourcesOnly) {
+      Object.assign(filter, this.activeSourceMatch() ?? {});
+    }
+
     const results = await this.songModel
-      .find({ _id: { $in: ids } })
+      .find(filter)
       .populate('artist')
       .populate('album')
       .exec();
@@ -181,6 +193,10 @@ export class MusicDbService {
   }
 
   async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
+    if (!isSourceActive('qobuz')) {
+      this.logger.warn('getSongByQobuzId called while the qobuz source is inactive');
+    }
+
     const results = await this.songModel
       .aggregate([
         {
@@ -247,6 +263,7 @@ export class MusicDbService {
   async getArtistDistribution(): Promise<{ artist: string; count: number }[]> {
     return await this.songModel
       .aggregate([
+        ...this.activeSourceStage(),
         {
           $group: {
             _id: '$artist',
@@ -281,6 +298,7 @@ export class MusicDbService {
   async getGenreDistribution(): Promise<{ genre: string; count: number }[]> {
     return await this.songModel
       .aggregate([
+        ...this.activeSourceStage(),
         {
           $group: {
             _id: '$genre',
@@ -302,14 +320,20 @@ export class MusicDbService {
   }
 
   async getBPMDistribution(): Promise<{ bpm: number; count: number }[]> {
+    const activeSources = getActiveSourceTypes();
+
     return this.songModel
       .aggregate([
+        ...this.activeSourceStage(),
         {
           $unwind: '$source',
         },
         {
           $match: {
             'source.technical_info.bpm': { $exists: true, $ne: null },
+            // The song survived the stage above because *some* source is active - make sure the
+            // BPM that wins the $max below did not come from an inactive one.
+            ...(activeSources ? { 'source.name': { $in: activeSources } } : {}),
           },
         },
         {
@@ -361,13 +385,20 @@ export class MusicDbService {
       .exec();
   }
 
+  /**
+   * Runs an LLM-authored pipeline. Song pipelines are prefixed with the active-source match so a
+   * hallucinated or over-broad pipeline still cannot surface unplayable songs. Artists and albums
+   * are left alone on purpose: their `source[]` records where the *document* came from, so
+   * filtering there would hide an artist whose songs are perfectly playable from another source.
+   */
   async aggregate(collection: string, params: any): Promise<MusicDbAggregateResult[]> {
     if (collection === 'artists') {
       return this.artistModel.aggregate(params);
     } else if (collection === 'albums') {
       return this.albumModel.aggregate(params);
     } else if (collection === 'songs') {
-      return this.songModel.aggregate(params);
+      const pipeline = Array.isArray(params) ? [...this.activeSourceStage(), ...params] : params;
+      return this.songModel.aggregate(pipeline);
     } else {
       throw new Error('Unsupported collection');
     }
@@ -430,13 +461,17 @@ export class MusicDbService {
       return [];
     }
 
-    const sampled = await this.songModel.aggregate([{ $match: match }, { $sample: { size: sampleSize } }]).exec();
+    // The active-source match is a separate stage rather than a merge into `match`: the LLM filter
+    // may already carry a `source` key, and merging would silently drop one of the two.
+    const sampled = await this.songModel
+      .aggregate([{ $match: match }, ...this.activeSourceStage(), { $sample: { size: sampleSize } }])
+      .exec();
     const ids = sampled.map((song) => song._id.toString());
     if (ids.length === 0) {
       return [];
     }
 
-    return this.getPopulatedSongsByIds(ids);
+    return this.getPopulatedSongsByIds(ids, true);
   }
 
   /**
@@ -452,6 +487,17 @@ export class MusicDbService {
       return null;
     }
     return (await model.distinct('_id', match as QueryFilter<T>).exec()) as Types.ObjectId[];
+  }
+
+  /** The `$match` fragment restricting songs to the currently active sources, or `null`. */
+  private activeSourceMatch(): Record<string, unknown> | null {
+    return buildActiveSourceMatch();
+  }
+
+  /** Spreadable form of {@link activeSourceMatch} - an empty array when nothing is restricted. */
+  private activeSourceStage(): PipelineStage.Match[] {
+    const match = this.activeSourceMatch();
+    return match ? [{ $match: match as Record<string, any> }] : [];
   }
 
   getSchema(collection: string): any {

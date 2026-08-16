@@ -11,6 +11,10 @@ import {
   DistributionResult,
 } from './profiler.types';
 import { SONGS_EMOTIONS_DESCRIPTION, SONGS_GENRE_DESCRIPTION, SONGS_PACE_DESCRIPTION } from '../../lexic/songs.description';
+import { getActiveSourceTypes } from '../../config/active-source.util';
+
+/** The one profiled field that `ACTIVE_SOURCE_TYPES` gates. */
+const SOURCE_NAME_FIELD = 'source.name';
 
 @Injectable()
 export class ProfilerService {
@@ -181,8 +185,19 @@ export class ProfilerService {
       try {
         const response = await client.search({ index, body: query });
         const aggs = response.body.aggregations as any;
-        const uniqueCount = aggs?.field_cardinality?.value || 0;
-        const buckets = aggs?.top_terms?.buckets || [];
+        let uniqueCount = aggs?.field_cardinality?.value || 0;
+        let buckets = aggs?.top_terms?.buckets || [];
+
+        // This document grounds the LLM. Advertising a source whose subscription is inactive would
+        // invite the model to generate filters for songs it can never play.
+        if (field === SOURCE_NAME_FIELD) {
+          const activeSources = getActiveSourceTypes();
+          if (activeSources) {
+            const kept = buckets.filter((b: any) => (activeSources as readonly string[]).includes(String(b.key)));
+            uniqueCount = Math.min(uniqueCount, kept.length);
+            buckets = kept;
+          }
+        }
 
         result.fields.push({
           field,
@@ -213,10 +228,17 @@ export class ProfilerService {
         return result;
       }
 
+      const activeSources = getActiveSourceTypes();
       const aggs: any = {};
       for (const field of fields) {
         const aggField = await this.resolveAggField(client, index, field);
-        aggs[`missing_${field}`] = { missing: { field: aggField } };
+        if (field === SOURCE_NAME_FIELD && activeSources) {
+          // Under gating, "missing" means "not reachable": a song available only on an inactive
+          // source is as good as absent for the agent.
+          aggs[`missing_${field}`] = { filter: { bool: { must_not: { terms: { [aggField]: activeSources } } } } };
+        } else {
+          aggs[`missing_${field}`] = { missing: { field: aggField } };
+        }
       }
 
       const response = await client.search({

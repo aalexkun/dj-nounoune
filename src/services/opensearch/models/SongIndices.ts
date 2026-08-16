@@ -137,6 +137,14 @@ export class SongIndices {
           },
         },
       },
+      // Explicit so that `source.name` is filterable as an exact term. Dynamic mapping would make
+      // it `text` + `.keyword`, which the active-source filter and the profiler both have to
+      // second-guess. Only `name` is declared - the rest of the sub-document stays dynamic.
+      source: {
+        properties: {
+          name: { type: 'keyword' },
+        },
+      },
       song_semantic: {
         type: 'text',
       },

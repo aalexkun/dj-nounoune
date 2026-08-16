@@ -25,6 +25,7 @@ import { GenerateQueryWithCacheResponse } from './response/generate-query-with-c
 import { MongoWrapperResult, MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
 import { OpensearchService } from '../../../opensearch/opensearch.service';
 import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
+import { filterActiveSources } from '../../../../config/active-source.util';
 
 export type TechnicalInfo = {
   size?: number;
@@ -82,10 +83,13 @@ const PlaySourceSchema = z.object({
  * Use this on cache reads. Feeding a cached playlist back through
  * `PopulatedSongToMusicSearchResultSchema` always fails, because that schema
  * expects `artist: { artist: string }` / `album: { title: string }`.
+ *
+ * Sources are re-filtered on the way out so a playlist cached before a source went
+ * inactive cannot hand an unplayable entry to the MPD handler.
  */
 export const MusicSearchResultSchema = z.object({
   id: z.string(),
-  source: z.array(PlaySourceSchema),
+  source: z.array(PlaySourceSchema).transform((sources) => filterActiveSources(sources)),
   title: z.string(),
   artist: z.string(),
   album: z.string(),
@@ -94,6 +98,11 @@ export const MusicSearchResultSchema = z.object({
 /** Cache-read schema for a whole playlist. See {@link MusicSearchResultSchema}. */
 export const MusicSearchResultsSchema: z.ZodType<MusicSearchResult[]> = z.array(MusicSearchResultSchema);
 
+/**
+ * Turns a `PopulatedSong` straight out of Mongo into the flattened shape cached in Redis.
+ * This is where an inactive source leaves the pipeline: whatever is dropped here never
+ * reaches the cache, and therefore never reaches MPD.
+ */
 export const PopulatedSongToMusicSearchResultSchema = z.object({
   id: z.any().transform((val) => val.toString()),
   source: z.array(
@@ -104,7 +113,7 @@ export const PopulatedSongToMusicSearchResultSchema = z.object({
       }),
     }).passthrough()
   ).transform((sources) =>
-    sources.map((source) => ({
+    filterActiveSources(sources).map((source) => ({
       sourceId: source.sourceId || '',
       name: source.name,
     }))
@@ -212,7 +221,12 @@ export class DiscJockeyAgent extends Agent {
       if (fullTextResult && fullTextResult.hits.hits.length > 0) {
         for (const hit of fullTextResult.hits.hits) {
           if (hit._score > 0.5 && !musicResult.has(hit._id.toString())) {
-            const fullTextSong = await this.musicDBService.getPopulatedSongsByIds([hit._id.toString()]);
+            // Mongo is the authority on source availability: the OpenSearch filter is only a
+            // pre-filter, and it deliberately lets through documents indexed without a `source`.
+            const fullTextSong = await this.musicDBService.getPopulatedSongsByIds([hit._id.toString()], true);
+            if (fullTextSong.length === 0) {
+              continue;
+            }
             musicResult.set(hit._id.toString(), { intent: `Fulltext Match Score = ${hit._score}`, song: fullTextSong[0] });
           }
         }

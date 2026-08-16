@@ -6,6 +6,7 @@ import { MusicDbAggregateResult } from '../../../../music-db/music-db.service';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 import { Logger } from '@nestjs/common';
 import { getErrorMessage } from '../../../../../utils/error.utils';
+import { isSourceActive } from '../../../../../config/active-source.util';
 
 
 
@@ -40,13 +41,20 @@ export class QueryDatabaseHandler implements ToolHandler {
       throw new Error('Invalid source property');
     }
 
+    const playable = ['qobuz', 'file', 'spotify'];
     let sources: PlaySource[] = [];
     for (const src of castedProperty) {
-      if ((typeof src === 'object' && typeof src.sourceId === 'string' && src.name === 'qobuz') || src.name === 'file' || src.name === 'spotify') {
-        sources.push(src as PlaySource);
-      } else {
+      if (typeof src !== 'object' || src === null || typeof src.sourceId !== 'string' || !playable.includes(src.name)) {
         this.logger.warn(`Source ${JSON.stringify(src)} is not supported. Skipping.`);
+        continue;
       }
+      // Whatever the model queried, a source whose subscription is inactive must never
+      // make it back into a playlist.
+      if (!isSourceActive(src.name)) {
+        this.logger.debug(`Source ${src.name} is not active. Skipping.`);
+        continue;
+      }
+      sources.push(src as PlaySource);
     }
 
     return sources;
@@ -76,11 +84,19 @@ export class QueryDatabaseHandler implements ToolHandler {
           album: this.extractProperty(candidateJSON.albumName, rawSong),
         };
 
-        if (song.id === undefined || song.source === undefined || !Array.isArray(song.source) || song.source[0]?.sourceId === undefined) {
+        // A missing id means the assumed structure was wrong - throw so the caller retries with
+        // the agentic cast. An empty source array does not: it is the expected outcome for a song
+        // whose only sources are inactive, and re-casting it would not bring them back.
+        if (song.id === undefined || song.source === undefined || !Array.isArray(song.source)) {
           throw new Error('Invalid casting');
-        } else {
-          musicSearchResults.push(song);
         }
+
+        if (song.source.length === 0) {
+          this.logger.debug(`Song ${song.id} has no active source. Skipping.`);
+          continue;
+        }
+
+        musicSearchResults.push(song);
       }
     }
 
@@ -108,6 +124,10 @@ export class QueryDatabaseHandler implements ToolHandler {
           artist: this.extractProperty(jsonPathResponse.mapping.artistName, rawSong),
           album: this.extractProperty(jsonPathResponse.mapping.albumName, rawSong),
         };
+        if (song.source.length === 0) {
+          this.logger.debug(`Song ${song.id} has no active source. Skipping.`);
+          continue;
+        }
         musicSearchResults.push(song);
       }
     }
