@@ -34,4 +34,16 @@ export class AppService {
   getImportPathStyle(): string {
     return this.configService.get<string>('IMPORT_LIBRARY_PATH_STYLE') || 'Linux';
   }
+
+  /**
+   * Whether the disc jockey may search the web for artwork the importers never provided.
+   *
+   * Enabled unless explicitly turned off, so nothing changes for an environment that predates the
+   * flag. Turning it off costs nothing but the search: covers already held on the album document are
+   * unaffected, and so is a cover carried over from an earlier play of the same track.
+   */
+  isAlbumCoverSearchEnabled(): boolean {
+    const raw = this.configService.get<string>('VIBING_ALBUM_COVER_SEARCH')?.trim().toLowerCase();
+    return raw !== 'false' && raw !== '0';
+  }
 }

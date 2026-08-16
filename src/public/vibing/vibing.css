@@ -99,6 +99,59 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  /* Own stacking context, so the negative z-index of the sheets below cannot fall through the panel
+     and land behind the board itself. */
+  isolation: isolate;
+}
+
+/* Three gradient sheets, each twice the panel wide and sliding at its own rate. The seam between the
+   two colours never lines up the same way twice, so the frame around the artwork keeps moving
+   without ever visibly looping. Negative z-index keeps them over the panel's own background but
+   under the image, which needs no z-index of its own. The five palette colours are dealt out two to
+   a sheet so every one of them is somewhere in the stack at any moment. */
+.cover-bg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -50%;
+  right: -50%;
+  z-index: -1;
+  opacity: 0.5;
+  animation: cover-slide 3s ease-in-out infinite alternate;
+}
+
+.cover-bg-1 {
+  background-image: linear-gradient(-60deg, #f8e602 50%, #4bff21 50%);
+}
+
+.cover-bg-2 {
+  background-image: linear-gradient(-60deg, #00f0ff 50%, #772289 50%);
+  animation-direction: alternate-reverse;
+  animation-duration: 4s;
+}
+
+.cover-bg-3 {
+  background-image: linear-gradient(-60deg, #f4d5fd 50%, #f8e602 50%);
+  animation-duration: 5s;
+}
+
+@keyframes cover-slide {
+  0% {
+    transform: translateX(-25%);
+  }
+
+  100% {
+    transform: translateX(25%);
+  }
+}
+
+/* Same bargain the narration drift makes: motion is decoration here, so it goes when it is unwanted. */
+@media (prefers-reduced-motion: reduce) {
+  .cover-bg {
+    animation: none;
+  }
 }
 
 .cover {
@@ -111,10 +164,38 @@ body {
   border: 1px solid #2c2c2f;
 }
 
+/* The stand-in cat is decoration rather than artwork, so it ignores the square the covers live in.
+   Out of flow and sized to the panel's padding box instead, it lands flush in the bottom left corner
+   with nothing between it and the corner — no panel padding, no border, no tile background. Its
+   square goes on being held in flow by `#cover-placeholder`, so the panel is exactly the size it
+   would be with a real cover up.
+
+   Doubled up on the class so this outweighs the per-layout `.cover` sizing further down the file:
+   those rules are no less specific and they come later, so a single `.cover-default` loses to them. */
+.cover.cover-default {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+  object-position: left bottom;
+}
+
 .cover-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Holding the square open for the cat rather than standing in for a cover, so it draws nothing. */
+.cover-placeholder.spacer,
+.cover-placeholder.spacer::after {
+  background: transparent;
+  border-color: transparent;
 }
 
 .cover-placeholder::after {
@@ -310,6 +391,86 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Letterbox displays — the 2536×580 bar and anything else that shape. Height is the scarce axis
+   there, so the page turns on its side: the four blocks become four columns of one row, type is
+   scaled off vh instead of vw, and the cover takes the height it can rather than a share of the
+   width. Details and "just played" share the last column, and because that third row is `auto` it
+   collapses to nothing on its own whenever the recent list is hidden. */
+@media (min-width: 1600px) and (max-height: 760px) and (min-aspect-ratio: 5 / 2) {
+  :root {
+    font-size: clamp(13px, 2.9vh, 22px);
+  }
+
+  .board {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.9fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* The two wrappers step out of the grid so their halves can be columns of the board itself. */
+  .hero,
+  .band {
+    display: contents;
+  }
+
+  .rail {
+    grid-column: 1 / -1;
+    padding: 0.5rem 1.2rem;
+  }
+
+  .cover-panel {
+    grid-column: 1;
+    grid-row: 2 / 4;
+    padding: 1rem 1.2rem;
+  }
+
+  .cover {
+    width: min(70vh, 20vw);
+    height: min(70vh, 20vw);
+  }
+
+  .hero-text {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    padding: 1rem 1.3rem;
+  }
+
+  .title {
+    font-size: clamp(1.4rem, 1.9vw, 2.4rem);
+  }
+
+  .artist {
+    font-size: 1.05rem;
+    margin-bottom: 0.7rem;
+  }
+
+  /* `.band` no longer paints a box, so its separator moves onto the columns that survived it. */
+  .narration {
+    grid-column: 3;
+    grid-row: 2 / 4;
+    padding: 1rem 1.3rem;
+    border-left: 1px solid var(--line);
+  }
+
+  .prose p,
+  .prose ul {
+    max-width: none;
+  }
+
+  .details {
+    grid-column: 4;
+    grid-row: 2;
+    padding: 1rem 1.3rem;
+    overflow: hidden;
+  }
+
+  .recent {
+    grid-column: 4;
+    grid-row: 3;
+    padding: 0.8rem 1.3rem 1rem;
+    overflow: hidden;
+  }
 }
 
 /* Portrait and phones: give up the one-screenful rule, stack and let the page scroll. */

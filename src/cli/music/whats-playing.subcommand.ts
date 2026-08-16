@@ -2,6 +2,7 @@ import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { ToolsService } from '../../services/promptus/tools.service';
+import { AppService } from '../../app.service';
 import { MpdToolsDefinition } from '../../services/promptus/tools/definition/mpd-tools.definition';
 import { DiscJockeyAgent } from '../../services/promptus/agent/disc-jockey/disc-jockey.agent';
 import { isReachableImageUrl } from '../../utils/image-url.util';
@@ -34,7 +35,10 @@ interface WhatsPlayingOptions {
 export class WhatsPlayingCommand extends CommandRunner {
   private readonly logger = new Logger(WhatsPlayingCommand.name);
 
-  constructor(private readonly toolsService: ToolsService) {
+  constructor(
+    private readonly toolsService: ToolsService,
+    private readonly appService: AppService,
+  ) {
     super();
   }
 
@@ -97,6 +101,12 @@ export class WhatsPlayingCommand extends CommandRunner {
 
   private async runCoverLookup(discJockey: DiscJockeyAgent, artist?: string, album?: string): Promise<void> {
     console.log('\n=== AlbumCoverRequest ===');
+
+    if (!this.appService.isAlbumCoverSearchEnabled()) {
+      console.log('Skipped: album cover search is off (VIBING_ALBUM_COVER_SEARCH).');
+      console.log('For a one-off run: $env:VIBING_ALBUM_COVER_SEARCH=\'true\'; npm run cli -- music whats-playing');
+      return;
+    }
 
     if (!artist || !album) {
       console.log('Skipped: no artist/album to search for. Pass --artist and --album to test it directly.');

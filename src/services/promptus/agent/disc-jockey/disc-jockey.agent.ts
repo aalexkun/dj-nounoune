@@ -328,8 +328,8 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
 
 
 
-  async whatIsPlaying(request: string, sessionId?: string) {
-    const wip = new WhatIsPlayingRequest(request);
+  async whatIsPlaying(request: string, sessionId?: string, options?: { withoutCurrentSongTool?: boolean }) {
+    const wip = new WhatIsPlayingRequest(request, options);
     return await this.generate(wip, sessionId);
   }
 
