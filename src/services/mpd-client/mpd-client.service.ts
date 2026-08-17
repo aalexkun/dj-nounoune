@@ -10,6 +10,7 @@ import { SeekMpdRequest } from './requests/SeekMpdRequest';
 import { SeekIdMpdRequest } from './requests/SeekIdMpdRequest';
 import { SeekCurMpdRequest } from './requests/SeekCurMpdRequest';
 import { StopMpdRequest } from './requests/StopMpdRequest';
+import { StatusMpdRequest } from './requests/StatusMpdRequest';
 import { CurrentSongMpdRequest } from './requests/CurrentSongMpdRequest';
 import { AppService } from '../../app.service';
 
@@ -143,6 +144,10 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
 
   async currentsong() {
     return this.send(new CurrentSongMpdRequest());
+  }
+
+  async status() {
+    return this.send(new StatusMpdRequest());
   }
 
   private processQueue() {

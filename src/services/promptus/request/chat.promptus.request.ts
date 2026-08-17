@@ -13,6 +13,8 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public tools: ToolDeclaration[] = [
     MpdToolsDefinition.playMpdCommand,
     MpdToolsDefinition.stopMpdCommand,
+    MpdToolsDefinition.nextMpdCommand,
+    MpdToolsDefinition.previousMpdCommand,
     AgentToolsDefinition.discJockeyWhatIsPlaying,
     AgentToolsDefinition.discJockeyCreatePlaylist,
     AgentToolsDefinition.discJockeyBrowseDatabase,

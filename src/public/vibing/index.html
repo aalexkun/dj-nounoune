@@ -22,14 +22,72 @@
       <div class="cover-bg cover-bg-1"></div>
       <div class="cover-bg cover-bg-2"></div>
       <div class="cover-bg cover-bg-3"></div>
-      <img id="cover" class="cover cover-default" alt="" referrerpolicy="no-referrer" src="/vibing-on/assets/vibe-cat.gif" />
-      <div id="cover-placeholder" class="cover cover-placeholder spacer"></div>
+
+      <!-- Sleeve and record, the shape a vinyl is photographed in: the disc sits behind the sleeve and
+           clears its right edge, turning. Real artwork drops into the sleeve as a plain square; with
+           nothing playing the sleeve dresses itself up and the cat is the artist on the front. -->
+      <div id="vinyl" class="vinyl framed">
+        <div class="vinyl-disc" aria-hidden="true"></div>
+        <div class="vinyl-sleeve">
+          <img id="cover" class="cover cover-default" alt="" referrerpolicy="no-referrer" src="/vibing-on/assets/vibe-cat.gif" />
+          <div id="cover-placeholder" class="cover cover-placeholder" hidden></div>
+          <!-- Sleeve credits, decoration rather than information — the heading beside it already says
+               what is playing, so nothing here is worth reading out loud. -->
+          <div class="sleeve-type" aria-hidden="true">
+            <div class="sleeve-artist">vibe cat</div>
+            <div class="sleeve-album">
+              <div class="sleeve-album-title">vibing on</div>
+              <div class="sleeve-album-edition">the nounoune edition</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="hero-text">
       <div id="eyebrow" class="eyebrow"></div>
       <h1 id="title" class="title">nothing playing</h1>
       <div id="artist" class="artist"></div>
       <div id="badges" class="badges"></div>
+
+      <!-- Disabled until the socket reports the player state, so nothing can be clicked into the void. -->
+      <div class="transport">
+        <button id="control-previous" class="control" type="button" aria-label="previous song" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M18 5 8.5 12 18 19z" />
+            <rect x="5" y="5" width="2.2" height="14" rx="0.6" />
+          </svg>
+        </button>
+        <button id="control-toggle" class="control control-primary" type="button" aria-label="start" disabled>
+          <svg id="control-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M7 4.5 19 12 7 19.5z" />
+          </svg>
+        </button>
+        <button id="control-next" class="control" type="button" aria-label="next song" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 5 15.5 12 6 19z" />
+            <rect x="16.8" y="5" width="2.2" height="14" rx="0.6" />
+          </svg>
+        </button>
+        <span id="control-note" class="control-note"></span>
+      </div>
+
+      <!-- Same four reactions, same artwork and the same server-side counting as the Android app.
+           Under the transport here, which is where they stay on every layout but the letterbox one:
+           `placeReactions` in vibing.js moves them into the details column for that display. -->
+      <div class="reactions" id="reactions">
+        <button class="reaction" type="button" data-reaction="awesome" aria-label="awesome">
+          <img src="/vibing-on/assets/reactions/love-giraffe.png" alt="" decoding="async" />
+        </button>
+        <button class="reaction" type="button" data-reaction="great" aria-label="great">
+          <img src="/vibing-on/assets/reactions/girrafe-sparkle.png" alt="" decoding="async" />
+        </button>
+        <button class="reaction" type="button" data-reaction="duh" aria-label="duh">
+          <img src="/vibing-on/assets/reactions/arf-giraffe.png" alt="" decoding="async" />
+        </button>
+        <button class="reaction" type="button" data-reaction="wtf" aria-label="wtf">
+          <img src="/vibing-on/assets/reactions/wtf-giraffe.png" alt="" decoding="async" />
+        </button>
+      </div>
     </div>
   </section>
 
@@ -49,6 +107,9 @@
     <div id="recent" class="recent-grid"></div>
   </section>
 </main>
+
+<!-- Where reactions float up, over everything and clickable through. -->
+<div id="reaction-stage" class="reaction-stage" aria-hidden="true"></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/vibing-on/assets/vibing.js"></script>

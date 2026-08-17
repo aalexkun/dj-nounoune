@@ -4,6 +4,7 @@
   var el = {
     dot: document.getElementById('live-dot'),
     status: document.getElementById('rail-status'),
+    vinyl: document.getElementById('vinyl'),
     cover: document.getElementById('cover'),
     coverPlaceholder: document.getElementById('cover-placeholder'),
     eyebrow: document.getElementById('eyebrow'),
@@ -15,6 +16,13 @@
     detailsGrid: document.getElementById('details-grid'),
     recentSection: document.getElementById('recent-section'),
     recent: document.getElementById('recent'),
+    controlPrevious: document.getElementById('control-previous'),
+    controlToggle: document.getElementById('control-toggle'),
+    controlToggleIcon: document.getElementById('control-toggle-icon'),
+    controlNext: document.getElementById('control-next'),
+    controlNote: document.getElementById('control-note'),
+    reactions: document.getElementById('reactions'),
+    reactionStage: document.getElementById('reaction-stage'),
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -157,28 +165,27 @@
   var DEFAULT_COVER = '/vibing-on/assets/vibe-cat.gif';
 
   /**
-   * With a cover the image is the square and the placeholder is gone; without one the cat takes the
-   * whole panel and the placeholder stays behind it, drawing nothing, purely to hold that square open
-   * so the panel does not resize under the artwork arriving.
+   * Either way the artwork fills the sleeve, which is what holds the square open — so the panel never
+   * resizes under artwork arriving. Real artwork drops in as a plain square; without any, the cat
+   * takes the front and the sleeve dresses itself up around it, record and all.
    */
   function setCover(url) {
     el.cover.src = url || DEFAULT_COVER;
     el.cover.classList.toggle('cover-default', !url);
     el.cover.hidden = false;
-    el.coverPlaceholder.hidden = !!url;
-    el.coverPlaceholder.classList.toggle('spacer', !url);
+    el.vinyl.classList.toggle('framed', !url);
+    el.coverPlaceholder.hidden = true;
   }
 
   el.cover.addEventListener('error', function () {
     // Discogs' CDN blocks hotlinking, so a resolved URL can still fail to load.
     if (el.cover.getAttribute('src') === DEFAULT_COVER) {
-      // The fallback itself is missing — hand the square back to the drawn placeholder rather than
-      // loop on the error.
+      // The fallback itself is missing — leave the sleeve up, empty, and let the drawn placeholder
+      // stand in on its front rather than loop on the error.
       el.cover.hidden = true;
       el.cover.removeAttribute('src');
       el.cover.classList.remove('cover-default');
       el.coverPlaceholder.hidden = false;
-      el.coverPlaceholder.classList.remove('spacer');
       return;
     }
 
@@ -380,12 +387,228 @@
     driftNarration();
   }
 
-  window.addEventListener('resize', driftNarration);
+  /**
+   * The reactions live under the transport, except on a letterbox display where the hero column has
+   * no height to spare and they go to the foot of the details column instead. Which of the two is a
+   * layout question, and the layout lives in the stylesheet — so the CSS names the mode through
+   * `--layout` and this only moves the node to match. One copy of the markup, one definition of the
+   * breakpoint, and nothing to keep in step by hand.
+   */
+  function placeReactions() {
+    var layout = getComputedStyle(document.documentElement).getPropertyValue('--layout').trim();
+    var target = document.querySelector(layout === 'letterbox' ? '.details' : '.hero-text');
+
+    if (!target || el.reactions.parentNode === target) return;
+
+    target.appendChild(el.reactions);
+    log('layout', 'reactions moved to the ' + (layout === 'letterbox' ? 'details' : 'hero') + ' column');
+  }
+
+  window.addEventListener('resize', function () {
+    driftNarration();
+    placeReactions();
+  });
+
+  placeReactions();
 
   function setConnected(connected, label) {
     el.dot.className = connected ? 'dot' : 'dot offline';
     el.status.textContent = label;
   }
+
+  // -------------------------------------------------------------------------------------------
+  // Transport. The buttons never act on their own: every click goes out as `vibing-control` and the
+  // player state comes back from the server, so the page cannot disagree with what MPD is doing —
+  // including when the disc jockey agent is the one that changed it.
+  // -------------------------------------------------------------------------------------------
+
+  var PLAY_ICON = '<path d="M7 4.5 19 12 7 19.5z" />';
+  var STOP_ICON = '<rect x="6" y="6" width="12" height="12" rx="1.2" />';
+  var CONTROL_TIMEOUT_MS = 5000;
+
+  var playback = { state: 'unknown', pending: false };
+
+  function paintTransport() {
+    var playing = playback.state === 'play';
+    var reachable = playback.state !== 'unknown' && !playback.pending;
+    // Reported by the server as 0 when the queue is empty; undefined means it did not say.
+    var queued = playback.queueLength !== 0;
+
+    el.controlToggleIcon.innerHTML = playing ? STOP_ICON : PLAY_ICON;
+    el.controlToggle.setAttribute('aria-label', playing ? 'stop' : 'start');
+    el.controlToggle.disabled = !reachable || (!playing && !queued);
+    el.controlPrevious.disabled = !reachable || !queued;
+    el.controlNext.disabled = !reachable || !queued;
+  }
+
+  function note(message) {
+    el.controlNote.textContent = message || '';
+  }
+
+  function applyPlayback(state) {
+    if (!state || !state.state) return;
+
+    playback.state = state.state;
+    playback.queueLength = state.queueLength;
+    paintTransport();
+
+    if (state.state === 'unknown') note('player unreachable');
+    else if (state.queueLength === 0) note('queue empty');
+    else note('');
+  }
+
+  function sendControl(action) {
+    if (playback.pending) return;
+
+    if (!socket.connected) {
+      report('control', action + ' not sent, the socket is down');
+      note('offline');
+      return;
+    }
+
+    playback.pending = true;
+    paintTransport();
+    note('…');
+    report('control', 'sending ' + action);
+
+    socket.timeout(CONTROL_TIMEOUT_MS).emit('vibing-control', { action: action }, function (error, result) {
+      playback.pending = false;
+
+      if (error) {
+        report('control', action + ' timed out after ' + CONTROL_TIMEOUT_MS + 'ms');
+        note('no answer');
+        paintTransport();
+        return;
+      }
+
+      if (!result || !result.ok) {
+        report('control', action + ' refused: ' + ((result && result.error) || 'unknown reason'));
+        note('failed');
+        paintTransport();
+        return;
+      }
+
+      report('control', action + ' → ' + ((result.playback && result.playback.state) || 'no state'));
+      note('');
+      applyPlayback(result.playback);
+      paintTransport();
+    });
+  }
+
+  /**
+   * Silent resync on the watchdog tick. The chat agent drives the same player through its own tools,
+   * so the toggle can be showing "stop" for a track that was stopped from somewhere else entirely.
+   */
+  function refreshPlayback() {
+    if (!socket.connected || playback.pending) return;
+
+    socket.timeout(CONTROL_TIMEOUT_MS).emit('vibing-control', { action: 'status' }, function (error, result) {
+      if (error || !result || !result.ok) {
+        log('control', 'status refresh got no usable answer');
+        return;
+      }
+
+      applyPlayback(result.playback);
+    });
+  }
+
+  /** A command cannot go anywhere without the socket, so the buttons go down with it. */
+  function transportOffline() {
+    playback.state = 'unknown';
+    playback.pending = false;
+    paintTransport();
+    note('offline');
+  }
+
+  el.controlPrevious.addEventListener('click', function () {
+    sendControl('previous');
+  });
+
+  el.controlToggle.addEventListener('click', function () {
+    // Deliberately not 'play' or 'stop': the server reads the player and picks, so a stale page
+    // cannot send the command that matches the state it last happened to see.
+    sendControl('toggle');
+  });
+
+  el.controlNext.addEventListener('click', function () {
+    sendControl('next');
+  });
+
+  // -------------------------------------------------------------------------------------------
+  // Reactions. The four the Android app sends, counted onto the current play by the same server
+  // pipeline. Every viewer sees every reaction, so the television shows what the phones are doing.
+  // -------------------------------------------------------------------------------------------
+
+  var REACTION_ART = {
+    awesome: '/vibing-on/assets/reactions/love-giraffe.png',
+    great: '/vibing-on/assets/reactions/girrafe-sparkle.png',
+    duh: '/vibing-on/assets/reactions/arf-giraffe.png',
+    wtf: '/vibing-on/assets/reactions/wtf-giraffe.png',
+  };
+
+  // Matches the server's own cooldown, so a fast double tap is dropped here rather than sent and
+  // refused — what floats up the screen is then exactly what got counted.
+  var REACTION_COOLDOWN_MS = 250;
+  var lastReactionAt = 0;
+
+  function floatReaction(type) {
+    var art = REACTION_ART[type];
+    if (!art) return;
+
+    var particle = document.createElement('img');
+    particle.className = 'reaction-float';
+    particle.src = art;
+    particle.alt = '';
+    // Spread across the middle of the screen so a burst does not stack into one column.
+    particle.style.left = (10 + Math.random() * 75).toFixed(1) + 'vw';
+    particle.style.animationDelay = (Math.random() * 0.12).toFixed(2) + 's';
+
+    particle.addEventListener('animationend', function () {
+      particle.remove();
+    });
+
+    el.reactionStage.appendChild(particle);
+  }
+
+  function sendReaction(type, button) {
+    if (!REACTION_ART[type]) return;
+
+    var now = Date.now();
+    if (now - lastReactionAt < REACTION_COOLDOWN_MS) return;
+    lastReactionAt = now;
+
+    if (!socket.connected) {
+      report('reaction', type + ' not sent, the socket is down');
+      note('offline');
+      return;
+    }
+
+    // Floated before the answer comes back: the tap has to feel immediate, and a refusal below
+    // only costs a flash on the button.
+    floatReaction(type);
+    report('reaction', 'sending ' + type);
+
+    socket.timeout(CONTROL_TIMEOUT_MS).emit('vibing-reaction', { reaction: type }, function (error, result) {
+      if (error || !result || !result.ok) {
+        report('reaction', type + ' not counted: ' + ((result && result.error) || 'no answer'));
+        if (button) flashRefused(button);
+      }
+    });
+  }
+
+  function flashRefused(button) {
+    button.classList.remove('refused');
+    // Forces the animation to restart when the same button is tapped again.
+    void button.offsetWidth;
+    button.classList.add('refused');
+  }
+
+  el.reactions.addEventListener('click', function (event) {
+    var button = event.target.closest('.reaction');
+    if (!button) return;
+
+    sendReaction(button.getAttribute('data-reaction'), button);
+  });
 
   var socket = io('/vibing', {
     reconnection: true,
@@ -438,11 +661,13 @@
 
   socket.on('disconnect', function (reason, description) {
     setConnected(false, 'reconnecting');
+    transportOffline();
     report('socket', 'disconnected: ' + reason + (description ? ' — ' + description : ''));
   });
 
   socket.on('connect_error', function (error) {
     setConnected(false, 'reconnecting');
+    transportOffline();
     report('socket', 'connect_error: ' + (error && error.message ? error.message : error));
   });
 
@@ -494,6 +719,22 @@
       return (payload && payload.songId) + ' ' + (payload && payload.coverUrl);
     }, applyCover),
   );
+
+  socket.on(
+    'vibing-playback',
+    received('vibing-playback', function (state) {
+      return state ? state.state + ' queue=' + state.queueLength : 'empty payload';
+    }, applyPlayback),
+  );
+
+  // Somebody else reacted. Sent without an ack on purpose, and logged locally only: a busy room
+  // would otherwise ship a line to the server for every tap on every phone in it.
+  socket.on('vibing-reaction-broadcast', function (payload) {
+    if (!payload || !payload.reaction) return;
+
+    log('reaction', 'received ' + payload.reaction);
+    floatReaction(payload.reaction);
+  });
 
   /** Application level round trip, so a socket both sides still believe in can be caught not answering. */
   var beat = { sentAt: 0, timer: null };
@@ -562,6 +803,7 @@
     } else {
       heartbeat();
       shipLogs();
+      refreshPlayback();
     }
 
     poll();
@@ -593,6 +835,13 @@
     },
     heartbeat: heartbeat,
     poll: poll,
+    playback: function () {
+      return playback;
+    },
+    control: sendControl,
+    react: function (type) {
+      sendReaction(type);
+    },
     dump: function () {
       return trace.logs
         .map(function (entry) {
