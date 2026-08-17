@@ -6,6 +6,8 @@ import { MpdClientService } from '../mpd-client/mpd-client.service';
 import { MusicDbService } from '../music-db/music-db.service';
 import { PlayMusicHandler } from './tools/handler/mpd/play-music.handler';
 import { StopPlaybackHandler } from './tools/handler/mpd/stop-music.handler';
+import { NextSongHandler } from './tools/handler/mpd/next-song.handler';
+import { PreviousSongHandler } from './tools/handler/mpd/previous-song.handler';
 import { CurrentSongHandler } from './tools/handler/mpd/current-song.handler';
 import { CurrentPlaylistHandler } from './tools/handler/mpd/current-playlist.handler';
 import { GenreDistributionHandler } from './tools/handler/mongo/genre-distribution.handler';
@@ -41,6 +43,8 @@ export class ToolsService {
     // Generic and global accessible Tool and function
     this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService,this.redisCacheService));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
+    this.registerTool(new NextSongHandler(this.mpdClientService));
+    this.registerTool(new PreviousSongHandler(this.mpdClientService));
     this.registerTool(new CurrentSongHandler(this.mpdClientService, this.musicDbService));
     this.registerTool(new CurrentPlaylistHandler(this.mpdClientService));
     this.registerTool(new GenreDistributionHandler(this.musicDbService));

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
@@ -9,6 +9,7 @@ import { SourceType } from '../../schemas/source.schema';
 import { TechnicalInfo } from '../../schemas/technical-info.schema';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
 import { CurrentSongMpdResponse } from '../mpd-client/responses/CurrentSongMpdResponse';
+import { MpdPicture } from '../mpd-client/responses/BinaryMpdResponse';
 import { MusicDbService, PopulatedSong } from '../music-db/music-db.service';
 import { ToolsService } from '../promptus/tools.service';
 import { AppService } from '../../app.service';
@@ -24,7 +25,11 @@ import {
   NowPlayingEvent,
   NowPlayingEventName,
   RecentlyPlayed,
+  mpdArtworkUrl,
 } from './now-playing.event';
+
+/** Room for the cover on screen plus the strip of recent tracks, and a little slack around them. */
+const ARTWORK_CACHE_SIZE = 12;
 
 type MpdSongLookup = {
   song?: SongDocument | null;
@@ -42,6 +47,15 @@ export class PlaylogService {
 
   /** Playlog behind that snapshot, kept so enrichment can still be run later for the same play. */
   private currentPlaylog: PlaylogDocument | null = null;
+
+  /** MPD uri of that same play, which is what the artwork commands take as their argument. */
+  private currentMpdUri: string | null = null;
+
+  /**
+   * Pictures pulled out of MPD, held for `VibingController` to serve. Bounded and deliberately not
+   * persisted: the file on the MPD box is the real store, this only spares a re-read of it.
+   */
+  private readonly artworkCache = new Map<string, MpdPicture>();
 
   /** Viewers on the /vibing namespace, reported by `VibingGateway`. No viewers, no model calls. */
   private viewerCount = 0;
@@ -81,10 +95,12 @@ export class PlaylogService {
     await this.enrichNowPlaying(this.currentPlaylog, this.currentNowPlaying);
   }
 
-  /** A missing cover is only worth another pass while the search that could fill it is switched on. */
+  /**
+   * A missing cover is always worth another pass now: even with the web search switched off, MPD
+   * may still be holding the artwork that shipped with the file.
+   */
   private needsEnrichment(snapshot: NowPlaying): boolean {
-    if (!snapshot.description) return true;
-    return !snapshot.coverUrl && this.appService.isAlbumCoverSearchEnabled();
+    return !snapshot.description || !snapshot.coverUrl;
   }
 
   @Interval(10000)
@@ -121,11 +137,11 @@ export class PlaylogService {
         const savedPlaylog = await newPlaylog.save();
         this.logger.log(`Created new playlog entry: ${savedPlaylog._id}`);
 
-        await this.publishNowPlaying(savedPlaylog, sourceName);
+        await this.publishNowPlaying(savedPlaylog, sourceName, mpdResponse?.song?.file);
       } else if (!this.currentNowPlaying && previousPlaylog) {
         // Cold start: the running track was already logged before this process began, so publish
         // from that entry rather than leaving the page blank until the next song change.
-        await this.publishNowPlaying(previousPlaylog, sourceName);
+        await this.publishNowPlaying(previousPlaylog, sourceName, mpdResponse?.song?.file);
       }
 
     } catch (error: any) {
@@ -180,7 +196,7 @@ export class PlaylogService {
    * Build the public now-playing snapshot from Mongo and push it immediately, then let the LLM
    * enrichment catch up in the background and push a second time.
    */
-  private async publishNowPlaying(playlog: PlaylogDocument, sourceName?: SourceType): Promise<void> {
+  private async publishNowPlaying(playlog: PlaylogDocument, sourceName?: SourceType, mpdUri?: string): Promise<void> {
     try {
       const songId = playlog.songId.toString();
       const [populated] = await this.musicDbService.getPopulatedSongsByIds([songId]);
@@ -223,6 +239,7 @@ export class PlaylogService {
       };
 
       this.currentPlaylog = playlog;
+      this.currentMpdUri = mpdUri ?? null;
       this.emitNowPlaying(snapshot);
 
       if (this.viewerCount === 0) {
@@ -261,7 +278,7 @@ export class PlaylogService {
 
       await Promise.allSettled([
         this.resolveCommentary(discJockey, playlog, snapshot, previous?.description),
-        this.resolveCover(discJockey, playlog, snapshot, previous?.coverUrl),
+        this.resolveCover(discJockey, playlog, snapshot, previous?.coverUrl, this.currentMpdUri ?? undefined),
       ]);
     } catch (error: unknown) {
       this.logger.error(`Error enriching now-playing: ${getErrorMessage(error)}`);
@@ -294,11 +311,17 @@ export class PlaylogService {
     }
   }
 
+  /**
+   * Cheapest source first: what the album document already carries, then what an earlier play of the
+   * same track resolved, then the file MPD is streaming — embedded tags before the directory beside
+   * it — and only once none of those answered, the web search.
+   */
   private async resolveCover(
     discJockey: DiscJockeyAgent,
     playlog: PlaylogDocument,
     snapshot: NowPlaying,
     cached?: string,
+    mpdUri?: string,
   ): Promise<void> {
     // Already carried by the base snapshot, straight off the album document.
     if (snapshot.coverUrl) return;
@@ -307,8 +330,12 @@ export class PlaylogService {
       let coverUrl = cached;
 
       if (!coverUrl) {
+        coverUrl = (await this.artworkFromMpd(snapshot.songId, mpdUri)) ?? undefined;
+      }
+
+      if (!coverUrl) {
         if (!this.appService.isAlbumCoverSearchEnabled()) {
-          this.logger.debug('Album cover search is disabled, leaving the artwork empty');
+          this.logger.debug('MPD holds no artwork and album cover search is disabled, leaving it empty');
           return;
         }
 
@@ -364,6 +391,66 @@ export class PlaylogService {
     } catch (error: unknown) {
       this.logger.warn(`Album cover lookup failed for ${snapshot.artist} - ${snapshot.album}: ${getErrorMessage(error)}`);
       return null;
+    }
+  }
+
+  /**
+   * The file being played usually ships with its own artwork, which beats anything a search can find:
+   * it is local, free, and it is the picture the release actually came with. `readpicture` reads the
+   * one embedded in the tags, `albumart` the one lying in the directory — tried in that order.
+   *
+   * The bytes stay here and the page is handed the address they are served from.
+   */
+  private async artworkFromMpd(songId: string, mpdUri?: string): Promise<string | null> {
+    if (!mpdUri) return null;
+
+    const picture = await this.fetchArtwork(mpdUri);
+    if (!picture) return null;
+
+    this.cacheArtwork(songId, picture);
+    this.logger.debug(`Using the ${picture.mimeType} artwork MPD holds for ${mpdUri}`);
+
+    return mpdArtworkUrl(songId);
+  }
+
+  /**
+   * Serves `GET /vibing-on/artwork/:songId`. The picture is normally still cached from the play that
+   * resolved it; the strip of recent tracks and any page opened after a restart reach past that, so
+   * the file source is looked up again and MPD asked a second time.
+   */
+  async getArtwork(songId: string): Promise<MpdPicture | null> {
+    const cached = this.artworkCache.get(songId);
+    if (cached) return cached;
+
+    if (!Types.ObjectId.isValid(songId)) return null;
+
+    const song = await this.songModel.findById(songId).exec();
+    const mpdUri = song?.source?.find((source) => source.name === 'file')?.sourceId;
+
+    if (!mpdUri) return null;
+
+    const picture = await this.fetchArtwork(mpdUri);
+    if (picture) this.cacheArtwork(songId, picture);
+
+    return picture;
+  }
+
+  private async fetchArtwork(mpdUri: string): Promise<MpdPicture | null> {
+    return (
+      (await this.mpdClientService.fetchEmbeddedPicture(mpdUri)) ??
+      (await this.mpdClientService.fetchDirectoryArtwork(mpdUri))
+    );
+  }
+
+  /** Insertion order is eviction order, so re-caching a hit moves it back to the young end. */
+  private cacheArtwork(songId: string, picture: MpdPicture): void {
+    this.artworkCache.delete(songId);
+    this.artworkCache.set(songId, picture);
+
+    while (this.artworkCache.size > ARTWORK_CACHE_SIZE) {
+      const oldest = this.artworkCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.artworkCache.delete(oldest);
     }
   }
 

@@ -33,6 +33,26 @@ export class MpdToolsDefinition {
     },
   } as const;
 
+  public static readonly nextMpdCommand: ToolDeclaration = {
+    name: 'next_song',
+    description:
+      'Skip the track playing on the MPD music server and start the next one in the queue. Use it when the user is bored with, dislikes or simply wants to move past the current song. Takes no argument: it acts on whatever is already queued.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+    },
+  } as const;
+
+  public static readonly previousMpdCommand: ToolDeclaration = {
+    name: 'previous_song',
+    description:
+      'Go back to the previous track in the MPD queue and play it. Use it when the user wants to hear again the song that came before the current one. Takes no argument: it acts on whatever is already queued.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+    },
+  } as const;
+
   public static readonly currentMpdCommand: ToolDeclaration = {
     name: 'current_song',
     description: 'Retrieve the current song playing on the MPD music Server',

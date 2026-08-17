@@ -5,7 +5,17 @@ export abstract class MpdRequest<TResponse> {
 
   abstract get args(): string[];
 
-  abstract createResponse(raw: string): TResponse;
+  /**
+   * Commands whose reply carries a raw byte payload (`albumart`, `readpicture`). The client keeps
+   * those responses as a Buffer: decoding them as text would corrupt the picture, and the `OK\n`
+   * that ends every other response can occur inside the bytes.
+   */
+  get isBinary(): boolean {
+    return false;
+  }
+
+  /** Text commands are handed the decoded response, binary ones the untouched bytes. */
+  abstract createResponse(raw: string | Buffer): TResponse;
 
   public getCommandString(): string {
     const args = this.args

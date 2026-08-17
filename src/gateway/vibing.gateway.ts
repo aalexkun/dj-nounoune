@@ -22,12 +22,42 @@ import {
   NowPlayingEventName,
 } from '../services/playlog/now-playing.event';
 import { getErrorMessage } from '../utils/error.utils';
+import { MpdClientService } from '../services/mpd-client/mpd-client.service';
+import { NextMpdRequest } from '../services/mpd-client/requests/NextMpdRequest';
+import { PreviousMpdRequest } from '../services/mpd-client/requests/PreviousMpdRequest';
+import { PlayMpdRequest } from '../services/mpd-client/requests/PlayMpdRequest';
+import { StopMpdRequest } from '../services/mpd-client/requests/StopMpdRequest';
+import {
+  VibingControlAction,
+  VibingControlMessage,
+  VibingControlResult,
+  VibingControlSchema,
+  VibingPlaybackMessage,
+  VibingPlaybackState,
+  VibingReactionBroadcastMessage,
+  VibingReactionMessage,
+  VibingReactionSchema,
+} from './vibing.gateway.types';
+import { ChatService } from '../services/chat/chat.service';
+import { ChatFeedbackEvent } from '../services/chat/chat.event';
 
 /** How long a client has to acknowledge a push before it is reported as undelivered. */
 const DELIVERY_ACK_TIMEOUT_MS = 5000;
 
 /** Engine level packet tracing is one line per second per client, so it is opt-in. */
 const TRACE_PACKETS = process.env.VIBING_TRACE_PACKETS === 'true';
+
+/**
+ * `ChatService` keys its feedback pipeline by session, and this namespace has no sessions. One
+ * standing pseudo-session stands in for every viewer, which is what lets the page reuse the app's
+ * counting — 5 second buffer, grouped counts, `PlaylogService.handleFeedbackEvent` — untouched.
+ * The counts land on the playlog rather than on anyone's session, so nothing downstream cares that
+ * several viewers share the id.
+ */
+const VIBING_FEEDBACK_SESSION = 'vibing-public';
+
+/** Not an access check — anyone on the LAN may vote — just a ceiling on how fast one socket can. */
+const REACTION_COOLDOWN_MS = 250;
 
 /** Log lines shipped up from the page. Untrusted input: bounded and clipped before it reaches the log. */
 const ClientLogSchema = z.object({
@@ -43,9 +73,19 @@ const ClientLogSchema = z.object({
 });
 
 /**
- * Read-only public feed behind the /vibing-on page. It lives on its own namespace so that
+ * Public feed behind the /vibing-on page. It lives on its own namespace so that
  * `ChatGateway`'s api-key handshake on the default namespace stays untouched: there is no auth,
  * no session and no room here, every viewer sees the same broadcast.
+ *
+ * Mostly one way — `vibing-control` and `vibing-reaction` are the exceptions, carrying the page's
+ * transport buttons through to MPD and its reactions onto the current play.
+ *
+ * Both writes are deliberately open to anyone who can reach the page: this runs on the LAN, and
+ * everyone on the LAN is allowed to drive playback and vote. That is the design, not an omission —
+ * do not add a guard here without changing that decision first. What keeps it safe is scope rather
+ * than identity: control is bounded to the queue MPD already holds (no enqueue, no clear, no
+ * delete), reactions are bounded to four counters, both are rate limited or aggregated, and every
+ * command is logged with the socket that sent it.
  *
  * It is also the audience counter. The commentary and cover lookups cost model calls, so
  * `PlaylogService` only makes them while somebody is actually watching.
@@ -67,7 +107,14 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    */
   private readonly viewers = new Map<string, Socket>();
 
-  constructor(private readonly playlogService: PlaylogService) {}
+  /** Last reaction per socket, for the cooldown. Dropped with the socket in `handleDisconnect`. */
+  private readonly lastReactionAt = new Map<string, number>();
+
+  constructor(
+    private readonly playlogService: PlaylogService,
+    private readonly mpdClientService: MpdClientService,
+    private readonly chatService: ChatService,
+  ) {}
 
   /**
    * ping settings are engine.io options, and the engine is per HTTP server rather than per
@@ -75,6 +122,10 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    * actually in force are on the record next to the disconnects they cause.
    */
   afterInit(server: Server) {
+    // Opened once for the lifetime of the process, and never unsubscribed: unlike a chat session
+    // there is no point at which the last viewer leaving should tear the counting down.
+    this.chatService.subscribeToFeedback(VIBING_FEEDBACK_SESSION);
+
     const engine = (
       server as unknown as {
         server?: { engine?: { opts?: { pingInterval?: number; pingTimeout?: number; transports?: string[] } } };
@@ -112,6 +163,13 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       this.logger.debug(`No snapshot to catch ${client.id} up with`);
     }
 
+    // The transport buttons start disabled, so the page needs the player state before it can be used.
+    this.readPlayback()
+      .then((playback) => this.deliverTo(client, VibingPlaybackMessage, playback, `catch-up ${playback.state}`))
+      .catch((error: unknown) => {
+        this.logger.error(`Error reading the playback state for a joining viewer: ${getErrorMessage(error)}`);
+      });
+
     // The track may have started while nobody was watching, in which case it carries no commentary
     // yet. Harmless to call on every connect: it returns early once the commentary is there.
     this.playlogService.enrichCurrentIfNeeded().catch((error: unknown) => {
@@ -121,6 +179,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   handleDisconnect(client: Socket) {
     this.viewers.delete(client.id);
+    this.lastReactionAt.delete(client.id);
     this.playlogService.setViewerCount(this.viewers.size);
     this.logger.warn(
       `Vibing client disconnected: ${client.id} (${this.viewers.size} watching) ` +
@@ -176,6 +235,142 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
     for (const entry of parsed.data.entries) {
       this.logger.debug(`[client ${client.id}] ${entry.at ?? ''} ${entry.kind}: ${entry.message}`);
+    }
+  }
+
+  /**
+   * Transport control from the page — open to every viewer on the LAN, see the note on the class.
+   *
+   * Returned rather than emitted: the value becomes the socket.io ack, so the page learns the state
+   * its own click produced. Every other viewer gets the same state pushed as `vibing-playback`.
+   */
+  @SubscribeMessage(VibingControlMessage)
+  async handleControl(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<VibingControlResult> {
+    const parsed = VibingControlSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      this.logger.warn(`Discarded a malformed control message from ${client.id}: ${JSON.stringify(payload)}`);
+      return { ok: false, error: 'Unsupported control action' };
+    }
+
+    const { action } = parsed.data;
+
+    try {
+      const playback = await this.applyControl(action);
+
+      // `status` is the page asking where things stand, not a command: nothing to announce.
+      if (action !== 'status') {
+        this.logger.log(`vibing-control "${action}" from ${client.id} → state=${playback.state}`);
+        this.deliver(VibingPlaybackMessage, playback, `${action} → ${playback.state}`);
+      }
+
+      return { ok: true, action, playback };
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      this.logger.error(`vibing-control "${action}" from ${client.id} failed: ${message}`);
+      return { ok: false, action, error: message };
+    }
+  }
+
+  /**
+   * A viewer reacting to the track. Handed straight to `ChatService`, which buffers five seconds of
+   * them, groups them by type and increments the counters on the current play — the same path the
+   * Android app's `chat-feedback` takes, so there is one implementation of the counting.
+   *
+   * Broadcast to the other viewers as well: react from a phone, watch the giraffe float up the
+   * television. That broadcast is deliberately unacknowledged, unlike every other push here — a
+   * dropped reaction is confetti, and acking one per tap would drown the delivery log.
+   */
+  @SubscribeMessage(VibingReactionMessage)
+  handleReaction(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): { ok: boolean; error?: string } {
+    const parsed = VibingReactionSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      this.logger.warn(`Discarded a malformed reaction from ${client.id}: ${JSON.stringify(payload)}`);
+      return { ok: false, error: 'Unsupported reaction' };
+    }
+
+    const now = Date.now();
+    const previous = this.lastReactionAt.get(client.id) ?? 0;
+
+    if (now - previous < REACTION_COOLDOWN_MS) {
+      this.logger.debug(`Dropped a reaction from ${client.id}: ${now - previous}ms since the last one`);
+      return { ok: false, error: 'Too fast' };
+    }
+
+    this.lastReactionAt.set(client.id, now);
+
+    const { reaction } = parsed.data;
+    this.logger.log(`vibing-reaction "${reaction}" from ${client.id}`);
+
+    this.chatService.processFeedbackMessage(
+      VIBING_FEEDBACK_SESSION,
+      new ChatFeedbackEvent(VIBING_FEEDBACK_SESSION, reaction, reaction),
+    );
+
+    client.broadcast.emit(VibingReactionBroadcastMessage, { reaction, at: now });
+
+    return { ok: true };
+  }
+
+  private async applyControl(action: VibingControlAction): Promise<VibingPlaybackState> {
+    switch (action) {
+      case 'next':
+        await this.mpdClientService.send(new NextMpdRequest());
+        break;
+      case 'previous':
+        await this.mpdClientService.send(new PreviousMpdRequest());
+        break;
+      case 'play':
+        await this.mpdClientService.send(new PlayMpdRequest());
+        break;
+      case 'stop':
+        await this.mpdClientService.send(new StopMpdRequest());
+        break;
+      case 'toggle':
+        await this.toggle();
+        break;
+      case 'status':
+        break;
+    }
+
+    if (action !== 'status') {
+      // The poller runs on a ten second interval, which is a long time to look at the track the
+      // viewer just skipped away from. Not awaited: the ack must not wait on Mongo and the model.
+      this.playlogService.checkCurrentSong().catch((error: unknown) => {
+        this.logger.error(`Error refreshing now-playing after "${action}": ${getErrorMessage(error)}`);
+      });
+    }
+
+    return this.readPlayback();
+  }
+
+  /** Resolved server side so the decision is made on the player's state rather than the page's copy. */
+  private async toggle(): Promise<void> {
+    const status = await this.mpdClientService.status();
+
+    if (status.state === 'play') {
+      await this.mpdClientService.send(new StopMpdRequest());
+      return;
+    }
+
+    await this.mpdClientService.send(new PlayMpdRequest());
+  }
+
+  /** A player that cannot be reached reports `unknown`, which is what greys the page's buttons out. */
+  private async readPlayback(): Promise<VibingPlaybackState> {
+    try {
+      const status = await this.mpdClientService.status();
+
+      return {
+        state: status.state ?? 'unknown',
+        songId: status.songId ?? undefined,
+        queueLength: status.playlistLength ?? undefined,
+        at: Date.now(),
+      };
+    } catch (error: unknown) {
+      this.logger.warn(`Could not read the MPD status: ${getErrorMessage(error)}`);
+      return { state: 'unknown', at: Date.now() };
     }
   }
 

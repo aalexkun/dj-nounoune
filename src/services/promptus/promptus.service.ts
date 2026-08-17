@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Agent } from './agent';
 
-import { CacheHandler } from './handler/cache.handler';
 import { ChatPromptusRequest } from './request/chat.promptus.request';
 import { AppService } from '../../app.service';
 import { ToolsService } from './tools.service';

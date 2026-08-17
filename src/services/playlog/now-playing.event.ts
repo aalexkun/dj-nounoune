@@ -51,6 +51,14 @@ export class NowPlayingEvent {
 }
 
 /**
+ * Where a cover taken out of MPD is served from — the bytes never leave the backend, the page just
+ * gets an address for them. Matched by the `artwork/:songId` route on `VibingController`.
+ */
+export function mpdArtworkUrl(songId: string): string {
+  return `/vibing-on/artwork/${songId}`;
+}
+
+/**
  * The two enrichments are resolved independently and announced on their own events, so a slow
  * artwork search never holds back the commentary and neither delays the base snapshot. Each carries
  * the songId it belongs to: a viewer that has already moved on to the next track ignores it.
