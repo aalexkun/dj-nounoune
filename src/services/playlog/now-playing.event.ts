@@ -36,6 +36,7 @@ export interface NowPlaying {
   sampleRate?: number;
   bitDepth?: number;
   isHighRes?: boolean;
+  isCdQuality?: boolean;
   duration?: number;
   bpm?: number;
   coverUrl?: string;

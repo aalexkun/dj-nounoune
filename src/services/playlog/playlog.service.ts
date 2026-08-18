@@ -225,11 +225,15 @@ export class PlaylogService {
         country: populated.country,
         language: populated.language,
         sourceName,
-        encoding: technical?.encoding,
+        // `encoding` is the codec ffprobe reported, which only the enriched sources carry — the bulk
+        // of the library was imported with nothing but the file extension, so fall back to it rather
+        // than leave the format off the display entirely.
+        encoding: technical?.encoding || technical?.extension,
         bitrate: technical?.bitrate,
         sampleRate: technical?.sample_rate,
         bitDepth: technical?.bit_depth,
         isHighRes: technical?.is_high_res,
+        isCdQuality: technical?.is_cd_quality,
         duration: technical?.duration,
         bpm: technical?.bpm,
         coverUrl: image?.large || image?.thumbnail || image?.small,

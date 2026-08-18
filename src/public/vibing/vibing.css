@@ -406,9 +406,34 @@ body {
   color: #b4b2a9;
 }
 
-.badge.accent {
-  background: var(--accent-bg);
-  color: var(--accent-ink);
+/* The technical strip. The tier tag is the loud one — hi-res takes the gold every store prints it in,
+   CD quality the silver under it — and the numbers behind it share a quieter outlined tone, so the
+   whole spec reads as one group and the source and timings after it stay out of the way. */
+.badge-hires,
+.badge-cd,
+.badge-spec {
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge-hires {
+  background: rgba(198, 160, 74, 0.16);
+  border-color: rgba(198, 160, 74, 0.55);
+  color: #e8c885;
+}
+
+.badge-cd {
+  background: rgba(168, 178, 188, 0.14);
+  border-color: rgba(168, 178, 188, 0.45);
+  color: #cfd6dd;
+}
+
+.badge-spec {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink-3);
 }
 
 /* Transport. Sized off the same rem as everything else, so the buttons grow with the display and
