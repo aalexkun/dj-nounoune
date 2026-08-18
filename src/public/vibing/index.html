@@ -14,7 +14,21 @@
       <span id="live-dot" class="dot offline"></span>
       <span class="rail-label">vibing on</span>
     </div>
-    <div class="rail-right" id="rail-status">connecting</div>
+    <!-- Conditions, then the outlook, then the time. Everything here is filled in by vibing.js and
+         stays hidden until it has something true to say, so a display with no weather upstream shows
+         the clock alone rather than a row of dashes. -->
+    <div class="rail-right">
+      <div id="weather" class="weather" hidden>
+        <div class="weather-now">
+          <span id="weather-icon" class="weather-icon" aria-hidden="true"></span>
+          <span id="weather-temp" class="weather-temp"></span>
+          <span id="weather-word" class="weather-word"></span>
+        </div>
+        <div id="weather-forecast" class="weather-forecast"></div>
+      </div>
+      <div id="clock" class="clock">--:--</div>
+      <div id="rail-status" class="rail-status">connecting</div>
+    </div>
   </header>
 
   <section class="hero">

@@ -1,4 +1,16 @@
 :root {
+  /* The page is painted from the sky, and the sky moves with the sun: `paintSky` in vibing.js
+     rewrites every one of these on the hour hand, from the near black below through deep indigo at
+     dawn to a daylight blue, and back. The values here are the deep of the night, which is both the
+     colour the page had before the sun cycle existed and the right thing to show for the second
+     before the first paint lands.
+
+     Two rules keep the type readable the whole way round. The daylight end stops at a blue dark
+     enough for the light ink to hold its contrast — a literal midday sky would need the whole
+     palette inverted — and the two dimmest inks, which were picked against black, are lifted
+     towards the light in step with the background so they never sink into it. */
+  --sky-top: #08090f;
+  --sky-bottom: #0d0f18;
   --bg: #0c0c0d;
   --bg-sunk: #0a0a0b;
   --bg-panel: #141416;
@@ -40,19 +52,23 @@ body {
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--sky-bottom);
   color: var(--ink);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
-/* One screenful: the board owns the viewport and the narration takes whatever the fixed rows leave. */
+/* One screenful: the board owns the viewport and the narration takes whatever the fixed rows leave.
+   The sky is one gradient over the whole board rather than a flat fill, because the panels that sit
+   on top of it are flat and the difference is what stops the daylight end reading as a paint chip.
+   Repainted once a minute; the transition is what turns that into a drift rather than a step. */
 .board {
   height: 100dvh;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  background: var(--bg);
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+  transition: background 3s linear;
 }
 
 .rail {
@@ -75,9 +91,112 @@ body {
   color: #b4b2a9;
 }
 
+/* Weather, then the clock, then the connection line — read right to left, the least important thing
+   is furthest from the eye. `baseline` rather than `center` so the temperature, the forecast highs
+   and the hour all sit on one line despite being three different sizes. */
 .rail-right {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.rail-status {
   font-size: 0.75rem;
   color: var(--ink-4);
+  white-space: nowrap;
+}
+
+.weather {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* The glyphs draw on `currentColor`, so the colour is set on the row and the icon follows the text
+   it sits with rather than carrying a brightness of its own. */
+.weather-now {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+/* The glyph is drawn on the text baseline of the row, so it is nudged rather than aligned. */
+.weather-icon {
+  display: inline-block;
+  width: 1.15rem;
+  height: 1.15rem;
+  transform: translateY(0.2rem);
+}
+
+.weather-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.weather-temp {
+  font-size: 1rem;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-word {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+.weather-forecast {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.forecast-day {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.forecast-day .weather-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  transform: translateY(0.15rem);
+}
+
+.forecast-name {
+  color: var(--ink-4);
+  letter-spacing: 0.08em;
+}
+
+.forecast-high {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-low {
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one thing on this page a room reads from across it. Tabular figures because the minute
+   changing must not shift the hour, and the serif to keep it a clock rather than a readout. */
+.clock {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .dot {
@@ -474,8 +593,10 @@ body {
   color: var(--accent-ink);
 }
 
+/* A lift off the tile rather than a grey of its own: the tile follows the sky, and a fixed dark
+   grey that read as raised against the night background would read as a hole in the daylight one. */
 .control:hover:not(:disabled) {
-  background: #2a2a2e;
+  background: color-mix(in srgb, var(--bg-tile), #ffffff 14%);
   color: var(--ink);
 }
 
@@ -551,8 +672,8 @@ body {
 }
 
 .reaction:hover {
-  background: #2a2a2e;
-  border-color: #3a3a3e;
+  background: color-mix(in srgb, var(--bg-tile), #ffffff 14%);
+  border-color: color-mix(in srgb, var(--line), #ffffff 20%);
 }
 
 .reaction:active {
@@ -784,6 +905,11 @@ body {
     padding: 0.5rem 1.2rem;
   }
 
+  /* The bar is all width and no height, so the header is the one place with room to spare. */
+  .clock {
+    font-size: 1.8rem;
+  }
+
   .cover-panel {
     grid-column: 1;
     grid-row: 2 / 4;
@@ -861,10 +987,32 @@ body {
   }
 }
 
+/* The outlook is the first thing to go when the header runs out of room: the day playing and the
+   time are what the page is for, and a forecast squeezed onto two lines is worse than none. */
+@media (max-width: 1250px) {
+  .forecast-day:nth-child(n + 3) {
+    display: none;
+  }
+}
+
 /* Portrait and phones: give up the one-screenful rule, stack and let the page scroll. */
 @media (max-width: 800px), (orientation: portrait) {
   body {
     overflow: auto;
+  }
+
+  .rail-right {
+    gap: 0.7rem;
+  }
+
+  /* The conditions stay — the icon and the temperature are two words wide. The outlook does not. */
+  .weather-forecast,
+  .weather-word {
+    display: none;
+  }
+
+  .clock {
+    font-size: 1.25rem;
   }
 
   .board {

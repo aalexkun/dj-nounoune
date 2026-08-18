@@ -41,6 +41,7 @@ import { ProfilerService } from './services/profiler/profiler.service';
 import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
 import { NegentropyJob, NegentropyJobSchema } from './schemas/negentropy-job.schema';
 import { NegentropyService } from './services/negentropy/negentropy.service';
+import { WeatherModule } from './services/weather/weather.module';
 
 const imports: Array<any> = [
   // Load global env
@@ -74,6 +75,7 @@ const imports: Array<any> = [
   MergeModule,
   OpensearchModule,
   RedisCacheModule,
+  WeatherModule,
 ];
 
 if (process.env.IS_CLI !== 'true') {

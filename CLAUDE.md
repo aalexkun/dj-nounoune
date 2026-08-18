@@ -88,6 +88,35 @@ REST (`ChatController`, `/chatroom`) is CRUD-only and guarded by `ApiAuthGuard` 
 - **Artwork rides along with the source.** The Qobuz response already carries the album cover, so it is written to the song's album document when that album has none (`MusicDbService.setAlbumImageIfMissing`, never an overwrite). This is not cosmetic: MPD can read a picture out of a local file but not out of a proxied stream, so a swap would otherwise leave the track with no artwork. MPD has **no artwork tag** — `addtagid` rejects Artwork/Picture/AlbumArt with `Unknown tag type` — the album document is the only place the cover can live. The `reused` path does not do this, since no source is being added and the track payload is not in hand.
 - Gated by `NEGENTROPY_ENABLED` (on when unset) and by `IS_CLI`, same as the playlog poller. `npm run cli -- negentropy run [--dry-run]` runs one pass by hand.
 
+### The public display (`/vibing-on`)
+
+Three static files under `src/public/vibing/`, served by `VibingController` and fed live by the
+`/vibing` websocket namespace. No build step — plain ES5-style JS in one IIFE, so match that (`var`,
+`function`, string concatenation) rather than reaching for modern syntax.
+
+The header carries a 24h clock and the weather, and the page's whole palette is painted from the sun
+cycle. `WeatherService` (`src/services/weather/`) is the one thing behind it: an Open-Meteo call
+( no key, no account ) reduced to conditions plus a five day outlook plus **sunrise and sunset as
+epoch milliseconds**, cached ten minutes in memory and shared by every viewer. Served at
+`GET /vibing-on/weather`, answering `null` when `VIBING_WEATHER_ENABLED=false`.
+
+- **The sky is the whole palette, not just the background.** `paintSky` in `vibing.js` interpolates
+  one HSL colour between nine anchors keyed off sunrise and sunset, then derives `--bg`, `--bg-sunk`,
+  `--bg-panel`, `--bg-tile` and `--line` from it. Change the look there; the stylesheet holds only
+  the night values, as the first-paint default.
+- **The daylight end stops at a deep blue on purpose.** The page is light type on dark, and a
+  literal midday sky would mean inverting the whole palette. `--ink` never falls below 8:1 against
+  the background at any hour.
+- **`--ink-2/3/4` are repainted too.** They were picked against black and would sink into a lit
+  background, so they are mixed towards a lighter set by a `lift` read off the sampled lightness —
+  one number driving both, which is what keeps them in step.
+- A hardcoded grey that reads as raised against the night background reads as a hole against the
+  daylight one. New hover and tile states go through `color-mix` off `--bg-tile` / `--line`.
+- Everything degrades: no weather upstream means the clock alone and a fixed six to six day.
+
+`VIBING_LATITUDE` / `VIBING_LONGITUDE` place the display; unset means Montreal. The service is lazy,
+so the CLI never triggers a call and needs no `IS_CLI` gate.
+
 ### MPD client
 
 `src/services/mpd-client/` is a hand-rolled TCP client for the MPD line protocol: one socket, serialized FIFO queue, banner handshake, responses terminated by `OK`/`ACK`. One request class per verb in `requests/`, paired 1:1 with a lazy-parsing response class in `responses/`. Protocol notes in `mpd-client/readme.md`. Add a verb by adding both halves of the pair.

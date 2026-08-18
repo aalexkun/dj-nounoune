@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import { join } from 'path';
 import { PlaylogService } from '../services/playlog/playlog.service';
 import { NowPlaying } from '../services/playlog/now-playing.event';
+import { WeatherService } from '../services/weather/weather.service';
+import { WeatherSnapshot } from '../services/weather/weather.interfaces';
 
 /**
  * Public display page. Deliberately unguarded — like `AuthController`, and unlike `ChatController`,
@@ -10,7 +12,10 @@ import { NowPlaying } from '../services/playlog/now-playing.event';
  */
 @Controller('vibing-on')
 export class VibingController {
-  constructor(private readonly playlogService: PlaylogService) {}
+  constructor(
+    private readonly playlogService: PlaylogService,
+    private readonly weatherService: WeatherService,
+  ) {}
 
   @Get()
   servePage(@Res() res: Response) {
@@ -20,6 +25,16 @@ export class VibingController {
   @Get('now-playing')
   getNowPlaying(): NowPlaying | null {
     return this.playlogService.nowPlaying;
+  }
+
+  /**
+   * Conditions and the five day outlook for the header strip, and the sunrise and sunset the page
+   * paints its sky from. Answers `null` when the feature is switched off, which the page reads as
+   * "draw neither" and falls back to a fixed six to six day for the background.
+   */
+  @Get('weather')
+  getWeather(): Promise<WeatherSnapshot | null> {
+    return this.weatherService.getSnapshot();
   }
 
   /**
