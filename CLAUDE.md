@@ -24,7 +24,7 @@ Requires a `.env` file — copy `.env.template` and fill it. Without `MONGODB_UR
 
 ### CLI command tree
 
-`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run).
+`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, search-current-track), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run).
 
 Most mutating commands accept `--dry-run`. Long-running ones accept `--limit` and `--created-after yyyy-mm-dd`.
 
@@ -74,6 +74,19 @@ Google Gemini via `@google/genai`. Read `.agent/rules/promptus.md` and `.agent/r
 Socket.io client → `ChatGateway` (validates `x-api-key` + `x-user-id`, joins a session room) → `SessionService` (in-memory sessions over the `Connection` collection) → `ChatService` per-session RxJS channels → `PromptusService.generate(ChatPromptusRequest)` → tool loop → results emitted back as `EventEmitter2` events (`chat.message.response`, `chat.status.response`) that the gateway relays. Chat history persists as Gemini `Content` objects directly in the `Chat` document.
 
 REST (`ChatController`, `/chatroom`) is CRUD-only and guarded by `ApiAuthGuard` (`AUTHX_API_KEY` via `x-api-key`). No real auth — shared key only.
+
+### Negentropy: the queue quality upgrade
+
+`src/services/negentropy/` scans the MPD queue **ahead of the playhead** every 20s, finds entries playing from a low quality local file, and swaps them for the Qobuz stream of the same recording — attaching the qobuz `SongSource` to the song document on the way.
+
+- **Interval, not event.** MPD is the source of truth for what plays next and any other client can reorder the queue, so the pass re-reads `status` + `playlistinfo` rather than reacting to a change of its own.
+- **`negentropy_job` is the anti-spam ledger.** One document per song, unique on `songId`, written for `upgraded`, `no_match` **and** `failed` alike. Without it a 20s cycle would re-query Qobuz about an unchanged queue. Delete a document to force a re-check; `no_match` is otherwise permanent.
+- Candidates are decided by `quality.util.ts`: lossy format, or sub-CD-quality technical info, or no technical info at all. Only `file` sources qualify.
+- Match threshold is **0.85** (`QobuzService.findTrack`), higher than the CLI default — this replaces something already queued.
+- The swap is `addid <uri> <pos>` then `deleteid <old id>`, in that order: a failed delete duplicates a track, a failed add after a delete would lose it. Deleting by id is what keeps it correct after the insert shifts positions.
+- A song that already carries a qobuz source is swapped with no lookup and no job record — the uri check skips it on the next pass.
+- **Artwork rides along with the source.** The Qobuz response already carries the album cover, so it is written to the song's album document when that album has none (`MusicDbService.setAlbumImageIfMissing`, never an overwrite). This is not cosmetic: MPD can read a picture out of a local file but not out of a proxied stream, so a swap would otherwise leave the track with no artwork. MPD has **no artwork tag** — `addtagid` rejects Artwork/Picture/AlbumArt with `Unknown tag type` — the album document is the only place the cover can live. The `reused` path does not do this, since no source is being added and the track payload is not in hand.
+- Gated by `NEGENTROPY_ENABLED` (on when unset) and by `IS_CLI`, same as the playlog poller. `npm run cli -- negentropy run [--dry-run]` runs one pass by hand.
 
 ### MPD client
 

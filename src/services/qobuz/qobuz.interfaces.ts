@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+/**
+ * Optional in the way Qobuz actually behaves.
+ *
+ * The API is inconsistent about absence: a field it has no value for may be
+ * missing from the payload, or present and `null`, with no pattern to it —
+ * `copyright` came back `null` on 2 of 287 sampled search hits, `version` on
+ * 173 of them. A plain `.optional()` rejects the null, which meant a single
+ * null field discarded an otherwise perfectly good search result.
+ *
+ * Both forms are accepted and normalised to `undefined`, so the hand-written
+ * interfaces below stay honest about what callers actually receive.
+ */
+function qobuzOptional<T extends z.ZodTypeAny>(schema: T) {
+  return schema.nullish().transform((value) => value ?? undefined);
+}
+
 export const QobuzErrorResponseSchema = z.object({
   status: z.literal('error'),
   message: z.string(),
@@ -18,45 +34,45 @@ export const QobuzLoginResponseSchema = z.object({
 export type QobuzLoginResponse = z.infer<typeof QobuzLoginResponseSchema>;
 
 export const QobuzImageSchema = z.object({
-  small: z.string().nullable().optional(),
-  thumbnail: z.string().nullable().optional(),
-  large: z.string().nullable().optional(),
-  back: z.string().nullable().optional(),
+  small: qobuzOptional(z.string()),
+  thumbnail: qobuzOptional(z.string()),
+  large: qobuzOptional(z.string()),
+  back: qobuzOptional(z.string()),
 });
 export type QobuzImage = z.infer<typeof QobuzImageSchema>;
 
 export const QobuzGenreSchema = z.object({
   id: z.number(),
   name: z.string(),
-  color: z.string().optional(),
-  slug: z.string().optional(),
-  path: z.array(z.number()).optional(),
+  color: qobuzOptional(z.string()),
+  slug: qobuzOptional(z.string()),
+  path: qobuzOptional(z.array(z.number())),
 });
 export type QobuzGenre = z.infer<typeof QobuzGenreSchema>;
 
 export const QobuzLabelSchema = z.object({
   id: z.number(),
   name: z.string(),
-  albums_count: z.number().optional(),
-  supplier_id: z.number().optional(),
-  slug: z.string().optional(),
+  albums_count: qobuzOptional(z.number()),
+  supplier_id: qobuzOptional(z.number()),
+  slug: qobuzOptional(z.string()),
 });
 export type QobuzLabel = z.infer<typeof QobuzLabelSchema>;
 
 export const QobuzArtistSchema = z.object({
   id: z.number(),
   name: z.string(),
-  slug: z.string().optional(),
-  picture: z.string().nullable().optional(),
-  image: z.string().nullable().optional(),
-  albums_count: z.number().optional(),
+  slug: qobuzOptional(z.string()),
+  picture: qobuzOptional(z.string()),
+  image: qobuzOptional(z.string()),
+  albums_count: qobuzOptional(z.number()),
 });
 export type QobuzArtist = z.infer<typeof QobuzArtistSchema>;
 
 export const QobuzAlbumArtistRefSchema = z.object({
   id: z.number(),
   name: z.string(),
-  roles: z.array(z.string()).optional(),
+  roles: qobuzOptional(z.array(z.string())),
 });
 export type QobuzAlbumArtistRef = z.infer<typeof QobuzAlbumArtistRefSchema>;
 
@@ -67,8 +83,8 @@ export const QobuzPerformerSchema = z.object({
 export type QobuzPerformer = z.infer<typeof QobuzPerformerSchema>;
 
 export const QobuzAudioInfoSchema = z.object({
-  replaygain_track_peak: z.number().optional(),
-  replaygain_track_gain: z.number().optional(),
+  replaygain_track_peak: qobuzOptional(z.number()),
+  replaygain_track_gain: qobuzOptional(z.number()),
 });
 export type QobuzAudioInfo = z.infer<typeof QobuzAudioInfoSchema>;
 
@@ -160,47 +176,47 @@ export interface QobuzAlbum {
 export const QobuzAlbumSchema: z.ZodType<QobuzAlbum> = z.lazy(() =>
   z.object({
     id: z.string(),
-    qobuz_id: z.number().optional(),
+    qobuz_id: qobuzOptional(z.number()),
     title: z.string(),
-    version: z.string().nullable().optional(),
-    subtitle: z.string().optional(),
-    description: z.string().optional(),
+    version: qobuzOptional(z.string()),
+    subtitle: qobuzOptional(z.string()),
+    description: qobuzOptional(z.string()),
     artist: QobuzArtistSchema,
-    artists: z.array(QobuzAlbumArtistRefSchema).optional(),
-    composer: QobuzArtistSchema.optional(),
-    label: QobuzLabelSchema.optional(),
-    genre: QobuzGenreSchema.optional(),
-    genres_list: z.array(z.string()).optional(),
-    image: QobuzImageSchema.optional(),
-    upc: z.string().optional(),
-    url: z.string().optional(),
-    slug: z.string().optional(),
-    duration: z.number().optional(),
-    tracks_count: z.number().optional(),
-    media_count: z.number().optional(),
-    popularity: z.number().optional(),
-    parental_warning: z.boolean().optional(),
-    released_at: z.number().optional(),
-    release_date_original: z.string().optional(),
-    release_date_download: z.string().optional(),
-    release_date_stream: z.string().optional(),
-    release_type: z.string().optional(),
-    product_type: z.string().optional(),
-    maximum_bit_depth: z.number().optional(),
-    maximum_sampling_rate: z.number().optional(),
-    maximum_channel_count: z.number().optional(),
-    maximum_technical_specifications: z.string().optional(),
-    hires: z.boolean().optional(),
-    hires_streamable: z.boolean().optional(),
-    purchasable: z.boolean().optional(),
-    streamable: z.boolean().optional(),
-    previewable: z.boolean().optional(),
-    sampleable: z.boolean().optional(),
-    downloadable: z.boolean().optional(),
-    displayable: z.boolean().optional(),
-    is_official: z.boolean().optional(),
-    copyright: z.string().optional(),
-    tracks: QobuzAlbumTracksSchema.optional(),
+    artists: qobuzOptional(z.array(QobuzAlbumArtistRefSchema)),
+    composer: qobuzOptional(QobuzArtistSchema),
+    label: qobuzOptional(QobuzLabelSchema),
+    genre: qobuzOptional(QobuzGenreSchema),
+    genres_list: qobuzOptional(z.array(z.string())),
+    image: qobuzOptional(QobuzImageSchema),
+    upc: qobuzOptional(z.string()),
+    url: qobuzOptional(z.string()),
+    slug: qobuzOptional(z.string()),
+    duration: qobuzOptional(z.number()),
+    tracks_count: qobuzOptional(z.number()),
+    media_count: qobuzOptional(z.number()),
+    popularity: qobuzOptional(z.number()),
+    parental_warning: qobuzOptional(z.boolean()),
+    released_at: qobuzOptional(z.number()),
+    release_date_original: qobuzOptional(z.string()),
+    release_date_download: qobuzOptional(z.string()),
+    release_date_stream: qobuzOptional(z.string()),
+    release_type: qobuzOptional(z.string()),
+    product_type: qobuzOptional(z.string()),
+    maximum_bit_depth: qobuzOptional(z.number()),
+    maximum_sampling_rate: qobuzOptional(z.number()),
+    maximum_channel_count: qobuzOptional(z.number()),
+    maximum_technical_specifications: qobuzOptional(z.string()),
+    hires: qobuzOptional(z.boolean()),
+    hires_streamable: qobuzOptional(z.boolean()),
+    purchasable: qobuzOptional(z.boolean()),
+    streamable: qobuzOptional(z.boolean()),
+    previewable: qobuzOptional(z.boolean()),
+    sampleable: qobuzOptional(z.boolean()),
+    downloadable: qobuzOptional(z.boolean()),
+    displayable: qobuzOptional(z.boolean()),
+    is_official: qobuzOptional(z.boolean()),
+    copyright: qobuzOptional(z.string()),
+    tracks: qobuzOptional(QobuzAlbumTracksSchema),
   })
 );
 
@@ -208,58 +224,122 @@ export const QobuzTrackSchema: z.ZodType<QobuzTrack> = z.lazy(() =>
   z.object({
     id: z.number(),
     title: z.string(),
-    version: z.string().nullable().optional(),
+    version: qobuzOptional(z.string()),
     duration: z.number(),
     media_number: z.number(),
     track_number: z.number(),
-    isrc: z.string().optional(),
-    copyright: z.string().optional(),
-    performers: z.string().optional(),
-    performer: QobuzPerformerSchema.optional(),
-    composer: QobuzPerformerSchema.optional(),
-    work: z.string().nullable().optional(),
-    audio_info: QobuzAudioInfoSchema.optional(),
-    release_date_original: z.string().optional(),
-    release_date_download: z.string().optional(),
-    release_date_stream: z.string().optional(),
-    release_date_purchase: z.string().optional(),
+    isrc: qobuzOptional(z.string()),
+    copyright: qobuzOptional(z.string()),
+    performers: qobuzOptional(z.string()),
+    performer: qobuzOptional(QobuzPerformerSchema),
+    composer: qobuzOptional(QobuzPerformerSchema),
+    work: qobuzOptional(z.string()),
+    audio_info: qobuzOptional(QobuzAudioInfoSchema),
+    release_date_original: qobuzOptional(z.string()),
+    release_date_download: qobuzOptional(z.string()),
+    release_date_stream: qobuzOptional(z.string()),
+    release_date_purchase: qobuzOptional(z.string()),
     maximum_bit_depth: z.number(),
     maximum_sampling_rate: z.number(),
-    maximum_channel_count: z.number().optional(),
-    parental_warning: z.boolean().optional(),
-    purchasable: z.boolean().optional(),
-    streamable: z.boolean().optional(),
-    previewable: z.boolean().optional(),
-    sampleable: z.boolean().optional(),
-    downloadable: z.boolean().optional(),
-    displayable: z.boolean().optional(),
-    hires: z.boolean().optional(),
-    hires_streamable: z.boolean().optional(),
-    album: QobuzAlbumSchema.optional(),
+    maximum_channel_count: qobuzOptional(z.number()),
+    parental_warning: qobuzOptional(z.boolean()),
+    purchasable: qobuzOptional(z.boolean()),
+    streamable: qobuzOptional(z.boolean()),
+    previewable: qobuzOptional(z.boolean()),
+    sampleable: qobuzOptional(z.boolean()),
+    downloadable: qobuzOptional(z.boolean()),
+    displayable: qobuzOptional(z.boolean()),
+    hires: qobuzOptional(z.boolean()),
+    hires_streamable: qobuzOptional(z.boolean()),
+    album: qobuzOptional(QobuzAlbumSchema),
   })
 );
 
 export const QobuzAlbumTracksSchema: z.ZodType<QobuzAlbumTracks> = z.lazy(() =>
   z.object({
-    offset: z.number().optional(),
-    limit: z.number().optional(),
-    total: z.number().optional(),
+    offset: qobuzOptional(z.number()),
+    limit: qobuzOptional(z.number()),
+    total: qobuzOptional(z.number()),
     items: z.array(QobuzTrackSchema),
   })
 );
 
 export const QobuzUserFavoritesResponseSchema = z.object({
-  tracks: z.object({
-    limit: z.number(),
-    offset: z.number(),
-    total: z.number(),
-    items: z.array(QobuzTrackSchema),
-  }).optional(),
-  albums: z.object({
-    limit: z.number(),
-    offset: z.number(),
-    total: z.number(),
-    items: z.array(QobuzAlbumSchema),
-  }).optional(),
+  tracks: qobuzOptional(
+    z.object({
+      limit: z.number(),
+      offset: z.number(),
+      total: z.number(),
+      items: z.array(QobuzTrackSchema),
+    }),
+  ),
+  albums: qobuzOptional(
+    z.object({
+      limit: z.number(),
+      offset: z.number(),
+      total: z.number(),
+      items: z.array(QobuzAlbumSchema),
+    }),
+  ),
 });
 export type QobuzUserFavoritesResponse = z.infer<typeof QobuzUserFavoritesResponseSchema>;
+
+/**
+ * Catalog search response, restricted to the `tracks` bucket.
+ *
+ * Items stay `unknown` on purpose: the search endpoint returns a slightly
+ * leaner track payload than `/track/get`, and a single unexpected item must not
+ * fail the whole page. `QobuzService.searchTracks` re-parses each item with
+ * `QobuzTrackSchema` and skips the ones that do not validate.
+ */
+export const QobuzTrackSearchResponseSchema = z.object({
+  query: qobuzOptional(z.string()),
+  tracks: qobuzOptional(
+    z.object({
+      limit: qobuzOptional(z.number()),
+      offset: qobuzOptional(z.number()),
+      total: qobuzOptional(z.number()),
+      items: z.array(z.unknown()),
+    }),
+  ),
+});
+export type QobuzTrackSearchResponse = z.infer<typeof QobuzTrackSearchResponseSchema>;
+
+/** What the caller knows about the track they are looking for. */
+export interface QobuzTrackSearchCriteria {
+  /** Track title. The only mandatory criterion. */
+  title: string;
+  /** Performing artist, used both to narrow the query and to rank results. */
+  artist?: string;
+  /** Album title, used both to narrow the query and to rank results. */
+  album?: string;
+  /** Maximum number of items requested per catalog query. Defaults to 25. */
+  limit?: number;
+}
+
+/** Per-criterion breakdown of how well a candidate matched, each in [0, 1]. */
+export interface QobuzTrackMatchScore {
+  total: number;
+  title: number;
+  artist: number;
+  album: number;
+}
+
+/** A catalog search hit, flattened to the fields a caller usually needs. */
+export interface QobuzTrackMatch {
+  /** The Qobuz track id — what the search is ultimately after. */
+  id: string;
+  title: string;
+  version?: string;
+  artist: string;
+  album: string;
+  albumId?: string;
+  duration: number;
+  hires: boolean;
+  streamable: boolean;
+  score: QobuzTrackMatchScore;
+  /** The query that surfaced this hit, for troubleshooting. */
+  matchedQuery: string;
+  /** The raw track, kept so callers can build a `SongSource` from it. */
+  track: QobuzTrack;
+}

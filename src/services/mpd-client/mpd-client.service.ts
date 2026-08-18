@@ -246,12 +246,12 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
     this.currentRequest = this.requestQueue.shift()!;
     this.buffer = Buffer.alloc(0); // Ensure buffer is clear for new response
     const commandStr = this.currentRequest.request.getCommandString();
-    this.logger.debug(`Sending command: ${commandStr.trim()}`);
+    this.logger.verbose(`Sending command: ${commandStr.trim()}`);
     this.client.write(commandStr);
   }
 
   private handleData(data: Buffer) {
-    this.logger.debug(`Received data chunk: ${this.describe(data)}`);
+    this.logger.verbose(`Received data chunk: ${this.describe(data)}`);
 
     this.buffer = this.buffer.length === 0 ? data : Buffer.concat([this.buffer, data]);
 

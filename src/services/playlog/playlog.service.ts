@@ -103,7 +103,7 @@ export class PlaylogService {
     return !snapshot.description || !snapshot.coverUrl;
   }
 
-  @Interval(10000)
+  @Interval(1000)
   async checkCurrentSong() {
     if (process.env.IS_CLI === 'true') return;
 
@@ -119,9 +119,6 @@ export class PlaylogService {
       const previousPlaylog = await this.fetchPreviousSong();
       const previousSongId = previousPlaylog?.songId?.toString();
 
-
-      this.logger.debug(`Current song: ${mpdResponse?.song?.file}`);
-      this.logger.debug(`Current songId: ${previousSongId}`);
 
       if (song._id.toString() != previousSongId) {
 

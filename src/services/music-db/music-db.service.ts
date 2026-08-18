@@ -5,7 +5,7 @@ import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Enrich, EnrichDocument } from '../../schemas/enrich.schema';
 import { Model, PipelineStage, QueryFilter, Types } from 'mongoose';
-import { SourceType } from '../../schemas/source.schema';
+import { SongSource, SourceType } from '../../schemas/source.schema';
 import { buildActiveSourceMatch, getActiveSourceTypes, isSourceActive } from '../../config/active-source.util';
 import { z } from 'zod';
 import { FilterCollection, FilterCondition, MongoQueryDefinition } from './mongo-filter.type';
@@ -28,6 +28,20 @@ export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
 export const PopulatedSongSchema = z.custom<PopulatedSong>((val: any) => {
   return typeof val === 'object' && val !== null && 'artist' in val && typeof val.artist === 'object' && 'album' in val && typeof val.album === 'object';
 });
+
+/** Album artwork urls, in the shape the album document stores them. */
+export type AlbumImage = {
+  small?: string;
+  thumbnail?: string;
+  large?: string;
+  back?: string;
+};
+
+/** The latest playlog row, resolved to the song it points at. */
+export type LastPlayedSong = {
+  playedAt: Date;
+  song: PopulatedSong;
+};
 
 export type QobuzLookupResult = {
   artist: string;
@@ -126,6 +140,32 @@ export class MusicDbService {
     return z.array(PopulatedSongSchema).parse(results);
   }
 
+  /**
+   * The most recent entry of the playlog, with its song populated.
+   *
+   * This is the database's own record of what is playing: `PlaylogService`
+   * writes a row on every track change, so the latest row is the current track
+   * for as long as the server is running. Under `IS_CLI` that poller is off,
+   * which is why `playedAt` comes back with the song — a caller reading this
+   * from a one-shot command needs to see how stale the answer is.
+   */
+  async getLastPlayedSong(): Promise<LastPlayedSong | null> {
+    const playlog = await this.playlogModel.findOne().sort({ playedAt: -1 }).exec();
+
+    if (!playlog) {
+      return null;
+    }
+
+    const [song] = await this.getPopulatedSongsByIds([playlog.songId.toString()]);
+
+    if (!song) {
+      this.logger.warn(`Playlog ${playlog._id} points at song ${playlog.songId}, which no longer exists`);
+      return null;
+    }
+
+    return { playedAt: playlog.playedAt, song };
+  }
+
   async getRecentlyPlayedArtist(): Promise<RecentlyPlayedArtist[]> {
     const results: unknown[] = await this.playlogModel.aggregate([
         {
@@ -181,6 +221,72 @@ export class MusicDbService {
     }
 
     return parsed;
+  }
+
+  /**
+   * Resolves a song by one of its source identifiers — the reverse of what the
+   * importers write, and how an MPD queue entry is turned back into a document.
+   */
+  async findSongBySource(name: SourceType, sourceId: string): Promise<SongDocument | null> {
+    return this.songModel.findOne({ source: { $elemMatch: { name, sourceId } } }).exec();
+  }
+
+  /**
+   * Attaches an additional source to a song, keeping the multi-source model's
+   * one-document-per-logical-song rule.
+   *
+   * Idempotent by `(name, sourceId)`: the caller may be racing another pass over
+   * the same song, and a second copy of the same source would give
+   * `getBestSource` two identical candidates to choose between.
+   *
+   * @returns `true` when the source was added, `false` when it was already there
+   */
+  async addSongSource(songId: string, source: SongSource): Promise<boolean> {
+    const result = await this.songModel
+      .updateOne(
+        {
+          _id: songId,
+          source: { $not: { $elemMatch: { name: source.name, sourceId: source.sourceId } } },
+        },
+        { $push: { source } },
+      )
+      .exec();
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Fills in album artwork, but never overwrites artwork that is already there.
+   *
+   * The importers set this at album creation; songs that reached the library
+   * through another source can end up on an album with none, which is what
+   * sends the now-playing page off to a web search for a cover. A provider that
+   * hands us one for free closes that gap.
+   *
+   * The match treats missing, `null` and `''` alike — Mongo returns documents
+   * with no such path for `$in: [null, ...]` — so the update only lands on
+   * albums with nothing usable in any size.
+   *
+   * @returns `true` when the artwork was written, `false` when the album already had some
+   */
+  async setAlbumImageIfMissing(albumId: string | Types.ObjectId, image: AlbumImage): Promise<boolean> {
+    if (!image.small && !image.thumbnail && !image.large && !image.back) {
+      return false;
+    }
+
+    const result = await this.albumModel
+      .updateOne(
+        {
+          _id: albumId,
+          'image.large': { $in: [null, ''] },
+          'image.thumbnail': { $in: [null, ''] },
+          'image.small': { $in: [null, ''] },
+        },
+        { $set: { image } },
+      )
+      .exec();
+
+    return result.modifiedCount > 0;
   }
 
   async getSongs(createdAt?: Date): Promise<SongDocument[]> {

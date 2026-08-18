@@ -25,6 +25,8 @@ import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
 import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
+import { QobuzSearchTrackSubCommand } from './qobuz/search-track.subcommand';
+import { QobuzSearchCurrentTrackSubCommand } from './qobuz/search-current-track.subcommand';
 import { ElasticCommand } from './elastic/elastic.command';
 import { ElasticCreateIndexSubCommand } from './elastic/create-index.subcommand';
 import { ElasticPruneIndexSubCommand } from './elastic/prune-index.subcommand';
@@ -39,6 +41,8 @@ import { DedupProcessCommand } from './music/dedup-process.subcommand';
 import { ProfilerCommand } from './profiler/profiler.command';
 import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
+import { NegentropyCommand } from './negentropy/negentropy.command';
+import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
 
 export const CommandProviders = [
   MusicCommand,
@@ -76,6 +80,8 @@ export const CommandProviders = [
   QobuzFavoriteAlbumsSubCommand,
   QobuzImportFavoriteAlbumsSubCommand,
   QobuzAuthSubCommand,
+  QobuzSearchTrackSubCommand,
+  QobuzSearchCurrentTrackSubCommand,
 
   ElasticCommand,
   ElasticCreateIndexSubCommand,
@@ -89,5 +95,8 @@ export const CommandProviders = [
 
   ProfilerCommand,
   ProfilerRunSubCommand,
+
+  NegentropyCommand,
+  NegentropyRunSubCommand,
 ];
 

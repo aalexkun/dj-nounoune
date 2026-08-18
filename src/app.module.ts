@@ -39,6 +39,8 @@ import { PlaylogService } from './services/playlog/playlog.service';
 import { RedisCacheModule } from './services/redis-cache/redis-cache.module';
 import { ProfilerService } from './services/profiler/profiler.service';
 import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
+import { NegentropyJob, NegentropyJobSchema } from './schemas/negentropy-job.schema';
+import { NegentropyService } from './services/negentropy/negentropy.service';
 
 const imports: Array<any> = [
   // Load global env
@@ -63,6 +65,7 @@ const imports: Array<any> = [
     { name: Deduplication.name, schema: DeduplicationSchema },
     { name: Enrich.name, schema: EnrichSchema },
     { name: Playlog.name, schema: PlaylogSchema },
+    { name: NegentropyJob.name, schema: NegentropyJobSchema },
   ]),
   MpdClientModule,
   SpotifyModule,
@@ -99,6 +102,7 @@ if (process.env.IS_CLI !== 'true') {
     SessionService,
     ProfilerService,
     PlaylogService,
+    NegentropyService,
   ],
 })
 export class AppModule {}
