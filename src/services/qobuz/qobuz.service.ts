@@ -10,6 +10,11 @@ import {
   QobuzAlbum,
   QobuzAlbumSchema,
   QobuzTrack,
+  QobuzTrackSchema,
+  QobuzTrackMatch,
+  QobuzTrackSearchCriteria,
+  QobuzTrackSearchResponse,
+  QobuzTrackSearchResponseSchema,
 } from './qobuz.interfaces';
 import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
@@ -21,6 +26,22 @@ import { Song, SongDocument } from '../../schemas/song.schema';
 import { SongSource } from '../../schemas/source.schema';
 import { TechnicalInfo } from '../../schemas/technical-info.schema';
 import { OpensearchService, DuplicateSongCheck } from '../opensearch/opensearch.service';
+import {
+  buildSearchQueries,
+  describeParseFailure,
+  getTrackArtistName,
+  scoreTrack,
+} from './qobuz-track-match.util';
+import { getErrorMessage } from '../../utils/error.utils';
+
+/** Hits scoring below this are not returned by {@link QobuzService.findTrack}. */
+const MINIMUM_MATCH_SCORE = 0.6;
+
+/** Once a hit reaches this score, trying the broader fallback queries is pointless. */
+const CONFIDENT_MATCH_SCORE = 0.9;
+
+/** Catalog hits requested per query when the caller does not say. */
+const DEFAULT_SEARCH_LIMIT = 25;
 
 @Injectable()
 export class QobuzService implements OnModuleInit {
@@ -199,6 +220,136 @@ export class QobuzService implements OnModuleInit {
     };
 
     return this.qobuzGet<QobuzAlbum>('/album/get', params, QobuzAlbumSchema);
+  }
+
+  /**
+   * Raw catalog search restricted to the `tracks` bucket.
+   */
+  private async searchCatalogTracks(
+    query: string,
+    limit: number,
+    offset: number = 0,
+  ): Promise<QobuzTrackSearchResponse> {
+    const params = {
+      query,
+      type: 'tracks',
+      limit: limit.toString(),
+      offset: offset.toString(),
+    };
+
+    return this.qobuzGet<QobuzTrackSearchResponse>(
+      '/catalog/search',
+      params,
+      QobuzTrackSearchResponseSchema,
+    );
+  }
+
+  /**
+   * Searches the Qobuz catalog for a track, ranked best-match first.
+   *
+   * The catalog endpoint takes one free-text query with no per-field operators,
+   * so artist and album are used twice: to narrow the query text, and to score
+   * the hits it returns. Queries are tried from most to least specific
+   * (`buildSearchQueries`) and the loop stops early once a hit is confident
+   * enough, which keeps the common case to a single API call while still
+   * recovering when one of the criteria is slightly off.
+   *
+   * @param criteria - Title (mandatory) plus optional artist/album
+   * @returns Every distinct track seen across the attempted queries, sorted by descending score
+   */
+  public async searchTracks(criteria: QobuzTrackSearchCriteria): Promise<QobuzTrackMatch[]> {
+    if (!criteria.title || !criteria.title.trim()) {
+      throw new Error('A track title is required to search the Qobuz catalog.');
+    }
+
+    await this.login();
+
+    const limit = criteria.limit ?? DEFAULT_SEARCH_LIMIT;
+    const matches = new Map<string, QobuzTrackMatch>();
+
+    for (const query of buildSearchQueries(criteria)) {
+      this.logger.debug(`Qobuz catalog search: "${query}"`);
+
+      let response: QobuzTrackSearchResponse;
+      try {
+        response = await this.searchCatalogTracks(query, limit);
+      } catch (error) {
+        // A single over-specified query failing must not sink the fallbacks.
+        this.logger.warn(`Qobuz catalog search failed for "${query}": ${getErrorMessage(error)}`);
+        continue;
+      }
+
+      const items = response.tracks?.items ?? [];
+      this.logger.debug(`  ${items.length} hit(s) returned`);
+
+      for (const item of items) {
+        const parsed = QobuzTrackSchema.safeParse(item);
+
+        if (!parsed.success) {
+          // Not a "nothing found" — this is a real result being thrown away, so
+          // it is worth a warning rather than a debug line. Every optional field
+          // already tolerates null (`qobuzOptional`), so reaching here means the
+          // payload has changed shape and matches are being lost silently.
+          this.logger.warn(`Discarding a Qobuz hit the schema no longer accepts: ${describeParseFailure(item, parsed.error)}`);
+          continue;
+        }
+
+        const match = this.toTrackMatch(parsed.data, criteria, query);
+        const previous = matches.get(match.id);
+
+        // The same track can surface under several queries; keep its best score.
+        if (!previous || match.score.total > previous.score.total) {
+          matches.set(match.id, match);
+        }
+      }
+
+      const bestSoFar = Math.max(0, ...[...matches.values()].map((match) => match.score.total));
+
+      if (bestSoFar >= CONFIDENT_MATCH_SCORE) {
+        this.logger.debug(`  confident match (${bestSoFar.toFixed(2)}), skipping broader queries`);
+        break;
+      }
+    }
+
+    return [...matches.values()].sort((left, right) => right.score.total - left.score.total);
+  }
+
+  /**
+   * Convenience wrapper over {@link searchTracks} returning the single best
+   * candidate, or `null` when nothing scored above `minimumScore`.
+   */
+  public async findTrack(
+    criteria: QobuzTrackSearchCriteria,
+    minimumScore: number = MINIMUM_MATCH_SCORE,
+  ): Promise<QobuzTrackMatch | null> {
+    const [best] = await this.searchTracks(criteria);
+
+    if (!best || best.score.total < minimumScore) {
+      return null;
+    }
+
+    return best;
+  }
+
+  private toTrackMatch(
+    track: QobuzTrack,
+    criteria: QobuzTrackSearchCriteria,
+    matchedQuery: string,
+  ): QobuzTrackMatch {
+    return {
+      id: track.id.toString(),
+      title: track.title,
+      version: track.version ?? undefined,
+      artist: getTrackArtistName(track),
+      album: track.album?.title ?? '',
+      albumId: track.album?.id,
+      duration: track.duration,
+      hires: track.hires ?? false,
+      streamable: track.streamable ?? false,
+      score: scoreTrack(track, criteria),
+      matchedQuery,
+      track,
+    };
   }
 
   public async importFavoriteAlbums(ImportLastXAlbum: number = Number.MAX_SAFE_INTEGER): Promise<void> {
@@ -443,7 +594,8 @@ export class QobuzService implements OnModuleInit {
     }
   }
 
-  private buildQobuzSource(track: QobuzTrack, trackQobuzId: string): SongSource {
+  /** Builds the `SongSource` a qobuz track is attached to a song document as. */
+  public buildQobuzSource(track: QobuzTrack, trackQobuzId: string): SongSource {
     return {
       name: 'qobuz',
       sourceId: trackQobuzId,
