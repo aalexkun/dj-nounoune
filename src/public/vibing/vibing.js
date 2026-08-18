@@ -199,15 +199,68 @@
     return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
   }
 
+  /**
+   * Rendered in kilohertz: 96000 → 96, 44100 → 44.1. The column holds both scales — most rows are in
+   * hertz, but ~1.5k Qobuz imports stored the kilohertz figure the API hands back (44, 88, 176) — and
+   * no real rate sits between the two, so the magnitude is enough to tell them apart.
+   */
+  function formatSampleRate(rate) {
+    if (!rate) return null;
+    var kilohertz = rate < 1000 ? rate : rate / 1000;
+    return String(Math.round(kilohertz * 10) / 10);
+  }
+
+  /**
+   * Rendered in kilobits per second. Two scales again: the ffprobe enrichment stores bits per second
+   * (320000) while the older imports stored kilobits (128). Nothing real lands near 10000 either way
+   * — the highest kilobit figure in the library is 9216, the lowest bit figure 16456 — so that is
+   * where the two are split. Qobuz rows carry a 0, meaning "not measured", and drop out here.
+   */
+  function formatBitrate(bitrate) {
+    if (!bitrate) return null;
+    var kilobits = bitrate < 10000 ? bitrate : bitrate / 1000;
+    return Math.round(kilobits) + ' kbps';
+  }
+
+  /**
+   * The resolution the way a spec sheet writes it — sample rate first, then bit depth, so a hi-res
+   * FLAC reads `96/24`. Either half alone still says something, so it gets its own unit.
+   */
+  function formatResolution(song) {
+    var rate = formatSampleRate(song.sampleRate);
+
+    if (rate && song.bitDepth) return rate + '/' + song.bitDepth;
+    if (rate) return rate + ' kHz';
+    if (song.bitDepth) return song.bitDepth + '-bit';
+    return null;
+  }
+
+  /**
+   * The quality tier, named the way the stores name it, and only the top one that applies — hi-res
+   * is CD quality too, and saying both says nothing. Its own tone rather than the accent the rest of
+   * the page uses, so the tier reads at a glance from across the room.
+   */
+  function qualityBadge(song) {
+    if (song.isHighRes) return { text: 'hi-res audio', tone: 'hires' };
+    if (song.isCdQuality) return { text: 'cd quality', tone: 'cd' };
+    return null;
+  }
+
   function renderBadges(song) {
     var badges = [];
 
-    if (song.isHighRes && song.bitDepth && song.sampleRate) {
-      badges.push({ text: 'hi-res ' + song.bitDepth + '/' + Math.round(song.sampleRate / 1000), accent: true });
-    } else if (song.isHighRes) {
-      badges.push({ text: 'hi-res', accent: true });
-    }
-    if (song.encoding) badges.push({ text: String(song.encoding).toLowerCase() });
+    // Technical strip first: tier, then the numbers behind it, then where the bytes came from. The
+    // file sources carry the same technical_info Qobuz does, so a local FLAC gets the same tag.
+    var quality = qualityBadge(song);
+    if (quality) badges.push(quality);
+
+    var resolution = formatResolution(song);
+    if (resolution) badges.push({ text: resolution, tone: 'spec' });
+
+    var bitrate = formatBitrate(song.bitrate);
+    if (bitrate) badges.push({ text: bitrate, tone: 'spec' });
+
+    if (song.encoding) badges.push({ text: String(song.encoding).toLowerCase(), tone: 'spec' });
     if (song.sourceName) badges.push({ text: song.sourceName });
     if (song.bpm) badges.push({ text: Math.round(song.bpm) + ' bpm' });
     var duration = formatDuration(song.duration);
@@ -215,7 +268,8 @@
 
     el.badges.innerHTML = badges
       .map(function (badge) {
-        return '<span class="badge' + (badge.accent ? ' accent' : '') + '">' + escapeHtml(badge.text) + '</span>';
+        var className = 'badge' + (badge.tone ? ' badge-' + badge.tone : '');
+        return '<span class="' + className + '">' + escapeHtml(badge.text) + '</span>';
       })
       .join('');
   }
@@ -267,11 +321,22 @@
 
   var drift = null;
 
+  // How long the drift rests at the top and at the bottom of the commentary.
+  var DRIFT_HOLD_MS = 8000;
+  // And how long it leaves the column alone after somebody has scrolled it themselves.
+  var DRIFT_RESUME_MS = 6000;
+  // Anything further than this from where we last put the column is somebody else's doing.
+  var DRIFT_SLACK_PX = 2;
+
   /**
    * The commentary is usually taller than its column, and nobody scrolls a television. So once a
    * track settles, walk the narration down at reading pace, hold at the end, and start over.
+   *
+   * A hand on the wheel wins, though: `startAt` lets the walk pick up from wherever the column was
+   * left rather than snapping back to the offset it was heading for, and `delay` gives the reader a
+   * longer pause before it starts moving again.
    */
-  function driftNarration() {
+  function driftNarration(startAt, delay) {
     var node = el.narration;
 
     if (drift) {
@@ -280,16 +345,19 @@
       drift = null;
     }
 
-    node.scrollTop = 0;
+    var maximum = Math.max(0, node.scrollHeight - node.clientHeight);
+    var offset = Math.min(Math.max(startAt || 0, 0), maximum);
+
+    node.scrollTop = offset;
 
     if (node.scrollHeight <= node.clientHeight + 4) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     // Roughly a line every two seconds, whatever the display scales the text to.
     var pixelsPerSecond = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.505;
-    var HOLD_MS = 8000;
-    var state = { frame: 0, timer: 0 };
-    var offset = 0;
+    // Written rather than read back: the scroll listener below compares against it to tell our own
+    // steps apart from a reader's, and browsers round `scrollTop` to whole pixels on the way in.
+    var state = { frame: 0, timer: 0, written: node.scrollTop };
     drift = state;
 
     function step(previous) {
@@ -297,13 +365,15 @@
         // Kept in a variable rather than read back off scrollTop, which rounds sub-pixel steps away.
         offset += (pixelsPerSecond * (now - previous)) / 1000;
         node.scrollTop = offset;
+        state.written = node.scrollTop;
 
         if (offset + node.clientHeight >= node.scrollHeight - 1) {
           state.timer = setTimeout(function () {
             offset = 0;
             node.scrollTop = 0;
-            state.timer = setTimeout(begin, HOLD_MS);
-          }, HOLD_MS);
+            state.written = node.scrollTop;
+            state.timer = setTimeout(begin, DRIFT_HOLD_MS);
+          }, DRIFT_HOLD_MS);
           return;
         }
 
@@ -317,8 +387,20 @@
       });
     }
 
-    state.timer = setTimeout(begin, HOLD_MS);
+    state.timer = setTimeout(begin, delay === undefined ? DRIFT_HOLD_MS : delay);
   }
+
+  /**
+   * Someone scrolled the commentary by hand — either while the drift was resting or straight over
+   * the top of it. Restart the walk from where they left the column, after a pause long enough to
+   * finish reading the paragraph they scrolled to.
+   */
+  el.narration.addEventListener('scroll', function () {
+    if (!drift) return;
+    if (Math.abs(el.narration.scrollTop - drift.written) <= DRIFT_SLACK_PX) return;
+
+    driftNarration(el.narration.scrollTop, DRIFT_RESUME_MS);
+  });
 
   var current = { songId: null, description: null, coverUrl: null };
 
