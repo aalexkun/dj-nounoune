@@ -25,11 +25,21 @@ import { ProfilerService } from '../profiler/profiler.service';
 import { FileService } from '../file/file.service';
 import { OpensearchService } from '../opensearch/opensearch.service';
 import { RedisCacheService } from '../redis-cache/redis-cache.service';
+import { QobuzService } from '../qobuz/qobuz.service';
+import { NowPlayingSource } from '../playlog/now-playing.event';
+import { DiscJockeyArtistPerformanceHandler } from './tools/handler/agent/disc-jockey-artist-performance.handler';
+import { DiscJockeyTalkAboutMusicHandler } from './tools/handler/agent/disc-jockey-talk-about-music.handler';
+import { SearchQobuzArtistHandler } from './tools/handler/qobuz/search-qobuz-artist.handler';
+import { PlayQobuzHandler } from './tools/handler/qobuz/play-qobuz.handler';
+import { FavoriteQobuzHandler } from './tools/handler/qobuz/favorite-qobuz.handler';
 
 @Injectable()
 export class ToolsService {
   private toolRegistry = new Map<string, ToolHandler>();
   private discJockeyAgent: DiscJockeyAgent | undefined;
+
+  /** Registered by `PlaylogService` on module init. See {@link NowPlayingSource}. */
+  private nowPlayingSource: NowPlayingSource | undefined;
 
   constructor(
     private mpdClientService: MpdClientService,
@@ -39,17 +49,31 @@ export class ToolsService {
     private fileService: FileService,
     private opensearchService: OpensearchService,
     private redisCacheService: RedisCacheService,
+    private qobuzService: QobuzService,
   ) {
     // Generic and global accessible Tool and function
     this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService,this.redisCacheService));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
     this.registerTool(new NextSongHandler(this.mpdClientService));
     this.registerTool(new PreviousSongHandler(this.mpdClientService));
-    this.registerTool(new CurrentSongHandler(this.mpdClientService, this.musicDbService));
+    this.registerTool(new CurrentSongHandler(this.mpdClientService, this.musicDbService, () => this.nowPlayingSource));
     this.registerTool(new CurrentPlaylistHandler(this.mpdClientService));
     this.registerTool(new GenreDistributionHandler(this.musicDbService));
     this.registerTool(new ArtistDistributionHandler(this.musicDbService));
     this.registerTool(new BPMDistributionHandler(this.musicDbService));
+
+    // Straight to the Qobuz catalog, for music the library never imported.
+    this.registerTool(new SearchQobuzArtistHandler(this.qobuzService));
+    this.registerTool(new PlayQobuzHandler(this.qobuzService, this.mpdClientService, this.configService));
+    this.registerTool(new FavoriteQobuzHandler(this.qobuzService));
+  }
+
+  /**
+   * Called by `PlaylogService` once the module is up, so `current_song` can answer from the same
+   * snapshot the /vibing-on page shows rather than from the raw MPD tags.
+   */
+  public setNowPlayingSource(source: NowPlayingSource): void {
+    this.nowPlayingSource = source;
   }
 
   initialiseAgent(apiKey: string, eventEmitter: EventEmitter2) {
@@ -70,6 +94,8 @@ export class ToolsService {
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyWhatIsPlayingHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyBrowseDatabaseHandler(discJokeyAgent));
+    this.registerTool(new DiscJockeyArtistPerformanceHandler(discJokeyAgent));
+    this.registerTool(new DiscJockeyTalkAboutMusicHandler(discJokeyAgent));
 
     const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));

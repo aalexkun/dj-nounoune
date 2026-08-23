@@ -7,6 +7,7 @@ import { chatPromptusPrompt } from './chat-promptus.prompt';
 import { MpdToolsDefinition } from '../tools/definition/mpd-tools.definition';
 import { ChatMessage } from '../../../schemas/chat.schema';
 import { AgentToolsDefinition } from '../tools/definition/agent-tools.definition';
+import { QobuzToolsDefinition } from '../tools/definition/qobuz-tools.definition';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   public query: string;
@@ -15,9 +16,15 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     MpdToolsDefinition.stopMpdCommand,
     MpdToolsDefinition.nextMpdCommand,
     MpdToolsDefinition.previousMpdCommand,
+    MpdToolsDefinition.currentMpdCommand,
     AgentToolsDefinition.discJockeyWhatIsPlaying,
     AgentToolsDefinition.discJockeyCreatePlaylist,
     AgentToolsDefinition.discJockeyBrowseDatabase,
+    AgentToolsDefinition.discJockeyArtistPerformance,
+    AgentToolsDefinition.discJockeyTalkAboutMusic,
+    QobuzToolsDefinition.searchArtistCommand,
+    QobuzToolsDefinition.playCommand,
+    QobuzToolsDefinition.favoriteCommand,
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;

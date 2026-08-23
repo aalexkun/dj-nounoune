@@ -9,6 +9,7 @@ import { PlayMpdRequest } from '../../../../mpd-client/requests/PlayMpdRequest';
 import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdRequest';
 import { ConfigService } from '@nestjs/config';
 import { RedisCacheService } from '../../../../redis-cache/redis-cache.service';
+import { qobuzStreamUri, spotifyStreamUri } from '../../../../../config/source-uri.util';
 
 interface PlayMusicArgs {
   cacheKey: string;
@@ -30,23 +31,6 @@ export class PlayMusicHandler implements ToolHandler {
     const record = args as Record<string, unknown>;
     return typeof record.cacheKey === 'string' && typeof record.clearQueue === 'boolean';
 
-  }
-
-  private getQobuzProxyUrl(): string {
-
-    const qobuzProxyUrl = this.configService.get<string>('QOBUZ_STREAM_PROXY_SERVER');
-    if(!qobuzProxyUrl){
-      throw new Error('QOBUZ_STREAM_PROXY_SERVER is not defined in the environment variables');
-    }
-    return `${qobuzProxyUrl}/qobuz/track/version/1/trackId/`;
-  }
-
-  private getSpotifyProxyUrl(): string {
-    const spotifyProxyUrl = this.configService.get<string>('SPOTIFY_PROXY_AUDIO');
-    if (!spotifyProxyUrl) {
-      throw new Error('SPOTIFY_PROXY_AUDIO is not defined in the environment variables');
-    }
-    return spotifyProxyUrl + '/spotify?uri=spotify:track:';
   }
 
   private getBestSource(sources: PlaySource[]): PlaySource | undefined {
@@ -114,9 +98,9 @@ export class PlayMusicHandler implements ToolHandler {
 
       let uri: string;
       if (bestSource.name === 'qobuz') {
-        uri = `${this.getQobuzProxyUrl()}${bestSource.sourceId}`;
+        uri = qobuzStreamUri(this.configService, bestSource.sourceId);
       } else if (bestSource.name === 'spotify') {
-        uri = `${this.getSpotifyProxyUrl()}${bestSource.sourceId}`;
+        uri = spotifyStreamUri(this.configService, bestSource.sourceId);
       } else {
         uri = bestSource.sourceId;
       }

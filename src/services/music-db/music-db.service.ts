@@ -43,12 +43,6 @@ export type LastPlayedSong = {
   song: PopulatedSong;
 };
 
-export type QobuzLookupResult = {
-  artist: string;
-  album: string;
-  title: string;
-}
-
 /** One row of the recently-played aggregation: artist name and the minute-precision timestamp it was last played at. */
 export const RecentlyPlayedArtistSchema = z.object({
   artist: z.string(),
@@ -232,6 +226,27 @@ export class MusicDbService {
   }
 
   /**
+   * The same lookup as {@link findSongBySource}, with artist and album resolved.
+   *
+   * What a caller holding an MPD queue uri wants: the queue is mixed across services, so the source
+   * it resolves to is whatever `parseSourceUri` reported — a local path, a Qobuz id, a Spotify id —
+   * and the answer has to carry enough to describe the track, not just point at it.
+   */
+  async findPopulatedSongBySource(name: SourceType, sourceId: string): Promise<PopulatedSong | null> {
+    if (!isSourceActive(name)) {
+      this.logger.warn(`findPopulatedSongBySource called while the ${name} source is inactive`);
+    }
+
+    const song = await this.songModel
+      .findOne({ source: { $elemMatch: { name, sourceId } } })
+      .populate('artist')
+      .populate('album')
+      .exec();
+
+    return song ? PopulatedSongSchema.parse(song) : null;
+  }
+
+  /**
    * Attaches an additional source to a song, keeping the multi-source model's
    * one-document-per-logical-song rule.
    *
@@ -296,74 +311,6 @@ export class MusicDbService {
 
   async getSongById(id: string): Promise<SongDocument | null> {
     return await this.songModel.findById(id).exec();
-  }
-
-  async getSongByQobuzId(qobuzId: string): Promise<QobuzLookupResult | null> {
-    if (!isSourceActive('qobuz')) {
-      this.logger.warn('getSongByQobuzId called while the qobuz source is inactive');
-    }
-
-    const results = await this.songModel
-      .aggregate([
-        {
-          $match: {
-            source: {
-              $elemMatch: {
-                name: 'qobuz',
-                sourceId: qobuzId,
-              },
-            },
-          },
-        },
-        {
-          $lookup: {
-            from: 'artists',
-            localField: 'artist',
-            foreignField: '_id',
-            as: 'artist_info',
-          },
-        },
-        {
-          $lookup: {
-            from: 'albums',
-            localField: 'album',
-            foreignField: '_id',
-            as: 'album_info',
-          },
-        },
-      ])
-      .exec();
-
-    const songModel = Array.isArray(results) && results.length > 0 ? results[0] : null;
-
-    if (songModel && typeof songModel === 'object' && 'title' in songModel && typeof songModel.title === 'string') {
-      let artist = '';
-      let album = '';
-      let title = songModel.title;
-
-      if ('artist_info' in songModel) {
-        const artistInfo = Array.isArray(songModel.artist_info) ? songModel.artist_info[0] : songModel.artist_info;
-        if (artistInfo && typeof artistInfo === 'object' && 'artist' in artistInfo && typeof artistInfo.artist === 'string') {
-          artist = artistInfo.artist;
-        }
-      }
-
-      if ('album_info' in songModel) {
-        const albumInfo = Array.isArray(songModel.album_info) ? songModel.album_info[0] : songModel.album_info;
-        if (albumInfo && typeof albumInfo === 'object' && 'title' in albumInfo && typeof albumInfo.title === 'string') {
-          album = albumInfo.title;
-        }
-      }
-
-      return {
-        artist,
-        album,
-        title,
-      };
-    } else {
-      this.logger.error('getSongByQobuzId: Unexpected song model:', songModel);
-      return null;
-    }
   }
 
   async getArtistDistribution(): Promise<{ artist: string; count: number }[]> {

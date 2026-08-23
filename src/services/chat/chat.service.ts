@@ -202,9 +202,9 @@ export class ChatService {
     const request = new ChatPromptusRequest(payload.message, history);
     const response = await this.promptusService.generate(request, sessionId);
 
-    if (response.content) {
-      request.addHistory(response.content);
-    }
+    // No addHistory here: the agent loop already pushed every candidate's content onto
+    // `request.history`, the final turn included. `response.content` is that same object, so adding
+    // it persisted the model's last message twice and the app rendered it twice.
 
     if (response.text) {
       aiResponse = response.text;

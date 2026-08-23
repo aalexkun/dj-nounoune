@@ -305,6 +305,82 @@ export const QobuzTrackSearchResponseSchema = z.object({
 });
 export type QobuzTrackSearchResponse = z.infer<typeof QobuzTrackSearchResponseSchema>;
 
+/**
+ * Catalog search response, restricted to the `artists` bucket.
+ *
+ * Items stay `unknown` for the same reason as the track bucket: one unexpected payload must not
+ * discard the whole page. {@link QobuzService.searchArtists} re-parses each item and skips the
+ * ones that do not validate.
+ */
+export const QobuzArtistSearchResponseSchema = z.object({
+  query: qobuzOptional(z.string()),
+  artists: qobuzOptional(
+    z.object({
+      limit: qobuzOptional(z.number()),
+      offset: qobuzOptional(z.number()),
+      total: qobuzOptional(z.number()),
+      items: z.array(z.unknown()),
+    }),
+  ),
+});
+export type QobuzArtistSearchResponse = z.infer<typeof QobuzArtistSearchResponseSchema>;
+
+/**
+ * An album as `/artist/get?extra=albums` reports it — leaner than {@link QobuzAlbumSchema}, which
+ * would reject these items outright because the discography omits the `artist` block it requires.
+ */
+export const QobuzArtistAlbumSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  version: qobuzOptional(z.string()),
+  release_date_original: qobuzOptional(z.string()),
+  tracks_count: qobuzOptional(z.number()),
+  hires: qobuzOptional(z.boolean()),
+  streamable: qobuzOptional(z.boolean()),
+});
+export type QobuzArtistAlbum = z.infer<typeof QobuzArtistAlbumSchema>;
+
+/**
+ * `/artist/get`. Only the fields the lookup tool reports are declared — Zod ignores the rest, which
+ * keeps this from breaking every time Qobuz adds a block to the artist page.
+ */
+export const QobuzArtistDetailSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  albums_count: qobuzOptional(z.number()),
+  albums: qobuzOptional(
+    z.object({
+      limit: qobuzOptional(z.number()),
+      offset: qobuzOptional(z.number()),
+      total: qobuzOptional(z.number()),
+      items: z.array(z.unknown()),
+    }),
+  ),
+});
+export type QobuzArtistDetail = z.infer<typeof QobuzArtistDetailSchema>;
+
+/** `/favorite/create` and `/favorite/delete` answer with nothing but a status. */
+export const QobuzFavoriteResponseSchema = z.object({
+  status: qobuzOptional(z.string()),
+});
+export type QobuzFavoriteResponse = z.infer<typeof QobuzFavoriteResponseSchema>;
+
+/** A catalog artist hit, flattened to what a caller usually needs. */
+export interface QobuzArtistMatch {
+  /** The Qobuz artist id, as a string so it can be passed straight back into the API. */
+  id: string;
+  name: string;
+  albumsCount?: number;
+  picture?: string;
+}
+
+/** What can be added to the Qobuz favourites in one call. At least one list must be non-empty. */
+export interface QobuzFavoriteInput {
+  trackIds?: string[];
+  albumIds?: string[];
+  artistIds?: string[];
+}
+
 /** What the caller knows about the track they are looking for. */
 export interface QobuzTrackSearchCriteria {
   /** Track title. The only mandatory criterion. */

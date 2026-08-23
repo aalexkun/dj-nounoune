@@ -14,6 +14,7 @@ import { DeleteIdMpdRequest } from '../mpd-client/requests/DeleteIdMpdRequest';
 import { MusicDbService, PopulatedSong } from '../music-db/music-db.service';
 import { QobuzService } from '../qobuz/qobuz.service';
 import { QobuzTrack } from '../qobuz/qobuz.interfaces';
+import { parseSourceUri, qobuzStreamUri } from '../../config/source-uri.util';
 import { getErrorMessage } from '../../utils/error.utils';
 import { lowQualityReason } from './quality.util';
 
@@ -136,11 +137,14 @@ export class NegentropyService {
     result.scanned = upcoming.length;
 
     for (const entry of upcoming) {
-      // Already streaming: either an earlier pass put it there, or it was queued
-      // from a provider to begin with.
-      if (entry.file.includes('/qobuz/track/')) continue;
+      // Only a local file can be upgraded. Everything else in this mixed queue is already streaming
+      // — a Qobuz entry an earlier pass swapped in, a Spotify or YouTube one another client queued —
+      // and none of them is what this pass is looking for.
+      const { name, sourceId } = parseSourceUri(entry.file);
 
-      const song = await this.musicDbService.findSongBySource('file', entry.file);
+      if (name !== 'file') continue;
+
+      const song = await this.musicDbService.findSongBySource('file', sourceId);
 
       if (!song) {
         this.logger.debug(`Queue entry is not in the library: ${entry.file}`);
@@ -337,7 +341,7 @@ export class NegentropyService {
       return;
     }
 
-    const uri = `${this.getQobuzProxyUrl()}${qobuzTrackId}`;
+    const uri = qobuzStreamUri(this.configService, qobuzTrackId);
     const added = await this.mpdClientService.send(new AddMpdRequest(uri, entry.position));
     const newQueueId = added.songId;
 
@@ -404,15 +408,5 @@ export class NegentropyService {
     } catch (error: unknown) {
       this.logger.warn(`Could not record the negentropy job for ${songId}: ${getErrorMessage(error)}`);
     }
-  }
-
-  private getQobuzProxyUrl(): string {
-    const proxy = this.configService.get<string>('QOBUZ_STREAM_PROXY_SERVER');
-
-    if (!proxy) {
-      throw new Error('QOBUZ_STREAM_PROXY_SERVER is not defined, cannot queue a Qobuz stream');
-    }
-
-    return `${proxy}/qobuz/track/version/1/trackId/`;
   }
 }

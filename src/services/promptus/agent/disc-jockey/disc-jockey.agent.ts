@@ -18,6 +18,10 @@ import { BrowseDatabaseRequest } from './request/browse-database.request';
 import { BrowseDatabaseResponse } from './response/browse-database.response';
 import { AlbumCoverRequest } from './request/album-cover.request';
 import { AlbumCoverResponse } from './response/album-cover.response';
+import { ArtistPerformanceRequest } from './request/artist-performance.request';
+import { ArtistPerformanceResponse } from './response/artist-performance.response';
+import { MusicTalkRequest } from './request/music-talk.request';
+import { MusicTalkResponse } from './response/music-talk.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
 import { ProfilerService } from '../../../profiler/profiler.service';
@@ -334,6 +338,26 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
   }
 
   /**
+   * Upcoming concerts, festival slots and tour dates for an artist, resolved through a grounded web
+   * search. Nothing in the library can answer this: the dates only exist on the open web, and they
+   * change week to week.
+   */
+  async findUpcomingPerformances(request: string, sessionId?: string) {
+    const performanceRequest = new ArtistPerformanceRequest(request);
+    return await this.generate(performanceRequest, sessionId);
+  }
+
+  /**
+   * General music conversation, about records the household does not own as much as the ones it does.
+   * Grounded, so anything recent is checked rather than recalled, and deliberately kept away from the
+   * database tools — this one talks, it does not queue.
+   */
+  async talkAboutMusic(request: string, sessionId?: string) {
+    const talkRequest = new MusicTalkRequest(request);
+    return await this.generate(talkRequest, sessionId);
+  }
+
+  /**
    * Resolve the artwork for a release through a grounded web search. Called directly on a song change,
    * so it is not exposed as a tool. Returns null rather than throwing when nothing is found.
    */
@@ -402,6 +426,14 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
 
     if (request instanceof AlbumCoverRequest) {
       return new AlbumCoverResponse(response) as ReqType;
+    }
+
+    if (request instanceof ArtistPerformanceRequest) {
+      return new ArtistPerformanceResponse(response) as ReqType;
+    }
+
+    if (request instanceof MusicTalkRequest) {
+      return new MusicTalkResponse(response) as ReqType;
     }
 
     throw new Error('Unsupported generate In promptus.generate method. Please check request type for ' + request.constructor.name);

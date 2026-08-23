@@ -52,6 +52,17 @@ export class NowPlayingEvent {
 }
 
 /**
+ * All the tool layer needs of `PlaylogService`, declared here rather than imported from it.
+ *
+ * `PlaylogService` already injects `ToolsService` to reach the disc jockey, so a direct dependency
+ * the other way round would close a cycle. The service registers itself through
+ * `ToolsService.setNowPlayingSource` instead — the same break used for the disc jockey agent.
+ */
+export interface NowPlayingSource {
+  getNowPlayingSnapshot(): Promise<NowPlaying | null>;
+}
+
+/**
  * Where a cover taken out of MPD is served from — the bytes never leave the backend, the page just
  * gets an address for them. Matched by the `artwork/:songId` route on `VibingController`.
  */
