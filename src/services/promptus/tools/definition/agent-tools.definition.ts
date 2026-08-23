@@ -52,6 +52,40 @@ export class AgentToolsDefinition {
     },
   } as const;
 
+  public static readonly discJockeyArtistPerformance: ToolDeclaration = {
+    name: 'disc_jockey_artist_performances',
+    description:
+      'Ask the music expert agent for the UPCOMING live performances of an artist — concerts, festival slots, residencies, tour dates. The agent searches the live web, so this is the only way to answer "is X touring?", "when does X play near me?" or "any festivals with X this summer?". Nothing in the music library can answer it. Relay the answer to the user as it comes back.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        natural_language_request: {
+          type: Type.STRING,
+          description:
+            "The user's question, naming the artist. Include any region, city or time window they mentioned, and the location you already know they are in, so the agent can filter the dates.",
+        },
+      },
+      required: ['natural_language_request'],
+    },
+  } as const;
+
+  public static readonly discJockeyTalkAboutMusic: ToolDeclaration = {
+    name: 'disc_jockey_talk_about_music',
+    description:
+      'Ask the music expert agent a general question about music that is NOT about the household library and does NOT need anything played: who an artist is, the story behind a record, how a genre came about, what someone released recently, comparisons and opinions. The agent answers conversationally and can search the live web. Use it whenever the user simply wants to talk about music. Do not use it to find something to play — that is `disc_jockey_create_playlist` — nor to list what the library holds — that is `disc_jockey_browse_database`.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        natural_language_request: {
+          type: Type.STRING,
+          description:
+            "The user's question, plus whatever earlier turns of the conversation it depends on. The agent keeps no history, so a follow-up like 'and his brother?' has to be spelled out.",
+        },
+      },
+      required: ['natural_language_request'],
+    },
+  } as const;
+
   public static readonly discJockeyBrowseDatabase: ToolDeclaration = {
     name: 'disc_jockey_browse_database',
     description:

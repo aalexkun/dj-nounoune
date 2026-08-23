@@ -1,0 +1,36 @@
+import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
+import { DiscJockeyAgent } from '../../../agent/disc-jockey/disc-jockey.agent';
+import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
+import { getErrorMessage } from '../../../../../utils/error.utils';
+
+export class DiscJockeyTalkAboutMusicHandler implements ToolHandler {
+  readonly name = AgentToolsDefinition.discJockeyTalkAboutMusic.name;
+
+  constructor(private readonly djAgent: DiscJockeyAgent) {}
+
+  async execute(args: unknown, sessionId?: string): Promise<FunctionCallResult> {
+    if (!isNaturalLanguageRequest(args)) {
+      return {
+        message: `Invalid arguments provided to ${this.name}. Expected parameter natural_language_request to be a string.`,
+        name: this.name,
+        type: 'string',
+      };
+    }
+
+    try {
+      const djResult = await this.djAgent.talkAboutMusic(args.natural_language_request, sessionId);
+
+      return {
+        message: djResult.text || 'The music expert had nothing to say about that.',
+        name: this.name,
+        type: 'string',
+      };
+    } catch (error) {
+      return {
+        message: `Error asking the music expert: ${getErrorMessage(error)}`,
+        name: this.name,
+        type: 'string',
+      };
+    }
+  }
+}

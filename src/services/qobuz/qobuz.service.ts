@@ -15,6 +15,15 @@ import {
   QobuzTrackSearchCriteria,
   QobuzTrackSearchResponse,
   QobuzTrackSearchResponseSchema,
+  QobuzArtistMatch,
+  QobuzArtistAlbum,
+  QobuzArtistAlbumSchema,
+  QobuzArtistDetailSchema,
+  QobuzArtistSchema,
+  QobuzArtistSearchResponse,
+  QobuzArtistSearchResponseSchema,
+  QobuzFavoriteInput,
+  QobuzFavoriteResponseSchema,
 } from './qobuz.interfaces';
 import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
@@ -42,6 +51,12 @@ const CONFIDENT_MATCH_SCORE = 0.9;
 
 /** Catalog hits requested per query when the caller does not say. */
 const DEFAULT_SEARCH_LIMIT = 25;
+
+/** Artist hits requested per catalog search. A handful is plenty to disambiguate a name. */
+const DEFAULT_ARTIST_SEARCH_LIMIT = 10;
+
+/** Albums pulled back with an artist page. Enough for a discography, short of a boxset dump. */
+const DEFAULT_ARTIST_ALBUM_LIMIT = 30;
 
 @Injectable()
 export class QobuzService implements OnModuleInit {
@@ -148,6 +163,39 @@ export class QobuzService implements OnModuleInit {
     return schema.parse(jsonData);
   }
 
+  /**
+   * Send a POST request to the Qobuz API.
+   *
+   * The mutating endpoints (`/favorite/create`, `/favorite/delete`) take their parameters as a form
+   * body rather than a query string, which is the only reason this exists beside {@link qobuzGet}.
+   */
+  private async qobuzPost<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>): Promise<T> {
+    if (!this.userAuthToken) {
+      throw new Error('User authentication token is missing. Please authenticate first.');
+    }
+
+    const headers: Record<string, string> = {
+      'X-User-Auth-Token': this.userAuthToken,
+      'X-App-Id': this.appId,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+
+    const response = await fetch(`${this.API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: this.toQueryString(params),
+    });
+
+    const jsonData = (await response.json()) as unknown;
+
+    const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
+    if (errorResult.success && errorResult.data.status === 'error') {
+      throw new Error(`Qobuz API Error: ${errorResult.data.message} (code: ${errorResult.data.code})`);
+    }
+
+    return schema.parse(jsonData);
+  }
+
   private getSessionFilePath(): string {
     return path.join(process.cwd(), '.qobuz-session.json');
   }
@@ -215,11 +263,129 @@ export class QobuzService implements OnModuleInit {
    * Retrieve full details of an album, including its tracks
    */
   public async getAlbum(albumId: string): Promise<QobuzAlbum> {
+    await this.login();
+
     const params = {
       album_id: albumId,
     };
 
     return this.qobuzGet<QobuzAlbum>('/album/get', params, QobuzAlbumSchema);
+  }
+
+  /**
+   * Retrieve one track by its Qobuz id.
+   */
+  public async getTrack(trackId: string): Promise<QobuzTrack> {
+    await this.login();
+
+    return this.qobuzGet<QobuzTrack>('/track/get', { track_id: trackId }, QobuzTrackSchema);
+  }
+
+  /**
+   * Searches the Qobuz catalog for an artist by name, best match first.
+   *
+   * Unlike {@link searchTracks} there is nothing to score here — Qobuz already ranks artist hits by
+   * relevance, and a name is either right or it is not. An empty array means the catalog holds no
+   * such artist, which callers must treat as final rather than retrying with another spelling.
+   */
+  public async searchArtists(query: string, limit: number = DEFAULT_ARTIST_SEARCH_LIMIT): Promise<QobuzArtistMatch[]> {
+    if (!query || !query.trim()) {
+      throw new Error('An artist name is required to search the Qobuz catalog.');
+    }
+
+    await this.login();
+
+    const response = await this.qobuzGet<QobuzArtistSearchResponse>(
+      '/catalog/search',
+      {
+        query: query.trim(),
+        type: 'artists',
+        limit: limit.toString(),
+        offset: '0',
+      },
+      QobuzArtistSearchResponseSchema,
+    );
+
+    const items = response.artists?.items ?? [];
+    const matches: QobuzArtistMatch[] = [];
+
+    for (const item of items) {
+      const parsed = QobuzArtistSchema.safeParse(item);
+
+      if (!parsed.success) {
+        this.logger.warn(`Discarding a Qobuz artist hit the schema no longer accepts: ${JSON.stringify(item)}`);
+        continue;
+      }
+
+      matches.push({
+        id: parsed.data.id.toString(),
+        name: parsed.data.name,
+        albumsCount: parsed.data.albums_count,
+        picture: parsed.data.picture ?? parsed.data.image,
+      });
+    }
+
+    return matches;
+  }
+
+  /**
+   * The discography of an artist, as the artist page reports it.
+   *
+   * Best-effort by design: this only ever decorates an artist that has already been found, so a
+   * schema drift on the artist page returns an empty discography rather than sinking the lookup.
+   */
+  public async getArtistAlbums(artistId: string, limit: number = DEFAULT_ARTIST_ALBUM_LIMIT): Promise<QobuzArtistAlbum[]> {
+    await this.login();
+
+    try {
+      const detail = await this.qobuzGet(
+        '/artist/get',
+        {
+          artist_id: artistId,
+          extra: 'albums',
+          limit: limit.toString(),
+          offset: '0',
+        },
+        QobuzArtistDetailSchema,
+      );
+
+      const albums: QobuzArtistAlbum[] = [];
+
+      for (const item of detail.albums?.items ?? []) {
+        const parsed = QobuzArtistAlbumSchema.safeParse(item);
+
+        if (parsed.success) {
+          albums.push(parsed.data);
+        }
+      }
+
+      return albums;
+    } catch (error) {
+      this.logger.warn(`Could not read the discography of Qobuz artist ${artistId}: ${getErrorMessage(error)}`);
+      return [];
+    }
+  }
+
+  /**
+   * Adds tracks, albums or artists to the account's Qobuz favourites.
+   *
+   * Qobuz takes all three lists in one call, and answers with nothing but a status, so there is
+   * no per-id outcome to report: either the call succeeded or it threw.
+   */
+  public async addFavorites(input: QobuzFavoriteInput): Promise<void> {
+    const params: Record<string, string> = {};
+
+    if (input.trackIds?.length) params['track_ids'] = input.trackIds.join(',');
+    if (input.albumIds?.length) params['album_ids'] = input.albumIds.join(',');
+    if (input.artistIds?.length) params['artist_ids'] = input.artistIds.join(',');
+
+    if (Object.keys(params).length === 0) {
+      throw new Error('Nothing to favourite: give at least one track, album or artist id.');
+    }
+
+    await this.login();
+
+    await this.qobuzPost('/favorite/create', params, QobuzFavoriteResponseSchema);
   }
 
   /**

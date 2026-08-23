@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -6,6 +6,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { SourceType } from '../../schemas/source.schema';
+import { parseSourceUri } from '../../config/source-uri.util';
 import { TechnicalInfo } from '../../schemas/technical-info.schema';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
 import { CurrentSongMpdResponse } from '../mpd-client/responses/CurrentSongMpdResponse';
@@ -24,6 +25,7 @@ import {
   NowPlayingCoverEventName,
   NowPlayingEvent,
   NowPlayingEventName,
+  NowPlayingSource,
   RecentlyPlayed,
   mpdArtworkUrl,
 } from './now-playing.event';
@@ -39,7 +41,7 @@ type MpdSongLookup = {
 };
 
 @Injectable()
-export class PlaylogService {
+export class PlaylogService implements NowPlayingSource, OnModuleInit {
   private readonly logger = new Logger(PlaylogService.name);
 
   /** Last published snapshot, served to page loads and to websocket clients that connect mid-track. */
@@ -73,8 +75,36 @@ export class PlaylogService {
     private appService: AppService,
   ) {}
 
+  /** Hands the tool layer the snapshot reader. See {@link NowPlayingSource} for why it is pushed. */
+  onModuleInit(): void {
+    this.toolsService.setNowPlayingSource(this);
+  }
+
   get nowPlaying(): NowPlaying | null {
     return this.currentNowPlaying;
+  }
+
+  /**
+   * The same snapshot the /vibing-on page is showing, for callers that want what the service knows
+   * about the current track rather than the handful of tags MPD reports — the `current_song` tool.
+   *
+   * Nothing has been published before the first song change of the process, so one poll is forced
+   * here rather than answering "nothing is playing" for a track that is. Under `IS_CLI` the poll is
+   * a no-op and this stays null, which is the caller's cue to fall back to MPD.
+   *
+   * The snapshot outlives the play it describes — the page keeps showing the last track after MPD
+   * stops, and nothing clears it — so it is only handed out once MPD confirms that same song is
+   * still loaded. Null here means "ask MPD", not "silence".
+   */
+  async getNowPlayingSnapshot(): Promise<NowPlaying | null> {
+    if (!this.currentNowPlaying) {
+      await this.checkCurrentSong();
+      return this.currentNowPlaying;
+    }
+
+    const { song } = await this.getMpdSong();
+
+    return song?._id.toString() === this.currentNowPlaying.songId ? this.currentNowPlaying : null;
   }
 
   /** Reported by `VibingGateway` on every connect and disconnect. */
@@ -148,6 +178,15 @@ export class PlaylogService {
   }
 
 
+  /**
+   * Which song MPD is on, whatever service it is streaming from.
+   *
+   * The queue is mixed: this app queues local files, Qobuz streams and Spotify streams into the same
+   * playlist, and any other client pointed at the daemon can add its own. `parseSourceUri` is the
+   * one place that knows which uri belongs to which service, so the lookup here is a single
+   * source-agnostic match rather than a branch per provider — a shape it does not recognise falls
+   * through as a local path, which is what MPD's own music directory looks like.
+   */
   private async getMpdSong(): Promise<MpdSongLookup> {
 
     const mpdResponse = await this.mpdClientService.currentsong();
@@ -155,29 +194,16 @@ export class PlaylogService {
       return {};
     }
 
-    const file = mpdResponse.song.file;
+    const { name, sourceId } = parseSourceUri(mpdResponse.song.file);
+    const song: SongDocument | null = await this.songModel.findOne({
+      source: { $elemMatch: { name, sourceId } },
+    });
 
-    let song: SongDocument | null = null;
-    let sourceName: SourceType | undefined;
-
-    if (file.includes('/qobuz/track/')) {
-      const parts = file.split('/trackId/');
-      const qobuzId = parts.length > 1 ? parts[1] : null;
-
-      if (qobuzId) {
-        sourceName = 'qobuz';
-        song = await this.songModel.findOne({
-          source: { $elemMatch: { name: 'qobuz', sourceId: qobuzId } },
-        });
-      }
-    } else {
-      sourceName = 'file';
-      song = await this.songModel.findOne({
-        source: { $elemMatch: { name: 'file', sourceId: file } },
-      });
+    if (!song) {
+      this.logger.debug(`No ${name} song in the library matches the queue entry ${mpdResponse.song.file}`);
     }
 
-    return { song, mpdResponse, sourceName };
+    return { song, mpdResponse, sourceName: name };
   }
 
   private async fetchPreviousSong(): Promise<PlaylogDocument | null> {
