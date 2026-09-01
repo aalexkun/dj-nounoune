@@ -107,16 +107,36 @@ export const MlAgentSearchResponseSchema = z.object({
 
 export type MlAgentSearchResponse = z.infer<typeof MlAgentSearchResponseSchema>;
 
-// Song Source document fields in OpenSearch
+/**
+ * The song document as it comes back out of the `songs` index.
+ *
+ * This is a **read** contract, and it has to match what `indexSongs` actually wrote rather than
+ * the ideal document. Two groups of field, for two different reasons:
+ *
+ * - `title`, `artist` and `album` stay mandatory: `title` is `required` on the Mongoose schema, and
+ *   the other two are written through a `|| ''` coercion, so all three are guaranteed strings on
+ *   anything this app indexed. They are also the only fields any consumer reads.
+ * - everything else is optional, because the indexer spreads the Mongo document and a field that
+ *   was never set is simply absent. `year` is the one that bites: `Song.year` carries no `required`
+ *   flag, so any song imported without a release year — every YouTube import, since an upload date
+ *   is not a release year — produces a document with no `year` at all.
+ *
+ * Getting this wrong is expensive out of proportion to the field. `findDuplicatesSongs` parses the
+ * whole response in one `safeParse`, so a single hit missing an optional field discarded *every*
+ * hit and the lookup returned `null` — which importers read as "no duplicate found" and act on by
+ * inserting a second copy of the song. A silent duplicate, caused by a field nobody reads.
+ */
 export const SongSourceSchema = z.object({
-  year: z.string(),
-  disk_number: z.number().optional(),
   title: z.string(),
   artist: z.string(),
   album: z.string(),
-  song_vector: z.array(z.number()),
-  song_semantic: z.string(),
+  year: z.string().optional(),
+  disk_number: z.number().optional(),
   track_number: z.number().optional(),
+  // Written by the neural ingest pipeline and by the indexer respectively; never read back here.
+  // Optional so a document predating either one cannot sink a search.
+  song_vector: z.array(z.number()).optional(),
+  song_semantic: z.string().optional(),
 });
 
 export type SongSource = z.infer<typeof SongSourceSchema>;

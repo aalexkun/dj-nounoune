@@ -24,7 +24,7 @@ Requires a `.env` file — copy `.env.template` and fill it. Without `MONGODB_UR
 
 ### CLI command tree
 
-`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, search-current-track), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run).
+`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, search-current-track), `youtube` (auth, search-track, search-playlist, import-playlist, play, liked, playlists), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run).
 
 Most mutating commands accept `--dry-run`. Long-running ones accept `--limit` and `--created-after yyyy-mm-dd`.
 
@@ -70,16 +70,64 @@ Google Gemini via `@google/genai`. Read `.agent/rules/promptus.md` and `.agent/r
 
 ### The MPD queue is mixed, and `parseSourceUri` is what untangles it
 
-One playlist holds local files, Qobuz streams and Spotify streams side by side — queued by `PlayMusicHandler`, by `qobuz_start_playback`, by the negentropy swap, or by any other client pointed at the same daemon. The only thing tying a queue entry back to a song document is the shape of its uri, so **`src/config/source-uri.util.ts` owns both directions**: `qobuzStreamUri` / `spotifyStreamUri` build them, `parseSourceUri` reads them back to a `{ name, sourceId }` that matches `SongSource` directly. Build in one file and parse in another and the playlog silently stops recognising half of what plays — which is exactly what happened while every reader hardcoded `file.includes('/qobuz/track/')` and treated everything else as a local path.
+One playlist holds local files, Qobuz streams, Spotify streams and YouTube streams side by side — queued by `PlayMusicHandler`, by `qobuz_start_playback`, by `youtube play`, by the negentropy swap, or by any other client pointed at the same daemon. The only thing tying a queue entry back to a song document is the shape of its uri, so **`src/config/source-uri.util.ts` owns both directions**: `qobuzStreamUri` / `spotifyStreamUri` / `youtubeStreamUri` build them, `parseSourceUri` reads them back to a `{ name, sourceId }` that matches `SongSource` directly. Build in one file and parse in another and the playlog silently stops recognising half of what plays — which is exactly what happened while every reader hardcoded `file.includes('/qobuz/track/')` and treated everything else as a local path.
 
 - Consumers: `PlaylogService.getMpdSong` (one source-agnostic Mongo match instead of a branch per provider), `CurrentSongHandler.fromMpd`, and the negentropy candidate filter (only `file` entries can be upgraded).
 - Unrecognised shapes fall through as `file`, which is right: MPD's own music directory is addressed by plain relative paths. The patterns are anchored on provider markers (`spotify:track:`, not `spotify`) so a local path that merely contains a provider's name is not misread.
-- `youtube` is matched even though no importer writes a youtube source yet — the lookup then misses honestly and the caller reports the MPD tags with `inLibrary: false`, rather than claiming a local file that does not exist. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown.
+- `youtube` matches two shapes: `yt:video:<id>`, which is what this app queues through the Mopidy proxy, and the watch-url forms another client may have queued instead. Both resolve to the same 11-character video id. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown.
 - **Context caching**: large grounding data (the DB profile, the enrich instructions) is written to `files/` by `FileService` and uploaded as a Gemini `CachedContent` (get-or-create keyed on display name). Critical constraint: when `request.cache` is set, the system instruction **and tools are omitted** from the request — a cached request cannot use tools. Cache model must match request model.
 - `ChatTitleAgent` (`agent/chat-title/`) is entirely commented out. Dead code.
 - Handlers return PSV (pipe-separated) rather than JSON in several places purely to save tokens.
 
 `src/lexic/songs.description.ts` is the controlled vocabulary (emotions, BPM-band pace names, genre taxonomy) shared by every prompt. It is what keeps enrichment output in a closed set — extend it there, not inline in a prompt.
+
+### YouTube: a playlist is an album (`src/services/youtube/`)
+
+The YouTube Data API v3, hand-rolled on `fetch` with Zod at the boundary — no third-party client.
+Shaped like `QobuzService` (search, lookup, import, a `SongSource` builder) with three things that
+are genuinely different.
+
+- **Auth is split, and mostly unnecessary.** Search, video, channel, playlist and playlist-item
+  lookups are public data reachable with `YOUTUBE_API_KEY` alone. OAuth exists *only* for the
+  signed-in account's liked videos and private playlists. The service works with a key alone and
+  logs that fact rather than throwing. `youtube auth` is Google's standard authorization-code
+  redirect, `.youtube-session.json` at the repo root, refresh token renewed on a one-minute check.
+  Google validates the redirect uri far more strictly than Qobuz: a `.lan` host is rejected
+  outright, so `YOUTUBE_REDIRECT_URL` defaults to loopback.
+- **A playlist is the album.** A video has a title, a channel and a duration — nothing that maps
+  onto `Artist → Album → Song`. A playlist is the only YouTube object with album structure
+  (ordered, titled, artwork, stable id), so **playlist → `Album`**, **channel → `Artist`** (with the
+  YouTube Music ` - Topic` suffix stripped), **video → `Song`** with `track_number` from the
+  playlist position. `importPlaylist` is therefore the *only* path that writes songs; `youtube play`
+  and `searchTracks` queue without touching Mongo, the same stance `PlayQobuzHandler` takes. The
+  album artist is the dominant *uploading* channel across the tracks, not the playlist owner — on an
+  auto-generated release playlist (`OLAK5uy_…`) the owner is YouTube Music and the uploader is the
+  artist. Below 60% agreement it is a compilation and the owner wins.
+- **`youtube-track-match.util.ts` is where the difficulty lives.** Everything downstream depends on
+  splitting one free-text upload title into artist and title. `parseVideoTitle` handles the
+  separator conventions (a ` - ` needs its spaces, so `Jay-Z` survives), trusts a Topic channel over
+  splitting at all, and **returns an empty artist rather than guessing** — a wrong guess poisons
+  every dedup lookup, which keys on the artist. `stripTitleNoise` peels trailing bracket groups one
+  at a time, keeping the ones that name a different recording (remix, live, acoustic) and dropping
+  promotional ones; it peels *behind* a kept group, or `(Official Video) [4K Remaster]` would keep
+  both.
+
+Quota is the operational constraint: 10,000 units/day by default, `search.list` costs **100**,
+`videos.list` and `playlistItems.list` cost **1**. Hence the short fallback-query chain, the batched
+`videos.list` for details, and id-based lookups wherever an id is already known.
+
+The YouTube source's `TechnicalInfo` assumes the **Premium 256 kbps AAC** rendition at 44.1 kHz
+(`is_cd_quality: false`). Those numbers place it in the quality order rather than merely describing
+it, because `PlayMusicHandler.getBestSource` scores exactly those fields on one additive scale:
+lossless sources take the 500,000 `is_cd_quality` bonus and win outright; against the other lossy
+streams it is the **bitrate term** that separates 256 from Spotify's 320 kbps Ogg, not the per-source
+name bonus — so YouTube lands under Spotify and over the library's 128/192 kbps mp3s, which is the
+intended result. The `+1` name bonus only settles a tie with an equal-bitrate local file. Overstate
+any of it and a YouTube re-encode outranks a local FLAC. In `field-resolver.ts` any source beats
+youtube on a *metadata* conflict, because its values were guessed rather than delivered.
+
+Not wired in: the negentropy pass still only upgrades `file` sources, so a queued YouTube stream is
+never swapped for its Qobuz equivalent, and there are no `promptus` agent tools for YouTube.
 
 ### Chat request flow
 
@@ -151,4 +199,4 @@ Unit tests are largely bypassed in this project. `npm run build` is the real gat
 ## Known drift
 
 - `README.md` documents `npm run spotify:auth` and a `docker-compose.yml`; neither exists. Use `npm run cli -- spotify auth`.
-- Session tokens are written to `.qobuz-session.json` / `.spotify-session.json` at the repo root (gitignored, and currently populated with live tokens).
+- Session tokens are written to `.qobuz-session.json` / `.spotify-session.json` / `.youtube-session.json` at the repo root (gitignored, and currently populated with live tokens).

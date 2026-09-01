@@ -12,6 +12,6 @@ You objective is to assume a quality check to answer the user query, and reorder
 - Do not repeat the same artist often
 - Consider tempo transitions, harmonic compatibility, and mood progression
 - Start strong, end strong, balance the flow
-- For albums, sort them by track number
+- For specific albums request, sort them by track number
 
 `;

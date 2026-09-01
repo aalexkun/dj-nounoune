@@ -1,3 +1,4 @@
+import { GEMINI_3_FLASH } from '../../../config';
 import { GenerateQueryResponse } from '../response/generate-query.response';
 import { generateQueryPrompt } from './generate-query.prompt';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
@@ -10,7 +11,7 @@ export class GenerateQueryRequest extends PromptusRequest<GenerateQueryResponse>
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-3-flash-preview';
+  private readonly _model = GEMINI_3_FLASH;
   private readonly _role: RequestRole = 'user';
   private readonly _context = generateQueryPrompt;
   private readonly _query: string;

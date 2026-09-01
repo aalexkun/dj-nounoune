@@ -1,3 +1,4 @@
+import { GEMINI_FLASH_LITE } from '../../../config';
 import { WhatIsPlayingResponse } from '../response/what-is-playing.response';
 import { PromptusRequest, RequestRole } from '../../../promptus.request';
 import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
@@ -14,7 +15,7 @@ export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse>
   };
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-flash-lite-latest';
+  private readonly _model = GEMINI_FLASH_LITE;
   private readonly _role: RequestRole = 'user';
   private readonly _context = WhatIsPlayingPrompt;
   private readonly _query: string;

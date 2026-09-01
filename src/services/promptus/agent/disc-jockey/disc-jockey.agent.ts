@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../../config';
 import { Agent,  ReadonlyAgentCache } from '../../agent';
 import { Logger } from '@nestjs/common';
 import { ToolsService } from '../../tools.service';
@@ -48,7 +49,7 @@ export type TechnicalInfo = {
 
 export type PlaySource = {
   sourceId: string;
-  name: 'qobuz' | 'file' | 'spotify';
+  name: 'qobuz' | 'file' | 'spotify' | 'youtube';
   technical_info?: TechnicalInfo;
 };
 
@@ -75,7 +76,7 @@ const TechnicalInfoSchema = z.object({
 
 const PlaySourceSchema = z.object({
   sourceId: z.string(),
-  name: z.enum(['file', 'spotify', 'qobuz'], {
+  name: z.enum(['file', 'spotify', 'qobuz', 'youtube'], {
     message: 'source name is not valid',
   }),
   technical_info: TechnicalInfoSchema.optional(),
@@ -114,7 +115,7 @@ export const PopulatedSongToMusicSearchResultSchema = z.object({
   source: z.array(
     z.object({
       sourceId: z.string().optional().default(''),
-      name: z.enum(['file', 'spotify', 'qobuz'], {
+      name: z.enum(['file', 'spotify', 'qobuz', 'youtube'], {
         message: 'source name is not valid',
       }),
     }).passthrough()
@@ -147,7 +148,7 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
         typeof src === 'object' &&
         src !== null &&
         typeof src.sourceId === 'string' &&
-        (src.name === 'qobuz' || src.name === 'file' || src.name === 'spotify'),
+        (src.name === 'qobuz' || src.name === 'file' || src.name === 'spotify' || src.name === 'youtube'),
     ) &&
     typeof record.title === 'string' &&
     typeof record.artist === 'string' &&
@@ -162,7 +163,7 @@ export class DiscJockeyAgent extends Agent {
     name: 'dj-nounoune-cache',
     file: `files/dj-nounoune-cache`,
     fileMineType: 'text/plain',
-    model: 'gemini-flash-latest',
+    model: GEMINI_FLASH,
     systemInstruction: '',
     cacheContent: undefined,
   };

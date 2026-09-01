@@ -27,6 +27,14 @@ import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
 import { QobuzSearchTrackSubCommand } from './qobuz/search-track.subcommand';
 import { QobuzSearchCurrentTrackSubCommand } from './qobuz/search-current-track.subcommand';
+import { YoutubeCommand } from './youtube/youtube.command';
+import { YoutubeAuthSubCommand } from './youtube/auth.subcommand';
+import { YoutubeSearchTrackSubCommand } from './youtube/search-track.subcommand';
+import { YoutubeSearchPlaylistSubCommand } from './youtube/search-playlist.subcommand';
+import { YoutubeImportPlaylistSubCommand } from './youtube/import-playlist.subcommand';
+import { YoutubePlaySubCommand } from './youtube/play.subcommand';
+import { YoutubeLikedSubCommand } from './youtube/liked.subcommand';
+import { YoutubePlaylistsSubCommand } from './youtube/playlists.subcommand';
 import { ElasticCommand } from './elastic/elastic.command';
 import { ElasticCreateIndexSubCommand } from './elastic/create-index.subcommand';
 import { ElasticPruneIndexSubCommand } from './elastic/prune-index.subcommand';
@@ -82,6 +90,15 @@ export const CommandProviders = [
   QobuzAuthSubCommand,
   QobuzSearchTrackSubCommand,
   QobuzSearchCurrentTrackSubCommand,
+
+  YoutubeCommand,
+  YoutubeAuthSubCommand,
+  YoutubeSearchTrackSubCommand,
+  YoutubeSearchPlaylistSubCommand,
+  YoutubeImportPlaylistSubCommand,
+  YoutubePlaySubCommand,
+  YoutubeLikedSubCommand,
+  YoutubePlaylistsSubCommand,
 
   ElasticCommand,
   ElasticCreateIndexSubCommand,

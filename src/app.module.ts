@@ -26,6 +26,7 @@ import { ApiAuthGuard } from './services/auth/api-auth.guard';
 import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
 import { QobuzModule } from './services/qobuz/qobuz.module';
+import { YoutubeModule } from './services/youtube/youtube.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
@@ -71,6 +72,7 @@ const imports: Array<any> = [
   MpdClientModule,
   SpotifyModule,
   QobuzModule,
+  YoutubeModule,
   ElasticsearchModule,
   MergeModule,
   OpensearchModule,

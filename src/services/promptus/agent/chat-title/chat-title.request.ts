@@ -1,3 +1,4 @@
+import { GEMINI_3_FLASH } from '../../config';
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../promptus.request';
 import { ChatTitleResponse } from './chat-title.response';
@@ -26,7 +27,7 @@ export class ChatTitleRequest extends PromptusRequest<ChatTitleResponse> {
   }
 
   private _role: RequestRole = 'user';
-  private _model = 'gemini-3-flash-preview';
+  private _model = GEMINI_3_FLASH;
   private _context = chatTitlePrompt;
 
   constructor(chatroomName: string) {

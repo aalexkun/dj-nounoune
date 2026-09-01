@@ -18,6 +18,12 @@ export const QOBUZ_TRACK_PATH = '/qobuz/track/version/1/trackId/';
 /** Path the Spotify audio proxy exposes a track under. The uri after `?uri=` is the `SongSource.path`. */
 export const SPOTIFY_TRACK_PATH = '/spotify?uri=spotify:track:';
 
+/**
+ * Path the YouTube audio proxy exposes a video under. Same Mopidy-style shape as Spotify's: the
+ * uri after `?uri=` (`yt:video:<id>`) is the `SongSource.path`.
+ */
+export const YOUTUBE_TRACK_PATH = '/youtube?uri=yt:video:';
+
 /** What an entry of the MPD queue turned out to be. */
 export type ResolvedSourceUri = {
   name: SourceType;
@@ -32,16 +38,19 @@ export type ResolvedSourceUri = {
  * (`…/spotify?uri=spotify:track:ID`) and a bare `spotify:track:ID`, because the same id appears in
  * both and another client may well have queued the bare form.
  *
- * `youtube` is listed even though no importer writes a youtube source yet: a YouTube url in the
- * queue is unmistakably YouTube, and naming it means the lookup misses honestly and the caller
- * falls back to the MPD tags — where treating it as a local path would claim a file that does not
- * exist. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown, so
- * there is nothing to match that would not be a guess.
+ * The `yt:video:` form is the one this app actually queues, matching what the Mopidy-backed proxy
+ * expects; the watch-url forms are kept because another client pointed at the same daemon may well
+ * have queued one of those instead. All four resolve to the same 11-character video id, which is
+ * what a youtube `SongSource.sourceId` holds.
+ *
+ * `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown, so there is
+ * nothing to match that would not be a guess.
  */
 const URI_PATTERNS: ReadonlyArray<{ name: SourceType; pattern: RegExp }> = [
   { name: 'qobuz', pattern: /\/qobuz\/track\/version\/\d+\/trackId\/(\d+)/i },
   { name: 'spotify', pattern: /spotify:track:([A-Za-z0-9]+)/i },
   { name: 'spotify', pattern: /open\.spotify\.com\/track\/([A-Za-z0-9]+)/i },
+  { name: 'youtube', pattern: /yt:video:([A-Za-z0-9_-]{11})/i },
   { name: 'youtube', pattern: /(?:youtube\.com\/watch\?(?:[^\s]*&)?v=|youtu\.be\/|\/youtube\/(?:watch\/)?)([A-Za-z0-9_-]{11})/i },
 ];
 
@@ -86,4 +95,21 @@ export function spotifyStreamUri(configService: ConfigService, trackId: string):
   }
 
   return `${proxy}${SPOTIFY_TRACK_PATH}${trackId}`;
+}
+
+/**
+ * The MPD uri for a YouTube video id, through the proxy named by `YOUTUBE_PROXY_AUDIO`.
+ *
+ * The proxy is the same Mopidy instance that serves the Spotify streams, on its own endpoint —
+ * e.g. `http://localhost:8666/youtube?uri=yt:video:y2Nwp8y25gQ`. MPD cannot talk to YouTube itself,
+ * so without the proxy there is nothing to queue.
+ */
+export function youtubeStreamUri(configService: ConfigService, videoId: string): string {
+  const proxy = configService.get<string>('YOUTUBE_PROXY_AUDIO');
+
+  if (!proxy) {
+    throw new Error('YOUTUBE_PROXY_AUDIO is not defined, cannot queue a YouTube stream');
+  }
+
+  return `${proxy}${YOUTUBE_TRACK_PATH}${videoId}`;
 }

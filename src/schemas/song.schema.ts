@@ -55,7 +55,7 @@ export class Song {
   @Prop({ type: [SongSourceSchema], default: [], description: 'List of playback sources where the track is available' })
   source: SongSource[];
 
-  @Prop({ type: String, enum: ['file', 'qobuz', 'spotify'], required: false, description: 'Source system that created the song record' })
+  @Prop({ type: String, enum: ['file', 'qobuz', 'spotify', 'youtube'], required: false, description: 'Source system that created the song record' })
   created_by?: string;
 }
 
