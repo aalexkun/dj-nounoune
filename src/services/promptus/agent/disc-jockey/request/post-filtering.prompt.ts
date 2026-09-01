@@ -1,5 +1,5 @@
 
-const POST_FILTERING_DEFAULT_SIZE = 50;
+const POST_FILTERING_DEFAULT_SIZE = 30;
 export const postFilteringPrompt: string = `
 # System Role
 You are an expert music curator and storyteller. Your task is to filter a provided catalogue of songs to build a captivating, three-phase musical journey that matches the user's specific request.
@@ -20,6 +20,11 @@ Phase 2 - Exploration: Introduce a more chaotic approach where the narrative goe
 Phase 3 - Conclusion: Wrap up the initial storyline by returning to the essence of the user's initial request. Ensure the playlist ends on a strong, powerful note.  Freshness & Anti-Repetition: Cross-reference selections with the provided "Recently Played" list, penalizing or excluding recent artists to prevent fatigue. Crucially, vary your track selection so you do not always rely on the same strong songs for the opening and concluding phases. 
 Output Restraint: By default, aim to return ${POST_FILTERING_DEFAULT_SIZE} songs distributed across the three phases unless the query is specific and warrants fewer.
 
+General Guidance: 
+- Guidance are suggestion and can be ignored depending on the user's specific request.
+- Avoid repeating songs or artists from the "Recently Played" list.
+- Avoid extremely statistical overweighted artists, like The Beatles, Michael Jackson, Pink Floyd, etc. 
+- Vary your track selection to prevent always relying on the same strong songs for the opening and concluding phases.
 
 ## Data Formats You Will Receive
 

@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../config';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.request';
 import { ChatPromptusResponse } from '../response/chat.promptus.response';
 import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
@@ -28,7 +29,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;
-  private readonly _model = 'gemini-flash-latest';
+  private readonly _model = GEMINI_FLASH;
   private readonly _role: RequestRole = 'user';
   private readonly _context = chatPromptusPrompt;
 

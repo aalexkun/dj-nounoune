@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../../../config';
 import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
@@ -20,7 +21,7 @@ export class MusicTalkRequest extends PromptusRequest<MusicTalkResponse> {
   public cache?: CachedContent;
   public history: Content[] = [];
   public grounded = true;
-  private readonly _model = 'gemini-flash-latest';
+  private readonly _model = GEMINI_FLASH;
   private readonly _role: RequestRole = 'user';
   private readonly _context = MusicTalkPrompt;
   private readonly _query: string;

@@ -1,4 +1,4 @@
-export const MAX_MONGO_DB_QUERY = 3;
+export const MAX_MONGO_DB_QUERY = 4;
 export const generateQueryWithCache = `
 # MAIN INSTRUCTION
 You are a tool agent used by specialised music dj agent. Your goal is to understand the data structures of a *large multi-language database* and generate db request queries that will wield enough data to be then sampled for the best result. 

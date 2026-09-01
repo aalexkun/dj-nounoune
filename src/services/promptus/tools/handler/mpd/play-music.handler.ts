@@ -9,7 +9,7 @@ import { PlayMpdRequest } from '../../../../mpd-client/requests/PlayMpdRequest';
 import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdRequest';
 import { ConfigService } from '@nestjs/config';
 import { RedisCacheService } from '../../../../redis-cache/redis-cache.service';
-import { qobuzStreamUri, spotifyStreamUri } from '../../../../../config/source-uri.util';
+import { qobuzStreamUri, spotifyStreamUri, youtubeStreamUri } from '../../../../../config/source-uri.util';
 
 interface PlayMusicArgs {
   cacheKey: string;
@@ -49,6 +49,11 @@ export class PlayMusicHandler implements ToolHandler {
       // Default source if there is no technical info is qobuz
       if (source.name === 'qobuz') score += 10;
       if (source.name === 'spotify') score += 3;
+      // YouTube Premium delivers 256kbps AAC — under Spotify's 320kbps Ogg, over the library's
+      // 128/192kbps mp3s. That ordering already falls out of the bitrate term above; this +1 only
+      // settles a tie against a local file of the same nominal bitrate, where AAC is the better
+      // encoder and the stream is the safer pick.
+      if (source.name === 'youtube') score += 1;
       return score;
     };
 
@@ -101,6 +106,8 @@ export class PlayMusicHandler implements ToolHandler {
         uri = qobuzStreamUri(this.configService, bestSource.sourceId);
       } else if (bestSource.name === 'spotify') {
         uri = spotifyStreamUri(this.configService, bestSource.sourceId);
+      } else if (bestSource.name === 'youtube') {
+        uri = youtubeStreamUri(this.configService, bestSource.sourceId);
       } else {
         uri = bestSource.sourceId;
       }

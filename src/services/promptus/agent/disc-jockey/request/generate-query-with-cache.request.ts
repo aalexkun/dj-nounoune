@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../../../config';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { GenerateQueryWithCacheResponse } from '../response/generate-query-with-cache.response';
 import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
@@ -13,7 +14,7 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
   };
   context: string = generateQueryWithCache;
   history: Content[];
-  readonly model: string = 'gemini-flash-latest';
+  readonly model: string = GEMINI_FLASH;
   query: string;
   role: RequestRole = 'user';
   tools: ToolDeclaration[];

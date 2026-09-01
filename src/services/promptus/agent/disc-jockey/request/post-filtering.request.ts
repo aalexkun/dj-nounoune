@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../../../config';
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { PostFilteringResponse } from '../response/post-filtering.response';
@@ -26,7 +27,7 @@ export class PostFilteringRequest extends PromptusRequest<PostFilteringResponse>
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-flash-latest';
+  private readonly _model = GEMINI_FLASH;
   private readonly _role: RequestRole = 'user';
   private readonly _context = postFilteringPrompt;
   private readonly _query: string;

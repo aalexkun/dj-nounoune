@@ -1,3 +1,4 @@
+import { GEMINI_FLASH } from '../../../config';
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
@@ -50,7 +51,7 @@ export class BrowseDatabaseRequest extends PromptusRequest<BrowseDatabaseRespons
   public config: Partial<GenerateContentConfig>;
   public cache?: CachedContent;
   public history: Content[] = [];
-  private readonly _model = 'gemini-flash-latest';
+  private readonly _model = GEMINI_FLASH;
   private readonly _role: RequestRole = 'user';
   private readonly _context: string = browseDatabasePrompt;
   private readonly _query: string;

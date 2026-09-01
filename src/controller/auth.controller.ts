@@ -25,6 +25,28 @@ export class AuthController {
     res.send(this.renderAuthCodePage(codeAutorisation));
   }
 
+  /**
+   * Google's OAuth redirect. Same `code` parameter Spotify uses, with one extra case: a user who
+   * declines the consent screen is redirected here with `error=access_denied` and no code at all,
+   * and saying so beats the bare "No code provided" that would otherwise come back.
+   */
+  @Get('/youtube/callback')
+  handleYoutubeCallback(
+    @Query('code') code: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    if (error) {
+      return res.status(400).send(`YouTube authorization was refused: ${error}`);
+    }
+
+    if (!code) {
+      return res.status(400).send('No code provided');
+    }
+
+    res.send(this.renderAuthCodePage(code));
+  }
+
   private renderAuthCodePage(authCode: string): string {
     return `
       <!DOCTYPE html>
