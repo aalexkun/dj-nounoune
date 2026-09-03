@@ -4,6 +4,7 @@ import { QobuzToolsDefinition } from '../../definition/qobuz-tools.definition';
 import { QobuzService } from '../../../../qobuz/qobuz.service';
 import { QobuzArtistAlbum, QobuzArtistMatch, QobuzTrackMatch } from '../../../../qobuz/qobuz.interfaces';
 import { getErrorMessage } from '../../../../../utils/error.utils';
+import { trackBelongsToArtist } from '../../../../qobuz/qobuz-track-match.util';
 
 interface SearchQobuzArtistArgs {
   artist_name: string;
@@ -63,7 +64,13 @@ export class SearchQobuzArtistHandler implements ToolHandler {
       sections.push(this.renderAlbums(best, albums));
 
       if (trackTitle) {
-        const tracks = await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name });
+        // Ranked, not restricted: these hits were scored against the artist, never verified to be
+        // theirs. Anything that does not actually look like their recording is dropped rather than
+        // listed under their name — `qobuz_find_artist_track` is the lookup that can promise more.
+        const tracks = (await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name })).filter(
+          (track) => trackBelongsToArtist(track.track, best),
+        );
+
         sections.push(this.renderTracks(trackTitle, best, tracks));
       }
 
@@ -100,7 +107,11 @@ export class SearchQobuzArtistHandler implements ToolHandler {
 
   private renderTracks(trackTitle: string, artist: QobuzArtistMatch, tracks: QobuzTrackMatch[]): string {
     if (tracks.length === 0) {
-      return `# TRACKS ("${trackTitle}" by ${artist.name})\nNo recording of that title in the Qobuz catalog. Do not search again — report it and stop.`;
+      return (
+        `# TRACKS ("${trackTitle}" by ${artist.name})\n` +
+        `${artist.name} has no recording of that title in the Qobuz catalog. Do not search again — report it and stop. ` +
+        'Any hit a broader search turned up would be a different performer covering the same song.'
+      );
     }
 
     const rows = tracks

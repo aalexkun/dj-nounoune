@@ -200,6 +200,28 @@ export function parseVideoTitle(videoTitle: string, channelTitle?: string | null
 const ISO_DURATION = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/;
 
 /**
+ * The release-type prefix YouTube Music puts on an auto-generated release playlist.
+ *
+ * Those playlists are titled `Album - Kid A`, `Single - Creep`, `EP - Drill`. The prefix describes
+ * the playlist, not the record, so carrying it into `Album.title` gives every imported release a
+ * name no other source would ever produce — and one that will not fuzzy-match the same album
+ * arriving later from Qobuz or a local file.
+ */
+const RELEASE_TYPE_PREFIX = /^\s*(?:album|single|ep|mixtape)\s*-\s*/i;
+
+/**
+ * Strips the `Album - ` / `Single - ` / `EP - ` prefix from a release playlist title.
+ *
+ * Never strips the whole title: `Single - ` alone leaves nothing to name the record by, so the
+ * original is kept instead.
+ */
+export function stripReleasePrefix(playlistTitle: string): string {
+  const stripped = (playlistTitle ?? '').replace(RELEASE_TYPE_PREFIX, '').trim();
+
+  return stripped || (playlistTitle ?? '').trim();
+}
+
+/**
  * ISO 8601 duration to seconds. YouTube reports `PT4M13S`; a live stream still in progress
  * reports `P0D`, which parses to zero and is exactly how the caller should read it.
  *

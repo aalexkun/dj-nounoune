@@ -27,6 +27,7 @@ import { QobuzAuthSubCommand } from './qobuz/auth.subcommand';
 import { QobuzImportFavoriteAlbumsSubCommand } from './qobuz/import-favorite-albums.subcommand';
 import { QobuzSearchTrackSubCommand } from './qobuz/search-track.subcommand';
 import { QobuzSearchCurrentTrackSubCommand } from './qobuz/search-current-track.subcommand';
+import { QobuzFindArtistTrackSubCommand } from './qobuz/find-artist-track.subcommand';
 import { YoutubeCommand } from './youtube/youtube.command';
 import { YoutubeAuthSubCommand } from './youtube/auth.subcommand';
 import { YoutubeSearchTrackSubCommand } from './youtube/search-track.subcommand';
@@ -89,6 +90,7 @@ export const CommandProviders = [
   QobuzImportFavoriteAlbumsSubCommand,
   QobuzAuthSubCommand,
   QobuzSearchTrackSubCommand,
+  QobuzFindArtistTrackSubCommand,
   QobuzSearchCurrentTrackSubCommand,
 
   YoutubeCommand,

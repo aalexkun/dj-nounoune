@@ -24,6 +24,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     AgentToolsDefinition.discJockeyArtistPerformance,
     AgentToolsDefinition.discJockeyTalkAboutMusic,
     QobuzToolsDefinition.searchArtistCommand,
+    QobuzToolsDefinition.findArtistTrackCommand,
     QobuzToolsDefinition.playCommand,
     QobuzToolsDefinition.favoriteCommand,
   ];

@@ -1,5 +1,5 @@
 import { FunctionCall } from '@google/genai';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { FunctionCallResult, ToolHandler } from './tools/tool.type';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
@@ -30,11 +30,13 @@ import { NowPlayingSource } from '../playlog/now-playing.event';
 import { DiscJockeyArtistPerformanceHandler } from './tools/handler/agent/disc-jockey-artist-performance.handler';
 import { DiscJockeyTalkAboutMusicHandler } from './tools/handler/agent/disc-jockey-talk-about-music.handler';
 import { SearchQobuzArtistHandler } from './tools/handler/qobuz/search-qobuz-artist.handler';
+import { FindQobuzArtistTrackHandler } from './tools/handler/qobuz/find-qobuz-artist-track.handler';
 import { PlayQobuzHandler } from './tools/handler/qobuz/play-qobuz.handler';
 import { FavoriteQobuzHandler } from './tools/handler/qobuz/favorite-qobuz.handler';
 
 @Injectable()
 export class ToolsService {
+  private readonly logger = new Logger('ToolsService');
   private toolRegistry = new Map<string, ToolHandler>();
   private discJockeyAgent: DiscJockeyAgent | undefined;
 
@@ -64,6 +66,7 @@ export class ToolsService {
 
     // Straight to the Qobuz catalog, for music the library never imported.
     this.registerTool(new SearchQobuzArtistHandler(this.qobuzService));
+    this.registerTool(new FindQobuzArtistTrackHandler(this.qobuzService));
     this.registerTool(new PlayQobuzHandler(this.qobuzService, this.mpdClientService, this.configService));
     this.registerTool(new FavoriteQobuzHandler(this.qobuzService));
   }
@@ -124,6 +127,10 @@ export class ToolsService {
     if (!handler) {
       throw new Error(`Unsupported function call: ${fc.name}`);
     }
+
+    // The arguments, not just the name: which tool the model reached for is half the story, and the
+    // half that explains a wrong answer is what it passed. `promptus chat` is read at this level.
+    this.logger.debug(`Tool ${fc.name}(${JSON.stringify(fc.args ?? {})})`);
 
     return await handler.execute(fc.args, sessionId);
   }
