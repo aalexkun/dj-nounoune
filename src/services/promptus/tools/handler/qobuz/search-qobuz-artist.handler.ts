@@ -109,8 +109,9 @@ export class SearchQobuzArtistHandler implements ToolHandler {
     if (tracks.length === 0) {
       return (
         `# TRACKS ("${trackTitle}" by ${artist.name})\n` +
-        `${artist.name} has no recording of that title in the Qobuz catalog. Do not search again — report it and stop. ` +
-        'Any hit a broader search turned up would be a different performer covering the same song.'
+        `${artist.name} has no recording of that title in the Qobuz catalog. Do not search Qobuz again: ` +
+        'any hit a broader search turned up would be a different performer covering the same song. ' +
+        'youtube_search_music, once, is the only search left — and if that is empty too, say it is on neither and stop.'
       );
     }
 

@@ -69,8 +69,8 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         // Final, and worded to stay final: the thinking loop otherwise spends its ten iterations
         // trying spellings of a name the catalog does not have.
         return this.reply(
-          `No artist named "${artistName}" exists in the Qobuz catalog. This is final — the search stops here. ` +
-            'Do not search again with another spelling and do not try another tool: tell the user this artist is not available on Qobuz.',
+          `No artist named "${artistName}" exists in the Qobuz catalog. Do not search Qobuz again with another spelling. ` +
+            'The one thing left to try is youtube_search_music, once, with the same name — and if that is empty too, tell the user the artist is on neither and stop.',
         );
       }
 
@@ -94,8 +94,8 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     if (albumTitle && !result.matchedAlbum) {
       sections.push(
         `# ALBUM ("${albumTitle}")\n` +
-          `${artist.name} has no album by that name in the Qobuz catalog. This is final — report it and stop. ` +
-          'Their releases are listed below; if one of them is what the user meant, ask before playing it.',
+          `${artist.name} has no album by that name in the Qobuz catalog. Their releases are listed below; if one of them is what the user meant, ask before playing it. ` +
+          'Otherwise the record may still be on YouTube: youtube_search_music, once, is the only search left.',
       );
       sections.push(this.renderAlbums(artist, result));
 
@@ -162,8 +162,9 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
 
       return (
         `# TRACKS (${asked} by ${artist.name})\n` +
-        `${artist.name} has no such recording in the Qobuz catalog. This is final — report it and stop. ` +
-        'Do not fall back to a plain catalog search: any hit it produced would be a different performer.'
+        `${artist.name} has no such recording in the Qobuz catalog. ` +
+        'Do not fall back to a plain Qobuz catalog search: any hit it produced would be a different performer. ' +
+        'youtube_search_music, once, is the only search left — and if that is empty too, say it is on neither and stop.'
       );
     }
 
