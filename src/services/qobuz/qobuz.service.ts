@@ -24,6 +24,8 @@ import {
   QobuzArtistSearchResponseSchema,
   QobuzFavoriteInput,
   QobuzFavoriteResponseSchema,
+  QobuzArtistCatalogCriteria,
+  QobuzArtistCatalogResult,
 } from './qobuz.interfaces';
 import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
@@ -39,7 +41,12 @@ import {
   buildSearchQueries,
   describeParseFailure,
   getTrackArtistName,
+  getTrackDisplayTitle,
+  identitySimilarity,
+  isPlausibleMatch,
+  MATCH_FLOOR,
   scoreTrack,
+  trackBelongsToArtist,
 } from './qobuz-track-match.util';
 import { getErrorMessage } from '../../utils/error.utils';
 
@@ -57,6 +64,9 @@ const DEFAULT_ARTIST_SEARCH_LIMIT = 10;
 
 /** Albums pulled back with an artist page. Enough for a discography, short of a boxset dump. */
 const DEFAULT_ARTIST_ALBUM_LIMIT = 30;
+
+/** Below this an entry in the artist's own discography is not the album that was asked for. */
+const ALBUM_TITLE_FLOOR = MATCH_FLOOR.album;
 
 @Injectable()
 export class QobuzService implements OnModuleInit {
@@ -317,11 +327,15 @@ export class QobuzService implements OnModuleInit {
         continue;
       }
 
+      const image = parsed.data.image;
+
       matches.push({
         id: parsed.data.id.toString(),
         name: parsed.data.name,
         albumsCount: parsed.data.albums_count,
-        picture: parsed.data.picture ?? parsed.data.image,
+        picture:
+          parsed.data.picture ??
+          (typeof image === 'string' ? image : (image?.large ?? image?.medium ?? image?.small)),
       });
     }
 
@@ -469,7 +483,11 @@ export class QobuzService implements OnModuleInit {
         }
       }
 
-      const bestSoFar = Math.max(0, ...[...matches.values()].map((match) => match.score.total));
+      // Only a hit that actually satisfies the criteria may end the search. Judging this on the
+      // raw pool let a strong title with the wrong artist stop the loop before the query that
+      // would have found the real recording ever ran.
+      const plausible = this.keepPlausible([...matches.values()], criteria);
+      const bestSoFar = Math.max(0, ...plausible.map((match) => match.score.total));
 
       if (bestSoFar >= CONFIDENT_MATCH_SCORE) {
         this.logger.debug(`  confident match (${bestSoFar.toFixed(2)}), skipping broader queries`);
@@ -477,7 +495,188 @@ export class QobuzService implements OnModuleInit {
       }
     }
 
-    return [...matches.values()].sort((left, right) => right.score.total - left.score.total);
+    const found = [...matches.values()].sort((left, right) => right.score.total - left.score.total);
+
+    if (criteria.includeRejected) {
+      return found;
+    }
+
+    const kept = this.keepPlausible(found, criteria);
+
+    if (kept.length < found.length) {
+      this.logger.debug(`  dropped ${found.length - kept.length} of ${found.length} hit(s) failing a stated criterion`);
+    }
+
+    return kept;
+  }
+
+  /**
+   * The hits that satisfy every criterion the caller stated, and that can actually be streamed.
+   *
+   * Ranking the rest lower is not enough. The fallback query chain ends with the bare title, so
+   * once a specific query comes up short the pool fills with other artists' recordings of the same
+   * song — and the caller is usually an agent that reads the top rows as the answer.
+   */
+  private keepPlausible(matches: QobuzTrackMatch[], criteria: QobuzTrackSearchCriteria): QobuzTrackMatch[] {
+    return matches.filter((match) => match.streamable && isPlausibleMatch(match.score, criteria));
+  }
+
+  /**
+   * Looks a recording up **locked to one artist**: the name is resolved to a Qobuz artist id
+   * first, and nothing that is not that artist's can come back.
+   *
+   * {@link searchTracks} cannot offer this. `/catalog/search` takes a single free-text query with no
+   * per-field operators, so an artist name inside it is a hint the ranker may ignore — and when the
+   * specific query comes up empty the fallback chain broadens to the title alone. Ask it for
+   * "Bad Behaviour" by Spice and it answers with The Beaches, Elli Ingram and Mabel.
+   *
+   * Two routes, both anchored on the artist id:
+   * - **With an album**, the album is resolved against the artist's own discography and its
+   *   tracklist is read straight off `/album/get`. No fuzzy track matching happens at all, which is
+   *   the right answer whenever the user named both an artist and a record.
+   * - **Without one**, the catalog search still runs, but every hit is then verified against the
+   *   artist id rather than against the spelling of a name.
+   */
+  public async searchArtistCatalog(criteria: QobuzArtistCatalogCriteria): Promise<QobuzArtistCatalogResult> {
+    if (!criteria.artist || !criteria.artist.trim()) {
+      throw new Error('An artist name is required to search the Qobuz catalog by artist.');
+    }
+
+    const artistName = criteria.artist.trim();
+    const candidates = await this.searchArtists(artistName, DEFAULT_ARTIST_SEARCH_LIMIT);
+
+    if (candidates.length === 0) {
+      this.logger.debug(`No Qobuz artist named "${artistName}"`);
+      return { artist: null, candidates: [], albums: [], tracks: [], source: 'none' };
+    }
+
+    const artist = this.pickArtist(candidates, artistName);
+    const albums = await this.getArtistAlbums(artist.id, DEFAULT_ARTIST_ALBUM_LIMIT);
+
+    this.logger.debug(`Locked on Qobuz artist ${artist.name} (${artist.id}), ${albums.length} album(s)`);
+
+    if (criteria.album?.trim()) {
+      return this.tracksFromArtistAlbum(artist, candidates, albums, criteria);
+    }
+
+    if (criteria.title?.trim()) {
+      return this.tracksFromLockedCatalogSearch(artist, candidates, albums, criteria);
+    }
+
+    return { artist, candidates, albums, tracks: [], source: 'none' };
+  }
+
+  /**
+   * The best of the artist hits Qobuz returned.
+   *
+   * Qobuz ranks by its own relevance, which puts a busier artist above an exact namesake often
+   * enough to matter. An exact name wins; short of that, Qobuz's own order stands.
+   */
+  private pickArtist(candidates: QobuzArtistMatch[], artistName: string): QobuzArtistMatch {
+    let best = candidates[0];
+    let bestScore = identitySimilarity(artistName, best.name);
+
+    for (const candidate of candidates.slice(1)) {
+      const score = identitySimilarity(artistName, candidate.name);
+
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+
+    return best;
+  }
+
+  /** The album route: resolve the title against the discography, then read its tracklist. */
+  private async tracksFromArtistAlbum(
+    artist: QobuzArtistMatch,
+    candidates: QobuzArtistMatch[],
+    albums: QobuzArtistAlbum[],
+    criteria: QobuzArtistCatalogCriteria,
+  ): Promise<QobuzArtistCatalogResult> {
+    const wanted = criteria.album!.trim();
+    let matchedAlbum: QobuzArtistAlbum | undefined;
+    let albumScore = 0;
+
+    for (const album of albums) {
+      const qualified = album.version ? `${album.title} (${album.version})` : album.title;
+      const score = Math.max(identitySimilarity(wanted, album.title), identitySimilarity(wanted, qualified));
+
+      if (score > albumScore) {
+        matchedAlbum = album;
+        albumScore = score;
+      }
+    }
+
+    if (!matchedAlbum || albumScore < ALBUM_TITLE_FLOOR) {
+      this.logger.debug(`No album like "${wanted}" in the discography of ${artist.name}`);
+      return { artist, candidates, albums, tracks: [], source: 'none' };
+    }
+
+    this.logger.debug(
+      `Album "${wanted}" resolved to "${matchedAlbum.title}" (${matchedAlbum.id}, ${albumScore.toFixed(2)})`,
+    );
+
+    let detail: QobuzAlbum;
+
+    try {
+      detail = await this.getAlbum(matchedAlbum.id);
+    } catch (error) {
+      this.logger.warn(`Could not read Qobuz album ${matchedAlbum.id}: ${getErrorMessage(error)}`);
+      return { artist, candidates, albums, matchedAlbum, albumScore, tracks: [], source: 'none' };
+    }
+
+    // A tracklist item carries no album block of its own, so give it the one it came from — the
+    // reported metadata and the scoring both read it from there.
+    const items = (detail.tracks?.items ?? []).map((track) => ({ ...track, album: track.album ?? detail }));
+
+    // Scoring a tracklist against the album it *is* would be circular, so the criteria used here
+    // are the ones that were genuinely in question: the title, when one was asked for.
+    const scored = items.map((track) =>
+      this.toTrackMatch(
+        track,
+        { title: criteria.title?.trim() || getTrackDisplayTitle(track), artist: artist.name },
+        `album:${matchedAlbum.id}`,
+      ),
+    );
+
+    // Without a title the whole record is the answer, in running order.
+    const tracks = criteria.title?.trim()
+      ? scored
+          .filter((match) => match.score.title >= MATCH_FLOOR.title)
+          .sort((left, right) => right.score.title - left.score.title)
+      : scored;
+
+    return {
+      artist,
+      candidates,
+      albums,
+      matchedAlbum,
+      albumScore,
+      tracks: criteria.limit ? tracks.slice(0, criteria.limit) : tracks,
+      source: 'album',
+    };
+  }
+
+  /** The title-only route: the ordinary catalog search, with every hit verified against the id. */
+  private async tracksFromLockedCatalogSearch(
+    artist: QobuzArtistMatch,
+    candidates: QobuzArtistMatch[],
+    albums: QobuzArtistAlbum[],
+    criteria: QobuzArtistCatalogCriteria,
+  ): Promise<QobuzArtistCatalogResult> {
+    const found = await this.searchTracks({
+      title: criteria.title!.trim(),
+      artist: artist.name,
+      limit: criteria.limit,
+    });
+
+    const tracks = found.filter((match) => trackBelongsToArtist(match.track, artist));
+
+    this.logger.debug(`${tracks.length} of ${found.length} hit(s) are actually by ${artist.name}`);
+
+    return { artist, candidates, albums, tracks, source: tracks.length > 0 ? 'catalog' : 'none' };
   }
 
   /**

@@ -38,6 +38,7 @@ import {
   parseIsoDuration,
   parseVideoTitle,
   scoreVideo,
+  stripReleasePrefix,
 } from './youtube-track-match.util';
 import { getErrorMessage } from '../../utils/error.utils';
 
@@ -832,7 +833,8 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     // quota unit, against one unit each if they were fetched singly.
     const durations = await this.fetchDurations(tracks.map((track) => track.videoId));
 
-    const artistName = this.resolveAlbumArtist(playlist, tracks);
+    const albumArtist = this.resolveAlbumArtist(playlist, tracks);
+    const artistName = albumArtist.name;
     result.artistName = artistName;
 
     this.logger.log(
@@ -846,7 +848,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
-    const artistDoc = await this.resolveArtistDocument(artistName, playlist.channelId);
+    const artistDoc = await this.resolveArtistDocument(artistName, albumArtist.channelId);
     const albumDoc = await this.resolveAlbumDocument(playlist, artistDoc);
 
     for (const track of tracks) {
@@ -869,7 +871,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
         const existingSong = await this.findExistingSong({
           title: track.title,
           artist: track.artist || artistName,
-          album: playlist.title,
+          album: stripReleasePrefix(playlist.title),
           track_number: track.trackNumber,
           disc_number: 1,
           year: '',
@@ -944,31 +946,56 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Which artist a playlist belongs to.
+   * Which artist a playlist belongs to — **name and channel id together**.
    *
-   * The uploading channel of the tracks wins when they agree, because on an auto-generated release
-   * playlist that is the artist's own Topic channel while the playlist owner is YouTube Music. A
-   * playlist whose tracks come from many channels is a compilation, and there the playlist owner
-   * is the only defensible answer.
+   * The two must come from the same decision, and originally they did not: the name was taken from
+   * the dominant uploading channel while the id passed alongside it was the playlist *owner*. On an
+   * auto-generated release playlist the owner is YouTube Music, whose channel id is the same
+   * `UCBR8-60-B28hp2BmDPdntcQ` for every such playlist in existence — so the second import matched
+   * the artist document the first had created and every album collapsed onto one artist, each
+   * carrying a correct `album_artist` string over a wrong `artist` ref.
+   *
+   * The uploading channel wins when the tracks agree, because on a release playlist that is the
+   * artist's own Topic channel. A playlist whose tracks come from many channels is a compilation,
+   * and there the playlist owner is the only defensible answer — taken as a pair, so the id always
+   * describes the same channel the name came from.
    */
-  private resolveAlbumArtist(playlist: YoutubePlaylistMatch, tracks: YoutubePlaylistTrack[]): string {
-    const counts = new Map<string, number>();
+  private resolveAlbumArtist(
+    playlist: YoutubePlaylistMatch,
+    tracks: YoutubePlaylistTrack[],
+  ): { name: string; channelId?: string } {
+    const counts = new Map<string, { count: number; channelId?: string }>();
 
     for (const track of tracks) {
       const name = normalizeChannelTitle(track.channelTitle) || track.artist;
 
-      if (name) {
-        counts.set(name, (counts.get(name) ?? 0) + 1);
+      if (!name) {
+        continue;
       }
+
+      const entry = counts.get(name) ?? { count: 0, channelId: undefined };
+      entry.count++;
+      entry.channelId = entry.channelId ?? track.channelId;
+      counts.set(name, entry);
     }
 
-    const [dominant] = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+    const [dominant] = [...counts.entries()].sort((left, right) => right[1].count - left[1].count);
 
-    if (dominant && dominant[1] / tracks.length >= 0.6) {
-      return dominant[0];
+    if (dominant && dominant[1].count / tracks.length >= 0.6) {
+      return { name: dominant[0], channelId: dominant[1].channelId };
     }
 
-    return normalizeChannelTitle(playlist.channelTitle) || dominant?.[0] || 'Unknown Artist';
+    const ownerName = normalizeChannelTitle(playlist.channelTitle);
+
+    if (ownerName) {
+      return { name: ownerName, channelId: playlist.channelId };
+    }
+
+    if (dominant) {
+      return { name: dominant[0], channelId: dominant[1].channelId };
+    }
+
+    return { name: 'Unknown Artist', channelId: undefined };
   }
 
   /**
@@ -1021,6 +1048,10 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
 
   /** The album document for the playlist, created or decorated, and linked to the artist. */
   private async resolveAlbumDocument(playlist: YoutubePlaylistMatch, artistDoc: ArtistDocument): Promise<AlbumDocument> {
+    // The record's name, not the playlist's: an auto-generated release is titled `Album - Kid A`,
+    // and that prefix would neither match the same album from another source nor read as a title.
+    const albumTitle = stripReleasePrefix(playlist.title);
+
     const bySource = await this.albumModel.findOne({
       'source.name': 'youtube',
       'source.sourceId': playlist.id,
@@ -1030,7 +1061,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       return bySource;
     }
 
-    const existing = await this.findExistingAlbum(playlist.title);
+    const existing = await this.findExistingAlbum(albumTitle);
 
     if (existing) {
       const sourceExists = (existing.source ?? []).some(
@@ -1054,7 +1085,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     const cover = bestThumbnailUrl(playlist.thumbnails);
 
     const created = new this.albumModel({
-      title: playlist.title,
+      title: albumTitle,
       artist: artistDoc._id,
       track_count: playlist.itemCount,
       genre: [],

@@ -10,6 +10,7 @@ interface SearchTrackOptions {
   album?: string;
   limit?: number;
   json?: boolean;
+  all?: boolean;
 }
 
 @SubCommand({
@@ -41,6 +42,7 @@ export class QobuzSearchTrackSubCommand extends CommandRunner {
         artist: options.artist,
         album: options.album,
         limit: options.limit,
+        includeRejected: options.all,
       });
 
       if (options.json) {
@@ -91,6 +93,15 @@ export class QobuzSearchTrackSubCommand extends CommandRunner {
   })
   parseLimit(val: string): number {
     return parseInt(val, 10);
+  }
+
+  @Option({
+    flags: '--all',
+    description: 'Show every catalog hit, including the ones dropped for failing a stated criterion',
+    defaultValue: false,
+  })
+  parseAll(): boolean {
+    return true;
   }
 
   @Option({

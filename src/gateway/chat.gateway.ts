@@ -112,8 +112,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  /**
+   * There is no socket server when the gateway was never bound — under `IS_CLI`, where the same
+   * agents run from `promptus chat`. The events still fire, and reaching for a room on an undefined
+   * server threw once per progress event, which the event emitter caught and logged as a stack
+   * trace. Nothing is listening in that case, so there is nothing to relay.
+   */
+  private get hasSocketServer(): boolean {
+    return !!this.server?.sockets;
+  }
+
   @OnEvent(ChatMessageResponseEventName)
   sendChatMessageResponse(payload: ChatMessageResponseEvent) {
+    if (!this.hasSocketServer) {
+      return;
+    }
+
     this.logger.debug(`${ChatMessageResponseEventName} to ${payload.sessionId}`);
     const socketsInRoom = this.server.sockets.adapter.rooms.get(payload.sessionId);
     if (socketsInRoom) {
@@ -128,6 +142,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @OnEvent(ChatStatusResponseEventName)
   sendChatMessageStatus(payload: ChatStatusResponseEvent) {
+    if (!this.hasSocketServer) {
+      return;
+    }
+
     this.logger.debug(`${ChatStatusResponseEventName} to ${payload.sessionId}`);
 
     this.server.to(payload.sessionId).emit('chat-message-status-response', payload.message);

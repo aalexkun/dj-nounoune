@@ -43,6 +43,31 @@ export function normalizeForMatch(value: string | null | undefined): string {
  * discounted so a genuinely exact match always outranks a subset match.
  */
 export function similarity(left: string | null | undefined, right: string | null | undefined): number {
+  return compare(left, right, true);
+}
+
+/**
+ * Token-set similarity in [0, 1] for fields that name a *thing* rather than describe one — an
+ * artist, an album.
+ *
+ * Same scoring as {@link similarity} except that the containment shortcut is withheld when the
+ * shorter side is a single token. Containment answers "is what I asked for present in this
+ * candidate", which is the right question for a title carrying extra qualifiers and the wrong one
+ * for a name: `Spice` is present in `Spice Girls`, `Pumpkin Spice Collective` and `Old Dominion
+ * Spice Band`, and album `10` is present in `Top 10 Hits` and `Chapter 10`. All five scored a flat
+ * 0.90 and sailed past every threshold, which is how a search for one artist came back full of
+ * strangers. Below two tokens there is not enough of a name to contain, so Dice — which charges for
+ * the tokens the candidate adds — decides alone.
+ */
+export function identitySimilarity(left: string | null | undefined, right: string | null | undefined): number {
+  return compare(left, right, false);
+}
+
+function compare(
+  left: string | null | undefined,
+  right: string | null | undefined,
+  allowShortContainment: boolean,
+): number {
   const normalizedLeft = normalizeForMatch(left);
   const normalizedRight = normalizeForMatch(right);
 
@@ -62,8 +87,14 @@ export function similarity(left: string | null | undefined, right: string | null
     return 0;
   }
 
+  const shorter = Math.min(leftTokens.size, rightTokens.size);
   const dice = (2 * intersection) / (leftTokens.size + rightTokens.size);
-  const containment = intersection / Math.min(leftTokens.size, rightTokens.size);
+
+  if (!allowShortContainment && shorter < 2) {
+    return dice;
+  }
+
+  const containment = intersection / shorter;
 
   return Math.max(dice, containment * 0.9);
 }

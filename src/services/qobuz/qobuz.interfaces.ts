@@ -59,12 +59,31 @@ export const QobuzLabelSchema = z.object({
 });
 export type QobuzLabel = z.infer<typeof QobuzLabelSchema>;
 
+/**
+ * The cover block `/catalog/search?type=artists` puts on an artist. Different sizes from
+ * {@link QobuzImageSchema}, which is the album one.
+ */
+export const QobuzArtistImageSchema = z.object({
+  small: qobuzOptional(z.string()),
+  medium: qobuzOptional(z.string()),
+  large: qobuzOptional(z.string()),
+  extralarge: qobuzOptional(z.string()),
+  mega: qobuzOptional(z.string()),
+});
+export type QobuzArtistImage = z.infer<typeof QobuzArtistImageSchema>;
+
 export const QobuzArtistSchema = z.object({
   id: z.number(),
   name: z.string(),
   slug: qobuzOptional(z.string()),
   picture: qobuzOptional(z.string()),
-  image: qobuzOptional(z.string()),
+  /**
+   * A url when the artist is nested in an album or a track — but the artist *search* answers with
+   * a block of sizes instead, and declaring only the string quietly failed the whole hit. It cost
+   * the real Spice: searching her name returned Warren C. Spicer, because she was the one hit the
+   * schema threw away and every other artist in that page happened to have no cover at all.
+   */
+  image: qobuzOptional(z.union([z.string(), QobuzArtistImageSchema])),
   albums_count: qobuzOptional(z.number()),
 });
 export type QobuzArtist = z.infer<typeof QobuzArtistSchema>;
@@ -381,6 +400,44 @@ export interface QobuzFavoriteInput {
   artistIds?: string[];
 }
 
+/**
+ * What the caller knows about a recording they want, when they also know whose it is.
+ *
+ * The artist is mandatory here — that is the whole difference from {@link QobuzTrackSearchCriteria}.
+ * It is resolved to a Qobuz artist id before anything else happens, and every track handed back is
+ * verified against that id, so the search cannot wander off to another performer.
+ */
+export interface QobuzArtistCatalogCriteria {
+  /** Artist name, spelled as the user gave it. Resolved to an id, then used as a hard filter. */
+  artist: string;
+  /** Optional album title, resolved against the artist's own discography. */
+  album?: string;
+  /** Optional track title. Without an album this narrows the catalog search; with one it picks tracks off the tracklist. */
+  title?: string;
+  /** Maximum tracks handed back. Defaults to the whole album, or 25 catalog hits. */
+  limit?: number;
+}
+
+/** Where the tracks in a {@link QobuzArtistCatalogResult} came from, so callers can say so honestly. */
+export type QobuzArtistCatalogSource = 'album' | 'catalog' | 'none';
+
+/** The answer to an artist-locked lookup: who was found, what they released, and which tracks match. */
+export interface QobuzArtistCatalogResult {
+  /** The artist the lookup locked onto, or null when the catalog holds nobody by that name. */
+  artist: QobuzArtistMatch | null;
+  /** Every artist the name matched, best first, so a common name can still be disambiguated. */
+  candidates: QobuzArtistMatch[];
+  /** The artist's discography as Qobuz reports it. Empty when the artist was not found. */
+  albums: QobuzArtistAlbum[];
+  /** The discography entry the album criterion resolved to, when one was given and one matched. */
+  matchedAlbum?: QobuzArtistAlbum;
+  /** How well {@link matchedAlbum} matched what was asked for, in [0, 1]. */
+  albumScore?: number;
+  /** Matching tracks, all guaranteed to be the artist's own. */
+  tracks: QobuzTrackMatch[];
+  source: QobuzArtistCatalogSource;
+}
+
 /** What the caller knows about the track they are looking for. */
 export interface QobuzTrackSearchCriteria {
   /** Track title. The only mandatory criterion. */
@@ -391,6 +448,11 @@ export interface QobuzTrackSearchCriteria {
   album?: string;
   /** Maximum number of items requested per catalog query. Defaults to 25. */
   limit?: number;
+  /**
+   * Return every hit seen, including the ones that fail a stated criterion. For debugging what the
+   * catalog actually answered; never for a caller that will act on the result.
+   */
+  includeRejected?: boolean;
 }
 
 /** Per-criterion breakdown of how well a candidate matched, each in [0, 1]. */
