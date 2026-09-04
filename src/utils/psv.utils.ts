@@ -1,4 +1,4 @@
-export function generatePsv<T extends Record<string, any>>(data: T | T[]): string {
+export function generatePsv<T extends Record<string, unknown>>(data: T | T[]): string {
   // If the data is empty or null, return an empty string
   if (!data || (Array.isArray(data) && data.length === 0)) {
     return '';
@@ -19,18 +19,20 @@ export function generatePsv<T extends Record<string, any>>(data: T | T[]): strin
       .map((header) => {
         const value = record[header];
 
-        // Handle null or undefined values
-        if (value === null || value === undefined) {
-          return '';
+        switch (typeof value) {
+          case 'string':
+            return value;
+          case 'number':
+          case 'boolean':
+          case 'bigint':
+            return String(value);
+          case 'object':
+            // Nested objects/arrays, and `null`: JSON rather than "[object Object]"
+            return value === null ? '' : JSON.stringify(value);
+          default:
+            // undefined, functions and symbols have no PSV rendering
+            return '';
         }
-
-        // Handle nested objects/arrays to avoid "[object Object]"
-        if (typeof value === 'object') {
-          return JSON.stringify(value);
-        }
-
-        // Convert numbers, booleans, and strings safely
-        return String(value);
       })
       .join('|');
   });

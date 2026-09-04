@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, SchemaTypes } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
 import { Content, Part } from '@google/genai';
 
 export type ChatDocument = HydratedDocument<Chat>;

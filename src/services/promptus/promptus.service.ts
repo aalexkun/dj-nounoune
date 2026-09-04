@@ -16,7 +16,6 @@ export class PromptusService extends Agent {
   readonly name = 'Promptus';
   protected readonly logger = new Logger('PromptusService');
 
-
   constructor(
     appService: AppService,
     protected toolService: ToolsService,
@@ -31,7 +30,6 @@ export class PromptusService extends Agent {
 
     this.initialiseAgent(appService.getGenAiApiKey(), this.toolService, this.eventEmitter);
     this.toolService.initialiseAgent(appService.getGenAiApiKey(), this.eventEmitter);
-
   }
 
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {

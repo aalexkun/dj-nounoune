@@ -54,7 +54,9 @@ export class OpensearchSemanticSearchSubCommand extends CommandRunner {
         console.log(`\nRequest:   ${request}`);
         console.log(`Semantic:  ${generated.semantic ? `"${generated.semantic}"` : '(none)'}`);
         console.log(`Fulltext:  ${generated.fulltext.length > 0 ? generated.fulltext.join(' | ') : '(none)'}`);
-        console.log(`Aggregate: ${generated.aggregate.length} definition(s)${generated.aggregate.map((d) => `\n           - ${d.description}`).join('')}`);
+        console.log(
+          `Aggregate: ${generated.aggregate.length} definition(s)${generated.aggregate.map((d) => `\n           - ${d.description}`).join('')}`,
+        );
 
         if (!generated.semantic) {
           console.log(

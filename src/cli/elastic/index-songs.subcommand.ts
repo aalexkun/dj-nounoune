@@ -1,11 +1,18 @@
 import { CommandRunner, SubCommand, Option } from 'nest-commander';
 import { ElasticsearchService } from '../../services/elasticsearch/elasticsearch.service';
-import { MusicDbService } from '../../services/music-db/music-db.service';
+import { MusicDbService, PopulatedSong } from '../../services/music-db/music-db.service';
 import { Logger } from '@nestjs/common';
 
 interface IndexSongsCommandOptions {
   fetch?: number;
   addedAfter?: string;
+}
+
+/** `createdAt` comes from the schema's `timestamps` option, so it is not on the document type. */
+function createdAtMillis(song: PopulatedSong): number {
+  const value = (song as { createdAt?: unknown }).createdAt;
+  if (value instanceof Date) return value.getTime();
+  return typeof value === 'string' ? new Date(value).getTime() : 0;
 }
 
 @SubCommand({ name: 'index-songs', description: 'Fetch current songs and index them in Elasticsearch' })
@@ -19,23 +26,18 @@ export class ElasticIndexSongsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(
-    passedParam: string[],
-    options?: IndexSongsCommandOptions,
-  ): Promise<void> {
+  async run(_passedParam: string[], options?: IndexSongsCommandOptions): Promise<void> {
     const fetchLimit = options?.fetch;
     const addedAfter = options?.addedAfter ? new Date(options.addedAfter) : undefined;
 
-    this.logger.log(`Fetching songs from MusicDb... limit: ${fetchLimit || 'All'}, added after: ${addedAfter || 'Beginning of time'}`);
-    
+    this.logger.log(
+      `Fetching songs from MusicDb... limit: ${fetchLimit || 'All'}, added after: ${addedAfter ? addedAfter.toISOString() : 'Beginning of time'}`,
+    );
+
     let songs = await this.musicDbService.getAllPopulatedSongs(addedAfter);
 
     // Sort by createdAt ascending (getAllPopulatedSongs doesn't sort explicitly but Mongoose often returns by natural order. We can enforce sort here just in case)
-    songs = songs.sort((a, b) => {
-       const dateA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : 0;
-       const dateB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : 0;
-       return dateA - dateB;
-    });
+    songs = songs.sort((a, b) => createdAtMillis(a) - createdAtMillis(b));
 
     if (fetchLimit) {
       songs = songs.slice(0, fetchLimit);

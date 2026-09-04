@@ -16,10 +16,7 @@ export function buildActiveSourceFilter(activeSources: string[] | null): Record<
   return [
     {
       bool: {
-        should: [
-          { terms: { 'source.name': activeSources } },
-          { bool: { must_not: { exists: { field: 'source.name' } } } },
-        ],
+        should: [{ terms: { 'source.name': activeSources } }, { bool: { must_not: { exists: { field: 'source.name' } } } }],
         minimum_should_match: 1,
       },
     },

@@ -38,8 +38,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     }
 
     const record = args as Record<string, unknown>;
-    const optionalString = (value: unknown): boolean =>
-      value === undefined || value === null || typeof value === 'string';
+    const optionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string';
 
     return (
       typeof record.artist_name === 'string' &&
@@ -82,12 +81,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     }
   }
 
-  private render(
-    result: QobuzArtistCatalogResult,
-    artistName: string,
-    albumTitle: string | undefined,
-    trackTitle: string | undefined,
-  ): string {
+  private render(result: QobuzArtistCatalogResult, artistName: string, albumTitle: string | undefined, trackTitle: string | undefined): string {
     const artist = result.artist!;
     const sections: string[] = [this.renderArtist(artist, result.candidates, artistName)];
 
@@ -105,7 +99,9 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     if (result.matchedAlbum) {
       const matched = result.matchedAlbum;
       const title = matched.version ? `${matched.title} (${matched.version})` : matched.title;
-      sections.push(`# ALBUM\nqobuzAlbumId|title|year|tracks\n${matched.id}|${title}|${matched.release_date_original?.slice(0, 4) ?? ''}|${matched.tracks_count ?? ''}`);
+      sections.push(
+        `# ALBUM\nqobuzAlbumId|title|year|tracks\n${matched.id}|${title}|${matched.release_date_original?.slice(0, 4) ?? ''}|${matched.tracks_count ?? ''}`,
+      );
     }
 
     sections.push(this.renderTracks(result, albumTitle, trackTitle));
@@ -147,11 +143,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     return `# DISCOGRAPHY (${artist.name})\nqobuzAlbumId|title|year|tracks|quality\n${rows}`;
   }
 
-  private renderTracks(
-    result: QobuzArtistCatalogResult,
-    albumTitle: string | undefined,
-    trackTitle: string | undefined,
-  ): string {
+  private renderTracks(result: QobuzArtistCatalogResult, albumTitle: string | undefined, trackTitle: string | undefined): string {
     const artist = result.artist!;
     const asked = [trackTitle && `"${trackTitle}"`, albumTitle && `on "${albumTitle}"`].filter(Boolean).join(' ');
 
@@ -180,8 +172,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         ? `# TRACKS (${artist.name} — read from the album itself, in running order)\nqobuzTrackId|no|title|duration|quality`
         : `# TRACKS (${asked} by ${artist.name}, best match first)\nqobuzTrackId|title|album|duration|titleMatch`;
 
-    const more =
-      result.tracks.length > MAX_TRACKS_REPORTED ? `\n… and ${result.tracks.length - MAX_TRACKS_REPORTED} more` : '';
+    const more = result.tracks.length > MAX_TRACKS_REPORTED ? `\n… and ${result.tracks.length - MAX_TRACKS_REPORTED} more` : '';
 
     return `${header}\n${rows}${more}`;
   }

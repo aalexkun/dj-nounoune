@@ -56,7 +56,7 @@ export class QobuzToolsDefinition {
         track_title: {
           type: Type.STRING,
           description:
-            'Optional. The recording the user asked for. With album_title it selects from that tracklist; without one it searches the artist\'s catalog.',
+            "Optional. The recording the user asked for. With album_title it selects from that tracklist; without one it searches the artist's catalog.",
         },
       },
       required: ['artist_name'],

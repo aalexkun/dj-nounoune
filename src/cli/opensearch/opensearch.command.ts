@@ -9,17 +9,13 @@ import { OpensearchSemanticSearchSubCommand } from './semantic-search.subcommand
   name: 'opensearch',
   arguments: '<task>',
   description: 'Manage OpenSearch indices and data with neural search',
-  subCommands: [
-    OpensearchCreateIndexSubCommand,
-    OpensearchIndexSongsSubCommand,
-    OpensearchPruneIndexSubCommand,
-    OpensearchSemanticSearchSubCommand,
-  ],
+  subCommands: [OpensearchCreateIndexSubCommand, OpensearchIndexSongsSubCommand, OpensearchPruneIndexSubCommand, OpensearchSemanticSearchSubCommand],
 })
 export class OpensearchCommand extends CommandRunner {
   private readonly logger = new Logger(OpensearchCommand.name);
 
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: create, prune, index, semantic');
+    return Promise.resolve();
   }
 }

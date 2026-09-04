@@ -40,7 +40,7 @@ export class QobuzSearchCurrentTrackSubCommand extends CommandRunner {
       const album = song.album?.title;
 
       if (!title) {
-        this.logger.error(`The current playlog entry (song ${song._id}) has no title to search for.`);
+        this.logger.error(`The current playlog entry (song ${song._id.toString()}) has no title to search for.`);
         return;
       }
 

@@ -22,19 +22,12 @@ export class OpensearchIndexSongsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(
-    passedParam: string[],
-    options?: IndexSongsCommandOptions,
-  ): Promise<void> {
+  async run(passedParam: string[], options?: IndexSongsCommandOptions): Promise<void> {
     const fetchLimit = options?.fetch;
-    const addedAfter = options?.addedAfter
-      ? new Date(options.addedAfter)
-      : undefined;
+    const addedAfter = options?.addedAfter ? new Date(options.addedAfter) : undefined;
 
     this.logger.log(
-      `Fetching songs from MusicDb... limit: ${
-        fetchLimit || 'All'
-      }, added after: ${addedAfter || 'Beginning of time'}`,
+      `Fetching songs from MusicDb... limit: ${fetchLimit || 'All'}, added after: ${addedAfter ? addedAfter.toISOString() : 'Beginning of time'}`,
     );
 
     let songs = await this.musicDbService.getAllPopulatedSongs(addedAfter);

@@ -167,7 +167,7 @@ export class NegentropyService {
         continue;
       }
 
-      if (await this.alreadyProcessed(song._id as Types.ObjectId)) continue;
+      if (await this.alreadyProcessed(song._id)) continue;
 
       if (budget <= 0) {
         this.logger.debug('Lookup budget spent, leaving the rest of the queue for the next pass');
@@ -213,14 +213,14 @@ export class NegentropyService {
     dryRun: boolean,
     result: NegentropyPassResult,
   ): Promise<void> {
-    const songId = song._id as Types.ObjectId;
+    const songId = song._id;
     const [populated] = await this.musicDbService.getPopulatedSongsByIds([songId.toString()]);
     const title = populated?.title ?? song.title;
     const artist = populated?.artist?.artist;
     const album = populated?.album?.title;
 
     if (!title) {
-      this.logger.debug(`Song ${songId} has no title to search Qobuz with`);
+      this.logger.debug(`Song ${songId.toString()} has no title to search Qobuz with`);
       return;
     }
 
@@ -245,12 +245,7 @@ export class NegentropyService {
       const detail = `${reason}, score ${match.score.total.toFixed(2)}`;
       await this.applySwap(entry, match.id, label, detail, dryRun, result, 'upgraded', populated);
 
-      await this.recordJob(
-        songId,
-        'upgraded',
-        { title, artist, album, reason, qobuzTrackId: match.id, score: match.score.total },
-        dryRun,
-      );
+      await this.recordJob(songId, 'upgraded', { title, artist, album, reason, qobuzTrackId: match.id, score: match.score.total }, dryRun);
     } catch (error: unknown) {
       const message = getErrorMessage(error);
       result.failed++;
@@ -286,10 +281,10 @@ export class NegentropyService {
       });
 
       if (written) {
-        this.logger.log(`Set album artwork on album ${song.album} from Qobuz`);
+        this.logger.log(`Set album artwork on album ${song.album.toString()} from Qobuz`);
       }
     } catch (error: unknown) {
-      this.logger.warn(`Could not set the album artwork for song ${song._id}: ${getErrorMessage(error)}`);
+      this.logger.warn(`Could not set the album artwork for song ${song._id.toString()}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -305,7 +300,7 @@ export class NegentropyService {
     dryRun: boolean,
     result: NegentropyPassResult,
   ): Promise<void> {
-    const [populated] = await this.musicDbService.getPopulatedSongsByIds([(song._id as Types.ObjectId).toString()]);
+    const [populated] = await this.musicDbService.getPopulatedSongsByIds([song._id.toString()]);
     const label = `"${populated?.title ?? song.title}" by ${populated?.artist?.artist ?? 'unknown'}`;
 
     try {
@@ -406,7 +401,7 @@ export class NegentropyService {
         .findOneAndUpdate({ songId }, { $set: { songId, status, processedAt: new Date(), ...fields } }, { upsert: true })
         .exec();
     } catch (error: unknown) {
-      this.logger.warn(`Could not record the negentropy job for ${songId}: ${getErrorMessage(error)}`);
+      this.logger.warn(`Could not record the negentropy job for ${songId.toString()}: ${getErrorMessage(error)}`);
     }
   }
 }

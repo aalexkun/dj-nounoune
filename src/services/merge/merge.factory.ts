@@ -20,9 +20,7 @@ export class MergeFactory {
   getMerger(type: 'song'): Merger<SongDocument>;
   getMerger(type: 'album'): Merger<AlbumDocument>;
   getMerger(type: 'artist'): Merger<ArtistDocument>;
-  getMerger(
-    type: 'song' | 'album' | 'artist',
-  ): Merger<SongDocument> | Merger<AlbumDocument> | Merger<ArtistDocument> {
+  getMerger(type: 'song' | 'album' | 'artist'): Merger<SongDocument> | Merger<AlbumDocument> | Merger<ArtistDocument> {
     switch (type) {
       case 'song':
         return this.songMerger;

@@ -23,6 +23,11 @@ import {
 } from '../services/playlog/now-playing.event';
 import { getErrorMessage } from '../utils/error.utils';
 import { MpdClientService } from '../services/mpd-client/mpd-client.service';
+
+/** socket.io hands transport details as either a string or an object; render both for a log line. */
+function describeDetail(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
 import { NextMpdRequest } from '../services/mpd-client/requests/NextMpdRequest';
 import { PreviousMpdRequest } from '../services/mpd-client/requests/PreviousMpdRequest';
 import { PlayMpdRequest } from '../services/mpd-client/requests/PlayMpdRequest';
@@ -215,8 +220,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const sentAt = typeof payload === 'number' ? payload : undefined;
 
     this.logger.debug(
-      `vibing-ping from ${client.id} (transport=${client.conn.transport.name}` +
-        `${sentAt ? `, ${Date.now() - sentAt}ms out` : ''})`,
+      `vibing-ping from ${client.id} (transport=${client.conn.transport.name}` + `${sentAt ? `, ${Date.now() - sentAt}ms out` : ''})`,
     );
 
     // Answered with an event rather than an ack: an explicit round trip on the wire, in both logs.
@@ -303,10 +307,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const { reaction } = parsed.data;
     this.logger.log(`vibing-reaction "${reaction}" from ${client.id}`);
 
-    this.chatService.processFeedbackMessage(
-      VIBING_FEEDBACK_SESSION,
-      new ChatFeedbackEvent(VIBING_FEEDBACK_SESSION, reaction, reaction),
-    );
+    this.chatService.processFeedbackMessage(VIBING_FEEDBACK_SESSION, new ChatFeedbackEvent(VIBING_FEEDBACK_SESSION, reaction, reaction));
 
     client.broadcast.emit(VibingReactionBroadcastMessage, { reaction, at: now });
 
@@ -449,7 +450,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const connection = client.conn;
 
     client.on('disconnect', (reason: string, description?: unknown) => {
-      this.logger.warn(`[${client.id}] socket.io disconnect: ${reason}${description ? ` — ${String(description)}` : ''}`);
+      this.logger.warn(`[${client.id}] socket.io disconnect: ${reason}${description ? ` — ${describeDetail(description)}` : ''}`);
     });
 
     connection.on('upgrade', () => {
@@ -457,7 +458,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     });
 
     connection.on('close', (reason: string, description?: unknown) => {
-      this.logger.warn(`[${client.id}] engine.io closed: ${reason}${description ? ` — ${String(description)}` : ''}`);
+      this.logger.warn(`[${client.id}] engine.io closed: ${reason}${description ? ` — ${describeDetail(description)}` : ''}`);
     });
 
     connection.on('error', (error: unknown) => {

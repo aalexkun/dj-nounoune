@@ -38,7 +38,7 @@ export class CacheHandler {
     return existingCaches;
   }
 
-  public async cache( cacheSetting: ReadonlyAgentCache): Promise<CachedContent | undefined> {
+  public async cache(cacheSetting: ReadonlyAgentCache): Promise<CachedContent | undefined> {
     const cachedFiles = await this.client.files.list();
     let existingFiles = cachedFiles.page;
     while (cachedFiles.hasNextPage()) {

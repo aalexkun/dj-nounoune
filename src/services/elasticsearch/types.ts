@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-
 const ZentityExplanationResolverSchema = z.object({
   attributes: z.array(z.string()),
 });
@@ -29,7 +28,6 @@ export const ZentityHitSchema = z.object({
   _explanation: ZentityExplanationSchema.optional(),
 });
 
-
 export const ZentityResolutionResponseSchema = z.object({
   took: z.number(),
   hits: z.object({
@@ -49,9 +47,7 @@ export const SongIndexMappingSchema = z.object({
   album: z.string().optional(),
 });
 
-export type ZentityResolutionResponse = z.infer<
-  typeof ZentityResolutionResponseSchema
->;
+export type ZentityResolutionResponse = z.infer<typeof ZentityResolutionResponseSchema>;
 
 export type ZentityHit = z.infer<typeof ZentityHitSchema>;
 export type ZentityExplanation = z.infer<typeof ZentityExplanationSchema>;

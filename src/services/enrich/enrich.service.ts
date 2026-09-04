@@ -261,8 +261,7 @@ export class EnrichService {
     // Requests are built from `songs`, not from `ids`: `getPopulatedSongsByIds` uses `$in` and
     // does not preserve the order it was given, and the results are zipped back by index.
     const requests = songs.map((song) => new LyricSemanticRequest(song.artist.artist, song.title));
-    const responses =
-      requests.length > 0 ? await this.enrichAgent.parallelGenerate(requests, options.concurrency ?? LYRIC_CONCURRENCY) : [];
+    const responses = requests.length > 0 ? await this.enrichAgent.parallelGenerate(requests, options.concurrency ?? LYRIC_CONCURRENCY) : [];
 
     for (const [index, song] of songs.entries()) {
       const songId = song._id.toString();

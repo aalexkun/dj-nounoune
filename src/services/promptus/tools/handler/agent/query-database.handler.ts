@@ -2,13 +2,12 @@ import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../..
 import { QueryDatabaseAgent } from '../../../agent/query-database/query-database.agent';
 import { MusicSearchResult, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { JSONPath } from 'jsonpath-plus';
+import { Types } from 'mongoose';
 import { MusicDbAggregateResult } from '../../../../music-db/music-db.service';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 import { Logger } from '@nestjs/common';
 import { getErrorMessage } from '../../../../../utils/error.utils';
 import { isSourceActive } from '../../../../../config/active-source.util';
-
-
 
 const MusicResultExpected: MusicSearchResult = {
   id: 'string',
@@ -26,39 +25,44 @@ export class QueryDatabaseHandler implements ToolHandler {
 
   constructor(private readonly queryDatabaseAgent: QueryDatabaseAgent) {}
 
+  /** The first value at a JSONPath, rendered as a string; `''` when the path finds nothing. */
   private extractProperty(jsonPath: string | null, song: MusicDbAggregateResult): string {
     if (!jsonPath) return '';
-    const property = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false });
-    return Array.isArray(property) ? property[0] : property;
+    const property: unknown = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false });
+    const first: unknown = Array.isArray(property) ? property[0] : property;
+    if (first === undefined || first === null) return '';
+    if (typeof first === 'string') return first;
+    if (first instanceof Types.ObjectId) return first.toHexString();
+    return typeof first === 'number' || typeof first === 'boolean' ? String(first) : JSON.stringify(first);
   }
 
   private extractSourceProperty(jsonPath: string | null, song: MusicDbAggregateResult): PlaySource[] {
     if (!jsonPath) return [];
-    const property = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false }) as unknown;
-    const castedProperty = Array.isArray(property) ? property[0] : property;
+    const property: unknown = JSONPath({ path: jsonPath, json: song, ignoreEvalErrors: false });
+    const castedProperty: unknown = Array.isArray(property) ? property[0] : property;
 
     if (!Array.isArray(castedProperty)) {
       throw new Error('Invalid source property');
     }
 
     const playable = ['qobuz', 'file', 'spotify'];
-    let sources: PlaySource[] = [];
-    for (const src of castedProperty) {
-      if (typeof src !== 'object' || src === null || typeof src.sourceId !== 'string' || !playable.includes(src.name)) {
+    const sources: PlaySource[] = [];
+    for (const src of castedProperty as unknown[]) {
+      const candidate = typeof src === 'object' && src !== null ? (src as Record<string, unknown>) : null;
+      if (!candidate || typeof candidate.sourceId !== 'string' || typeof candidate.name !== 'string' || !playable.includes(candidate.name)) {
         this.logger.warn(`Source ${JSON.stringify(src)} is not supported. Skipping.`);
         continue;
       }
       // Whatever the model queried, a source whose subscription is inactive must never
       // make it back into a playlist.
-      if (!isSourceActive(src.name)) {
-        this.logger.debug(`Source ${src.name} is not active. Skipping.`);
+      if (!isSourceActive(candidate.name)) {
+        this.logger.debug(`Source ${candidate.name} is not active. Skipping.`);
         continue;
       }
       sources.push(src as PlaySource);
     }
 
     return sources;
-
   }
 
   private castWithProbableStructure(dbResult: MusicDbAggregateResult[]): MusicSearchResult[] {
@@ -87,7 +91,7 @@ export class QueryDatabaseHandler implements ToolHandler {
         // A missing id means the assumed structure was wrong - throw so the caller retries with
         // the agentic cast. An empty source array does not: it is the expected outcome for a song
         // whose only sources are inactive, and re-casting it would not bring them back.
-        if (song.id === undefined || song.source === undefined || !Array.isArray(song.source)) {
+        if (!song.id) {
           throw new Error('Invalid casting');
         }
 
@@ -153,7 +157,7 @@ export class QueryDatabaseHandler implements ToolHandler {
       let musicSearchResults: MusicSearchResult[] = [];
       try {
         musicSearchResults = this.castWithProbableStructure(dbResult);
-      } catch (e) {
+      } catch {
         this.logger.error('Casting with assumed returned structure failed. Trying with agentic model.');
         musicSearchResults = await this.castWithAgenticModel(dbResult);
       }

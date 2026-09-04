@@ -4,10 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
-import {
-  Deduplication,
-  DeduplicationDocument,
-} from '../../schemas/deduplication.schema';
+import { Deduplication, DeduplicationDocument } from '../../schemas/deduplication.schema';
 import { MergeFactory } from './merge.factory';
 import { OpensearchService } from '../opensearch/opensearch.service';
 import { PopulatedSong } from '../music-db/music-db.service';
@@ -34,14 +31,8 @@ export class MergeService {
    * album and artist merges when the referenced IDs differ.
    * After merging, hard-deletes the duplicate and updates the dedup tracker.
    */
-  async mergeDuplicateTracks(
-    primaryId: string,
-    duplicateId: string,
-    deduplicationDocId: string,
-  ): Promise<void> {
-    this.logger.log(
-      `Merging duplicate track ${duplicateId} into primary ${primaryId}`,
-    );
+  async mergeDuplicateTracks(primaryId: string, duplicateId: string, deduplicationDocId: string): Promise<void> {
+    this.logger.log(`Merging duplicate track ${duplicateId} into primary ${primaryId}`);
 
     let primary = await this.songModel.findById(primaryId);
     let duplicate = await this.songModel.findById(duplicateId);
@@ -50,9 +41,7 @@ export class MergeService {
       throw new Error(`Primary song not found: ${primaryId}`);
     }
     if (!duplicate) {
-      this.logger.warn(
-        `Duplicate song ${duplicateId} not found — may have been deleted already. Skipping.`,
-      );
+      this.logger.warn(`Duplicate song ${duplicateId} not found — may have been deleted already. Skipping.`);
       return;
     }
 
@@ -93,10 +82,7 @@ export class MergeService {
 
     // Remove duplicate song from its album's tracks array
     // Since albums might have been merged, the duplicate song's album is now the same as the primary's
-    await this.albumModel.updateOne(
-      { _id: primary.album },
-      { $pull: { tracks: new Types.ObjectId(duplicateId) } },
-    );
+    await this.albumModel.updateOne({ _id: primary.album }, { $pull: { tracks: new Types.ObjectId(duplicateId) } });
 
     // Rebuild the survivor's index entry from what was just saved. The merger only ever removed
     // the duplicate's document; the primary's merged title, sources and lyric distillation would
@@ -111,9 +97,7 @@ export class MergeService {
       $set: { status: 'completed' },
     });
 
-    this.logger.log(
-      `Deduplication ${deduplicationDocId} marked as completed`,
-    );
+    this.logger.log(`Deduplication ${deduplicationDocId} marked as completed`);
   }
 
   /**
@@ -121,13 +105,8 @@ export class MergeService {
    * Re-points any songs still referencing the duplicate, and cleans up
    * the duplicate album ID from its artist's albums array.
    */
-  async mergeDuplicateAlbums(
-    primaryId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    this.logger.log(
-      `Merging duplicate album ${duplicateId} into primary ${primaryId}`,
-    );
+  async mergeDuplicateAlbums(primaryId: string, duplicateId: string): Promise<void> {
+    this.logger.log(`Merging duplicate album ${duplicateId} into primary ${primaryId}`);
 
     const primary = await this.albumModel.findById(primaryId);
     const duplicate = await this.albumModel.findById(duplicateId);
@@ -136,9 +115,7 @@ export class MergeService {
       throw new Error(`Primary album not found: ${primaryId}`);
     }
     if (!duplicate) {
-      this.logger.warn(
-        `Duplicate album ${duplicateId} not found — may have been deleted already. Skipping.`,
-      );
+      this.logger.warn(`Duplicate album ${duplicateId} not found — may have been deleted already. Skipping.`);
       return;
     }
 
@@ -157,29 +134,19 @@ export class MergeService {
       { $set: { album: new Types.ObjectId(primaryId) } },
     );
     if (songRePoint.modifiedCount > 0) {
-      this.logger.log(
-        `Re-pointed ${songRePoint.modifiedCount} song(s) from album ${duplicateId} to ${primaryId}`,
-      );
+      this.logger.log(`Re-pointed ${songRePoint.modifiedCount} song(s) from album ${duplicateId} to ${primaryId}`);
     }
 
     // Remove duplicate album from its artist's albums array
-    await this.artistModel.updateOne(
-      { albums: new Types.ObjectId(duplicateId) },
-      { $pull: { albums: new Types.ObjectId(duplicateId) } },
-    );
+    await this.artistModel.updateOne({ albums: new Types.ObjectId(duplicateId) }, { $pull: { albums: new Types.ObjectId(duplicateId) } });
   }
 
   /**
    * Merges a duplicate artist into the primary artist.
    * Re-points any songs and albums still referencing the duplicate.
    */
-  async mergeDuplicateArtists(
-    primaryId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    this.logger.log(
-      `Merging duplicate artist ${duplicateId} into primary ${primaryId}`,
-    );
+  async mergeDuplicateArtists(primaryId: string, duplicateId: string): Promise<void> {
+    this.logger.log(`Merging duplicate artist ${duplicateId} into primary ${primaryId}`);
 
     const primary = await this.artistModel.findById(primaryId);
     const duplicate = await this.artistModel.findById(duplicateId);
@@ -188,9 +155,7 @@ export class MergeService {
       throw new Error(`Primary artist not found: ${primaryId}`);
     }
     if (!duplicate) {
-      this.logger.warn(
-        `Duplicate artist ${duplicateId} not found — may have been deleted already. Skipping.`,
-      );
+      this.logger.warn(`Duplicate artist ${duplicateId} not found — may have been deleted already. Skipping.`);
       return;
     }
 
@@ -209,9 +174,7 @@ export class MergeService {
       { $set: { artist: new Types.ObjectId(primaryId) } },
     );
     if (songRePoint.modifiedCount > 0) {
-      this.logger.log(
-        `Re-pointed ${songRePoint.modifiedCount} song(s) from artist ${duplicateId} to ${primaryId}`,
-      );
+      this.logger.log(`Re-pointed ${songRePoint.modifiedCount} song(s) from artist ${duplicateId} to ${primaryId}`);
     }
 
     // Re-point any albums referencing the duplicate artist
@@ -220,9 +183,7 @@ export class MergeService {
       { $set: { artist: new Types.ObjectId(primaryId) } },
     );
     if (albumRePoint.modifiedCount > 0) {
-      this.logger.log(
-        `Re-pointed ${albumRePoint.modifiedCount} album(s) from artist ${duplicateId} to ${primaryId}`,
-      );
+      this.logger.log(`Re-pointed ${albumRePoint.modifiedCount} album(s) from artist ${duplicateId} to ${primaryId}`);
     }
   }
 }

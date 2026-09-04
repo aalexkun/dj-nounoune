@@ -11,9 +11,8 @@ export class ProfilerRunSubCommand extends CommandRunner {
   }
 
   async run(): Promise<void> {
-
     console.log('Starting Profiler Analysis...');
-    const out = await  this.profilerService.getDatabaseProfileForPrompt()
-    console.log(out)
+    const out = await this.profilerService.getDatabaseProfileForPrompt();
+    console.log(out);
   }
 }

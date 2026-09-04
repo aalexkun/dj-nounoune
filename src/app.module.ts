@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, ModuleMetadata, Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -46,7 +46,7 @@ import { WeatherModule } from './services/weather/weather.module';
 import { EnrichService } from './services/enrich/enrich.service';
 import { EnrichScheduler } from './schedulers/enrich.scheduler';
 
-const imports: Array<any> = [
+const imports: NonNullable<ModuleMetadata['imports']> = [
   // Load global env
   ConfigModule.forRoot({
     isGlobal: true,
@@ -55,7 +55,7 @@ const imports: Array<any> = [
   MongooseModule.forRootAsync({
     imports: [ConfigModule],
     inject: [ConfigService],
-    useFactory: async (configService: ConfigService) => ({
+    useFactory: (configService: ConfigService) => ({
       uri: configService.get<string>('MONGODB_URI'),
       dbName: configService.get<string>('MONGO_DATABASE'),
     }),
@@ -82,7 +82,7 @@ const imports: Array<any> = [
   WeatherModule,
 ];
 
-const providers: Array<any> = [
+const providers: Provider[] = [
   AppService,
   PromptusService,
   PsvService,

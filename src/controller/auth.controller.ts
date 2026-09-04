@@ -1,12 +1,8 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
-
-
-
 @Controller('auth')
 export class AuthController {
-  
   @Get('/spotify/callback')
   handleSpotifyCallback(@Query('code') code: string, @Res() res: Response) {
     if (!code) {
@@ -15,7 +11,7 @@ export class AuthController {
 
     res.send(this.renderAuthCodePage(code));
   }
-  
+
   @Get('/qobuz/callback')
   handleQobuzCallback(@Query('code_autorisation') codeAutorisation: string, @Res() res: Response) {
     if (!codeAutorisation) {
@@ -31,11 +27,7 @@ export class AuthController {
    * and saying so beats the bare "No code provided" that would otherwise come back.
    */
   @Get('/youtube/callback')
-  handleYoutubeCallback(
-    @Query('code') code: string,
-    @Query('error') error: string,
-    @Res() res: Response,
-  ) {
+  handleYoutubeCallback(@Query('code') code: string, @Query('error') error: string, @Res() res: Response) {
     if (error) {
       return res.status(400).send(`YouTube authorization was refused: ${error}`);
     }

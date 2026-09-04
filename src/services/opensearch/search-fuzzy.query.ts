@@ -1,4 +1,4 @@
-import { SearchQuery } from './query.interface';
+import { QueryClause, SearchQuery, SearchRequestBody } from './query.interface';
 import { buildActiveSourceFilter } from './source-filter.util';
 
 /**
@@ -19,7 +19,7 @@ export class SearchFuzzyQuery implements SearchQuery {
     private activeSources: string[] | null = null,
   ) {}
 
-  getQuery(): Record<string, any> {
+  getQuery(): SearchRequestBody {
     const keywordList = Array.isArray(this.keywords) ? this.keywords : [this.keywords];
 
     const textFieldGroups = [
@@ -28,7 +28,7 @@ export class SearchFuzzyQuery implements SearchQuery {
       ['artist.keyword', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
     ];
 
-    const shouldClauses: any[] = [];
+    const shouldClauses: QueryClause[] = [];
 
     for (const kw of keywordList) {
       for (const fields of textFieldGroups) {

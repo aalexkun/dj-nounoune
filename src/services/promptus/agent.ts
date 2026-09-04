@@ -1,4 +1,4 @@
-import { CachedContent, ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { CachedContent, Content, ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import { ThrottleHandler } from './handler/throttle.handler';
@@ -25,7 +25,7 @@ type AgentCache = {
   cacheContent: CachedContent | undefined;
 };
 
-export type ReadonlyAgentCache = ReadonlyExcept<AgentCache, 'cacheContent'>
+export type ReadonlyAgentCache = ReadonlyExcept<AgentCache, 'cacheContent'>;
 
 export abstract class Agent {
   public readonly name: string;
@@ -69,7 +69,7 @@ export abstract class Agent {
       }
 
       if (response.functionCalls) {
-        const responseContent: any = {
+        const responseContent: Content = {
           role: 'MODEL',
           parts: [],
         };
@@ -92,7 +92,7 @@ export abstract class Agent {
             };
             responseContent.parts?.push(fnResult);
           } else {
-            this.logger.error(`${fc} did not return any result`);
+            this.logger.error(`${JSON.stringify(fc)} did not return any result`);
           }
         }
         request.pushFunctionResponse(responseContent);
@@ -121,7 +121,7 @@ export abstract class Agent {
   async parallelGenerate<ReqType>(requests: PromptusRequest<ReqType>[], concurrencyLimit: number = 1): Promise<ReqType[]> {
     this.logger.log(`Starting parallel generation for ${requests.length} requests (Concurrency Limit: ${concurrencyLimit})...`);
 
-    const results: ReqType[] = new Array(requests.length);
+    const results = new Array<ReqType>(requests.length);
     let currentIndex = 0;
 
     const worker = async () => {

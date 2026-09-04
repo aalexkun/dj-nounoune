@@ -20,8 +20,11 @@ export class PlayMusicHandler implements ToolHandler {
   readonly name: string = MpdToolsDefinition.playMpdCommand.name;
   private readonly logger = new Logger('PlayMusicHandler');
 
-
-  constructor(private mpdClientService: MpdClientService, private configService: ConfigService, private redisCacheService: RedisCacheService) {}
+  constructor(
+    private mpdClientService: MpdClientService,
+    private configService: ConfigService,
+    private redisCacheService: RedisCacheService,
+  ) {}
 
   isPlayMusicArgs(args: unknown): args is PlayMusicArgs {
     if (!args || typeof args !== 'object') {
@@ -30,7 +33,6 @@ export class PlayMusicHandler implements ToolHandler {
 
     const record = args as Record<string, unknown>;
     return typeof record.cacheKey === 'string' && typeof record.clearQueue === 'boolean';
-
   }
 
   private getBestSource(sources: PlaySource[]): PlaySource | undefined {
@@ -66,10 +68,9 @@ export class PlayMusicHandler implements ToolHandler {
       throw new Error(`Invalid arguments provided to play_music. Expected an array of songs with sourceIds.`);
     }
 
-
     const songsQueued: string[] = [];
 
-    if(args.clearQueue){
+    if (args.clearQueue) {
       try {
         await this.mpdClientService.send(new ClearMpdRequest());
       } catch (e) {
@@ -80,7 +81,7 @@ export class PlayMusicHandler implements ToolHandler {
 
     const songs = await this.redisCacheService.get(args.cacheKey, MusicSearchResultsSchema);
 
-    if(!songs){
+    if (!songs) {
       throw new Error(`No songs found for cacheKey: ${args.cacheKey}`);
     }
 
@@ -93,13 +94,12 @@ export class PlayMusicHandler implements ToolHandler {
       // Get best source
       const bestSource = this.getBestSource(song.source);
 
-      if(!bestSource) {
+      if (!bestSource) {
         this.logger.error(`No source found for song: ${JSON.stringify(song)}`);
         continue;
       }
 
       this.logger.debug(`Selected best source from ${song.source.length} option(s) for song: ${song.title || 'Unknown'}`);
-
 
       let uri: string;
       if (bestSource.name === 'qobuz') {
@@ -127,7 +127,7 @@ export class PlayMusicHandler implements ToolHandler {
           }
         }
         songsQueued.push(`${song.artist} - ${song.album} - ${song.title}`);
-      } catch (e) {
+      } catch {
         this.logger.debug(`Could not added to playlist: ${song.title} - ${song.artist} - ${song.album}`);
       }
     }

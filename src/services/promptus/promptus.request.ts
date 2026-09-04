@@ -4,7 +4,6 @@ import {
   SchemaUnion,
   CachedContent,
   ContentListUnion,
-  FunctionCall,
   Content,
   ToolListUnion,
 } from '@google/genai';

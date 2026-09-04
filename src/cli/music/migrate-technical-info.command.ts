@@ -6,16 +6,13 @@ import { Song, SongDocument } from '../../schemas/song.schema';
 
 @SubCommand({
   name: 'migrate-technical-info',
-  description:
-    'Migrate technical_info from the song root into source[0]. Assumes each song has exactly one source entry.',
+  description: 'Migrate technical_info from the song root into source[0]. Assumes each song has exactly one source entry.',
 })
 @Injectable()
 export class MigrateTechnicalInfoCommand extends CommandRunner {
   private readonly logger = new Logger(MigrateTechnicalInfoCommand.name);
 
-  constructor(
-    @InjectModel(Song.name) private songModel: Model<SongDocument>,
-  ) {
+  constructor(@InjectModel(Song.name) private songModel: Model<SongDocument>) {
     super();
   }
 
@@ -23,9 +20,7 @@ export class MigrateTechnicalInfoCommand extends CommandRunner {
     this.logger.log('Starting migration: moving technical_info into source[0]...');
 
     // Find all songs that still have the legacy top-level technical_info field
-    const cursor = this.songModel
-      .find({ technical_info: { $exists: true } })
-      .cursor();
+    const cursor = this.songModel.find({ technical_info: { $exists: true } }).cursor();
 
     let migrated = 0;
     let skipped = 0;
@@ -43,9 +38,7 @@ export class MigrateTechnicalInfoCommand extends CommandRunner {
         }
 
         if (!song.source || song.source.length === 0) {
-          this.logger.warn(
-            `Song "${song.title}" (${song._id}) has no source entries – skipping`,
-          );
+          this.logger.warn(`Song "${song.title}" (${song._id.toString()}) has no source entries – skipping`);
           skipped++;
           continue;
         }
@@ -68,14 +61,10 @@ export class MigrateTechnicalInfoCommand extends CommandRunner {
       } catch (err) {
         errored++;
         const errorMessage = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Failed to migrate song "${song.title}" (${song._id}): ${errorMessage}`,
-        );
+        this.logger.error(`Failed to migrate song "${song.title}" (${song._id.toString()}): ${errorMessage}`);
       }
     }
 
-    this.logger.log(
-      `Migration complete. Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errored}`,
-    );
+    this.logger.log(`Migration complete. Migrated: ${migrated}, Skipped: ${skipped}, Errors: ${errored}`);
   }
 }

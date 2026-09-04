@@ -19,7 +19,7 @@ export class QobuzAuthUtil {
     this.QOBUZ_OAUTH_URL = this.configService.get<string>('QOBUZ_OAUTH_URL') || 'https://www.qobuz.com/signin/oauth';
   }
 
-  public async getAuthorizeUrl(): Promise<string> {
+  public getAuthorizeUrl(): Promise<string> {
     const redirectUrl = this.configService.get<string>('QOBUZ_REDIRECT_URL') || 'https://dj-nounoune.supa-smart.lan/callback';
 
     const params = new URLSearchParams({
@@ -30,7 +30,7 @@ export class QobuzAuthUtil {
     const authorizeURL = `${this.QOBUZ_OAUTH_URL}?${params.toString()}`;
     this.logger.log(`1. Visit this URL to authorize the app:\n${authorizeURL}`);
 
-    return authorizeURL;
+    return Promise.resolve(authorizeURL);
   }
 
   public async handleAuthorizationCodeGrant(code: string): Promise<{ userId: string; userAuthToken: string } | void> {
@@ -57,8 +57,8 @@ export class QobuzAuthUtil {
         throw new Error(`Token exchange failed (${tokenResponse.status}): ${text}`);
       }
 
-      const tokenJson = await tokenResponse.json() as unknown;
-      
+      const tokenJson = (await tokenResponse.json()) as unknown;
+
       const TokenDataSchema = z.object({
         token: z.string(),
         user_id: z.union([z.string(), z.number()]),
@@ -84,23 +84,25 @@ export class QobuzAuthUtil {
         throw new Error(`Login validation failed (${loginResponse.status}): ${text}`);
       }
 
-      const profileJson = await loginResponse.json() as unknown;
-      
-      const ProfileDataSchema = z.object({
-        user: z.object({
-          email: z.string().optional(),
-        }).optional(),
-      }).passthrough();
-      
+      const profileJson = (await loginResponse.json()) as unknown;
+
+      const ProfileDataSchema = z
+        .object({
+          user: z
+            .object({
+              email: z.string().optional(),
+            })
+            .optional(),
+        })
+        .passthrough();
+
       const profileData = ProfileDataSchema.parse(profileJson);
       const userEmail = profileData.user?.email || 'Unknown User';
 
       const sessionPath = path.join(process.cwd(), '.qobuz-session.json');
       fs.writeFileSync(sessionPath, JSON.stringify({ userId, userAuthToken }, null, 2), 'utf8');
 
-      this.logger.log(
-        `\nSuccess! Authenticated as ${userEmail}. Session saved to .qobuz-session.json`,
-      );
+      this.logger.log(`\nSuccess! Authenticated as ${userEmail}. Session saved to .qobuz-session.json`);
 
       return { userId, userAuthToken };
     } catch (error) {

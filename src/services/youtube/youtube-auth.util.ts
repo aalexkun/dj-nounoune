@@ -49,9 +49,7 @@ export class YoutubeAuthUtil {
   }
 
   private get redirectUrl(): string {
-    return (
-      this.configService.get<string>('YOUTUBE_REDIRECT_URL') ?? 'http://localhost:3000/auth/youtube/callback'
-    );
+    return this.configService.get<string>('YOUTUBE_REDIRECT_URL') ?? 'http://localhost:3000/auth/youtube/callback';
   }
 
   public getSessionFilePath(): string {

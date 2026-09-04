@@ -11,8 +11,11 @@ import {
   MlAgentSearchResponseSchema,
   MlAgentRegisterResponseSchema,
   OpenSearchSearchResponseSchema,
-  OpenSearchSearchResponse, OpenSearchArtistSearchResponse, OpenSearchArtistSearchResponseSchema,
-  OpenSearchAlbumSearchResponse, OpenSearchAlbumSearchResponseSchema,
+  OpenSearchSearchResponse,
+  OpenSearchArtistSearchResponse,
+  OpenSearchArtistSearchResponseSchema,
+  OpenSearchAlbumSearchResponse,
+  OpenSearchAlbumSearchResponseSchema,
 } from './types';
 import { SearchDeduplicationSongQuery } from './search-deduplication-song.query';
 import { SearchSongQuery } from './search-song.query';
@@ -27,7 +30,6 @@ import { SearchSemanticQuery } from './search-semantic.query';
 import { getActiveSourceTypes } from '../../config/active-source.util';
 import { getErrorMessage } from '../../utils/error.utils';
 
-
 export type DuplicateSongCheck = {
   songId: string;
   track_number: number;
@@ -36,9 +38,7 @@ export type DuplicateSongCheck = {
   title: string;
   artist: string;
   album: string;
-}
-
-
+};
 
 @Injectable()
 export class OpensearchService {
@@ -49,9 +49,6 @@ export class OpensearchService {
   public getClient(): Client | null {
     return this.client;
   }
-
-
-
 
   constructor(private readonly configService: ConfigService) {
     const node = this.configService.get<string>('OPENSEARCH_NODE') || this.configService.get<string>('ELASTIC_NODE');
@@ -156,11 +153,10 @@ export class OpensearchService {
 
     this.logger.log('Starting OpenSearch index and model creation process...');
 
-
     this.logger.log('Configure Cluster Settings');
     try {
       // 0 Configure Cluster Settings
-      const settingResonse = await this.client.transport.request({
+      await this.client.transport.request({
         method: 'PUT',
         path: '/_cluster/settings',
         body: {
@@ -331,7 +327,7 @@ export class OpensearchService {
       const existsResponse = await this.client.indices.exists({
         index: 'songs',
       });
-      const exists = existsResponse.body as boolean;
+      const exists = existsResponse.body;
 
       if (exists) {
         this.logger.warn('Index "songs" already exists. Prune it first to recreate.');
@@ -341,9 +337,9 @@ export class OpensearchService {
       this.logger.log('Creating index "songs" with k-NN settings...');
 
       const dynamicMappings = generateDynamicMappings(SongIndices.mappings, [
-        { prefix: '', schema: SongSchema as any },
-        { prefix: 'artist_info', schema: ArtistSchema as any },
-        { prefix: 'album_info', schema: AlbumSchema as any },
+        { prefix: '', schema: SongSchema },
+        { prefix: 'artist_info', schema: ArtistSchema },
+        { prefix: 'album_info', schema: AlbumSchema },
       ]);
 
       await this.client.indices.create({
@@ -363,7 +359,7 @@ export class OpensearchService {
       this.logger.log('Checking for existing DataDistributionTool agent "song_data_distribution_agent"...');
       let agentId: string | null = null;
       try {
-        let agentSearchRes;
+        let agentSearchRes: { body: unknown } | undefined;
         try {
           agentSearchRes = await this.client.transport.request({
             method: 'POST',
@@ -444,7 +440,7 @@ export class OpensearchService {
       const existsResponse = await this.client.indices.exists({
         index: 'songs',
       });
-      const exists = existsResponse.body as boolean;
+      const exists = existsResponse.body;
 
       if (exists) {
         await this.client.indices.delete({ index: 'songs' });
@@ -484,7 +480,7 @@ export class OpensearchService {
       // Delete DataDistributionTool agent if found
       this.logger.log('Searching for DataDistributionTool agent to delete...');
       try {
-        let agentSearchRes;
+        let agentSearchRes: { body: unknown } | undefined;
         try {
           agentSearchRes = await this.client.transport.request({
             method: 'POST',
@@ -538,7 +534,8 @@ export class OpensearchService {
    * vector that means nothing and would sit in every kNN result.
    */
   private buildSongDocument(song: PopulatedSong): Record<string, unknown> {
-    const songObj = typeof (song as any).toObject === 'function' ? (song as any).toObject() : song;
+    // A hydrated document is flattened first; a song that came out of an aggregate is already plain.
+    const songObj: Record<string, unknown> = { ...(typeof song.toObject === 'function' ? song.toObject() : song) };
     const lyric = typeof songObj.lyric_semantic === 'string' ? songObj.lyric_semantic.trim() : '';
 
     return {
@@ -573,7 +570,7 @@ export class OpensearchService {
         body: this.buildSongDocument(song),
       });
     } catch (error) {
-      this.logger.error(`Failed to index song ${song._id}: ${getErrorMessage(error)}`);
+      this.logger.error(`Failed to index song ${song._id.toString()}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -649,7 +646,6 @@ export class OpensearchService {
     // must keep seeing every row in the index.
     const query = new SearchFuzzyQuery(keywords, limit, getActiveSourceTypes());
 
-
     try {
       const response = await this.client.search({
         index: 'songs',
@@ -669,8 +665,6 @@ export class OpensearchService {
       this.logger.error(`Error querying OpenSearch Song Search: ${err.message}`);
       return null;
     }
-
-
   }
 
   /**
@@ -709,10 +703,16 @@ export class OpensearchService {
     }
   }
 
-  async fuzzySearchSong(title: string,album:string, artist:string,albumId?: string | null , artistId?: string | null): Promise<OpenSearchSearchResponse | null> {
+  async fuzzySearchSong(
+    title: string,
+    album: string,
+    artist: string,
+    albumId?: string | null,
+    artistId?: string | null,
+  ): Promise<OpenSearchSearchResponse | null> {
     if (!this.client) return null;
 
-    const query = new SearchSongQuery(title, album, artist,  albumId, artistId);
+    const query = new SearchSongQuery(title, album, artist, albumId, artistId);
 
     try {
       const response = await this.client.search({
@@ -787,4 +787,3 @@ export class OpensearchService {
     }
   }
 }
-

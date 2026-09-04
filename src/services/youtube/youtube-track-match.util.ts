@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-  YoutubeThumbnails,
-  YoutubeTrackMatchScore,
-  YoutubeTrackSearchCriteria,
-} from './youtube.interfaces';
+import { YoutubeThumbnails, YoutubeTrackMatchScore, YoutubeTrackSearchCriteria } from './youtube.interfaces';
 import { similarity } from '../../utils/text-match.utils';
 
 /**
@@ -28,11 +24,7 @@ import { similarity } from '../../utils/text-match.utils';
  * (`Jay-Z - Song` must not split on the first hyphen), while a dash is a separator wherever it
  * appears. `｜` and `|` are the YouTube Music convention for `Title | Artist`, i.e. reversed.
  */
-const TITLE_SEPARATORS: ReadonlyArray<RegExp> = [
-  / [–—] /,
-  / - /,
-  /：| : /,
-];
+const TITLE_SEPARATORS: ReadonlyArray<RegExp> = [/ [–—] /, / - /, /：| : /];
 
 /**
  * Promotional bracket groups, matched against the *contents* of a group rather than the whole
@@ -142,7 +134,10 @@ export function stripTitleNoise(title: string): string {
     break;
   }
 
-  const result = [current, ...kept].filter((part) => !!part).join(' ').trim();
+  const result = [current, ...kept]
+    .filter((part) => !!part)
+    .join(' ')
+    .trim();
 
   return result || title.trim();
 }
@@ -298,10 +293,7 @@ export interface ScorableVideo {
  * interpreted half would throw away a hit that a human would call correct.
  */
 export function scoreVideo(video: ScorableVideo, criteria: YoutubeTrackSearchCriteria): YoutubeTrackMatchScore {
-  const title = Math.max(
-    similarity(criteria.title, video.title),
-    similarity(criteria.title, video.videoTitle),
-  );
+  const title = Math.max(similarity(criteria.title, video.title), similarity(criteria.title, video.videoTitle));
 
   const artist = criteria.artist
     ? Math.max(
@@ -361,14 +353,15 @@ export function buildSearchQueries(criteria: YoutubeTrackSearchCriteria): string
   const artist = criteria.artist?.trim();
   const album = criteria.album?.trim();
 
-  const combinations = [
-    [artist, title],
-    [artist, album, title],
-    [title],
-  ];
+  const combinations = [[artist, title], [artist, album, title], [title]];
 
   const queries = combinations
-    .map((parts) => parts.filter((part) => !!part).join(' ').trim())
+    .map((parts) =>
+      parts
+        .filter((part) => !!part)
+        .join(' ')
+        .trim(),
+    )
     .filter((query) => query.length > 0);
 
   return [...new Set(queries)];
@@ -385,9 +378,7 @@ export function describeParseFailure(item: unknown, error: z.ZodError): string {
   const snippet = record.snippet as Record<string, unknown> | undefined;
   const title = typeof snippet?.title === 'string' ? `"${snippet.title}"` : '(untitled)';
 
-  const fields = error.issues
-    .map((issue) => `${issue.path.join('.') || 'root'} (${issue.message})`)
-    .join(', ');
+  const fields = error.issues.map((issue) => `${issue.path.join('.') || 'root'} (${issue.message})`).join(', ');
 
   return `id ${id} ${title} — ${fields}`;
 }
@@ -401,11 +392,5 @@ export function bestThumbnailUrl(thumbnails: YoutubeThumbnails | undefined): str
     return undefined;
   }
 
-  return (
-    thumbnails.maxres?.url ??
-    thumbnails.standard?.url ??
-    thumbnails.high?.url ??
-    thumbnails.medium?.url ??
-    thumbnails.default?.url
-  );
+  return thumbnails.maxres?.url ?? thumbnails.standard?.url ?? thumbnails.high?.url ?? thumbnails.medium?.url ?? thumbnails.default?.url;
 }

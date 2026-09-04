@@ -1,7 +1,5 @@
 import { DuplicateSongCheck } from './opensearch.service';
-import { SearchQuery } from './query.interface';
-
-
+import { SearchQuery, SearchRequestBody } from './query.interface';
 
 /**
  * Purely lexical. The `boost: 100` on the match clause is a contract, not a tuning knob: the
@@ -12,8 +10,7 @@ import { SearchQuery } from './query.interface';
 export class SearchDeduplicationSongQuery implements SearchQuery {
   constructor(private songAttributes: DuplicateSongCheck) {}
 
-  getQuery(): Record<string, any> {
-
+  getQuery(): SearchRequestBody {
     const mustNotClause = this.songAttributes.songId
       ? [
           {
@@ -102,4 +99,3 @@ export class SearchDeduplicationSongQuery implements SearchQuery {
     };
   }
 }
-

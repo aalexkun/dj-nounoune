@@ -104,7 +104,7 @@ export class WhatsPlayingCommand extends CommandRunner {
 
     if (!this.appService.isAlbumCoverSearchEnabled()) {
       console.log('Skipped: album cover search is off (VIBING_ALBUM_COVER_SEARCH).');
-      console.log('For a one-off run: $env:VIBING_ALBUM_COVER_SEARCH=\'true\'; npm run cli -- music whats-playing');
+      console.log("For a one-off run: $env:VIBING_ALBUM_COVER_SEARCH='true'; npm run cli -- music whats-playing");
       return;
     }
 

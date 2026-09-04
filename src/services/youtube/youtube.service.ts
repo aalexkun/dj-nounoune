@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { z } from 'zod';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
@@ -150,9 +150,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     if (this.session.refreshToken || this.session.accessToken) {
       this.startTokenRefreshInterval();
     } else {
-      this.logger.debug(
-        'No .youtube-session.json found. Only public YouTube data is reachable; run "cli youtube auth" for the rest.',
-      );
+      this.logger.debug('No .youtube-session.json found. Only public YouTube data is reachable; run "cli youtube auth" for the rest.');
     }
   }
 
@@ -215,9 +213,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    */
   private async getAccessToken(): Promise<string> {
     if (!this.session.accessToken && !this.session.refreshToken) {
-      throw new Error(
-        'YouTube session data (.youtube-session.json) is missing. Please authenticate first by running "npm run cli -- youtube auth".',
-      );
+      throw new Error('YouTube session data (.youtube-session.json) is missing. Please authenticate first by running "npm run cli -- youtube auth".');
     }
 
     const expiresAt = this.session.expirationTime;
@@ -253,12 +249,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    *   are mutually exclusive by design — sending a key alongside a bearer token makes Google
    *   attribute quota to the key's project but resolve `mine=true` against nobody.
    */
-  private async youtubeGet<T>(
-    endpoint: string,
-    params: Record<string, string>,
-    schema: z.ZodSchema<T>,
-    authMode: AuthMode = 'key',
-  ): Promise<T> {
+  private async youtubeGet<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>, authMode: AuthMode = 'key'): Promise<T> {
     const query = new URLSearchParams(params);
     const headers: Record<string, string> = { Accept: 'application/json' };
 
@@ -285,8 +276,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       // request was wrong and retrying it today will not help.
       if (reason && QUOTA_ERROR_REASONS.has(reason)) {
         throw new Error(
-          `YouTube API quota exhausted (${reason}): ${message}. ` +
-            'The default allowance is 10,000 units per day and a single search costs 100.',
+          `YouTube API quota exhausted (${reason}): ${message}. ` + 'The default allowance is 10,000 units per day and a single search costs 100.',
         );
       }
 
@@ -369,11 +359,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    const response = await this.youtubeGet(
-      '/channels',
-      { part: 'snippet', id: channelId },
-      YoutubeListEnvelopeSchema,
-    );
+    const response = await this.youtubeGet('/channels', { part: 'snippet', id: channelId }, YoutubeListEnvelopeSchema);
 
     const [channel] = this.parseItems(response.items, YoutubeChannelSchema, 'channel');
 
@@ -472,10 +458,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    * Convenience wrapper over {@link searchTracks} returning the single best candidate, or `null`
    * when nothing scored above `minimumScore`.
    */
-  public async findTrack(
-    criteria: YoutubeTrackSearchCriteria,
-    minimumScore: number = MINIMUM_MATCH_SCORE,
-  ): Promise<YoutubeTrackMatch | null> {
+  public async findTrack(criteria: YoutubeTrackSearchCriteria, minimumScore: number = MINIMUM_MATCH_SCORE): Promise<YoutubeTrackMatch | null> {
     const [best] = await this.searchTracks(criteria);
 
     if (!best || best.score.total < minimumScore) {
@@ -491,11 +474,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    * @returns `null` for anything that is not a playable recording — a live broadcast still going
    *   out, or a title that parsed to nothing. Both would otherwise be queued and stall MPD.
    */
-  private toTrackMatch(
-    video: YoutubeVideo,
-    criteria: YoutubeTrackSearchCriteria,
-    matchedQuery: string,
-  ): YoutubeTrackMatch | null {
+  private toTrackMatch(video: YoutubeVideo, criteria: YoutubeTrackSearchCriteria, matchedQuery: string): YoutubeTrackMatch | null {
     const snippet = video.snippet;
     const videoTitle = snippet?.title ?? '';
 
@@ -549,11 +528,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       throw new Error('A playlist id is required.');
     }
 
-    const response = await this.youtubeGet(
-      '/playlists',
-      { part: 'snippet,contentDetails', id: playlistId },
-      YoutubeListEnvelopeSchema,
-    );
+    const response = await this.youtubeGet('/playlists', { part: 'snippet,contentDetails', id: playlistId }, YoutubeListEnvelopeSchema);
 
     const [playlist] = this.parseItems(response.items, YoutubePlaylistSchema, 'playlist');
 
@@ -837,9 +812,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     const artistName = albumArtist.name;
     result.artistName = artistName;
 
-    this.logger.log(
-      `Importing playlist "${playlist.title}" as an album by "${artistName}" (${tracks.length} track(s))${dryRun ? ' [DRY RUN]' : ''}`,
-    );
+    this.logger.log(`Importing playlist "${playlist.title}" as an album by "${artistName}" (${tracks.length} track(s))${dryRun ? ' [DRY RUN]' : ''}`);
 
     if (dryRun) {
       for (const track of tracks) {
@@ -960,10 +933,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    * and there the playlist owner is the only defensible answer — taken as a pair, so the id always
    * describes the same channel the name came from.
    */
-  private resolveAlbumArtist(
-    playlist: YoutubePlaylistMatch,
-    tracks: YoutubePlaylistTrack[],
-  ): { name: string; channelId?: string } {
+  private resolveAlbumArtist(playlist: YoutubePlaylistMatch, tracks: YoutubePlaylistTrack[]): { name: string; channelId?: string } {
     const counts = new Map<string, { count: number; channelId?: string }>();
 
     for (const track of tracks) {
@@ -1019,9 +989,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     const existing = await this.findExistingArtist(artistName);
 
     if (existing) {
-      const sourceExists = (existing.source ?? []).some(
-        (source) => source.name === 'youtube' && source.sourceId === channelId,
-      );
+      const sourceExists = (existing.source ?? []).some((source) => source.name === 'youtube' && source.sourceId === channelId);
 
       if (channelId && !sourceExists) {
         existing.source = existing.source ?? [];
@@ -1064,9 +1032,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     const existing = await this.findExistingAlbum(albumTitle);
 
     if (existing) {
-      const sourceExists = (existing.source ?? []).some(
-        (source) => source.name === 'youtube' && source.sourceId === playlist.id,
-      );
+      const sourceExists = (existing.source ?? []).some((source) => source.name === 'youtube' && source.sourceId === playlist.id);
 
       if (!sourceExists) {
         existing.source = existing.source ?? [];
@@ -1104,8 +1070,8 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async linkAlbumToArtist(artistDoc: ArtistDocument, albumDoc: AlbumDocument): Promise<void> {
-    if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
-      artistDoc.albums.push(albumDoc._id as Types.ObjectId);
+    if (!artistDoc.albums.includes(albumDoc._id)) {
+      artistDoc.albums.push(albumDoc._id);
       await artistDoc.save();
     }
   }
@@ -1122,11 +1088,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    */
   private async indexSong(songDoc: SongDocument): Promise<void> {
     try {
-      const populated = await this.songModel
-        .findById(songDoc._id)
-        .populate('artist')
-        .populate('album')
-        .exec();
+      const populated = await this.songModel.findById(songDoc._id).populate('artist').populate('album').exec();
 
       if (!populated) {
         this.logger.warn(`Could not re-read song ${String(songDoc._id)} for indexing.`);
@@ -1210,9 +1172,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
         return null;
       }
 
-      const bestHit = searchResponse.hits.hits
-        .filter((hit) => hit._score >= 100)
-        .sort((left, right) => right._score - left._score)[0];
+      const bestHit = searchResponse.hits.hits.filter((hit) => hit._score >= 100).sort((left, right) => right._score - left._score)[0];
 
       return bestHit ? this.songModel.findById(bestHit._id) : null;
     } catch (error) {

@@ -1,15 +1,19 @@
 import { GenerateContentResponse } from '@google/genai';
+import { z } from 'zod';
 import { PromptusResponse } from '../../../promptus.response';
 
-export interface JsonPathSourceId {
-  id: string;
-  source: string;
-  discNumber: string;
-  trackNumber: string;
-  albumName: string;
-  artistName: string;
-  title: string;
-}
+/** Every field is a JSONPath the model could not always locate, hence nullable. */
+const JsonPathSourceIdSchema = z.object({
+  id: z.string().nullable().default(null),
+  source: z.string().nullable().default(null),
+  discNumber: z.string().nullable().default(null),
+  trackNumber: z.string().nullable().default(null),
+  albumName: z.string().nullable().default(null),
+  artistName: z.string().nullable().default(null),
+  title: z.string().nullable().default(null),
+});
+
+export type JsonPathSourceId = z.infer<typeof JsonPathSourceIdSchema>;
 
 export class GetJsonpathResponse extends PromptusResponse {
   public mapping: JsonPathSourceId;
@@ -22,19 +26,8 @@ export class GetJsonpathResponse extends PromptusResponse {
   constructor(raw: GenerateContentResponse) {
     super(raw);
     if (raw?.text) {
-      const mapping = JSON.parse(raw.text);
-
-      console.log(JSON.stringify(mapping, null, 2));
-
-      this.mapping = {
-        id: mapping.id ?? null,
-        source: mapping.source ?? null,
-        discNumber: mapping.discNumber ?? null,
-        trackNumber: mapping.trackNumber ?? null,
-        albumName: mapping.albumName ?? null,
-        artistName: mapping.artistName ?? null,
-        title: mapping.title ?? null,
-      };
+      this.mapping = JsonPathSourceIdSchema.parse(JSON.parse(raw.text));
+      console.log(JSON.stringify(this.mapping, null, 2));
     }
   }
 }

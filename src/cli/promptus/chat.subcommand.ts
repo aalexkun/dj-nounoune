@@ -3,11 +3,7 @@ import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PromptusService } from '../../services/promptus/promptus.service';
 import { ChatPromptusRequest } from '../../services/promptus/request/chat.promptus.request';
-import {
-  ChatEvent,
-  ChatMessageResponseEventName,
-  ChatStatusResponseEventName,
-} from '../../services/chat/chat.event';
+import { ChatEvent, ChatMessageResponseEventName, ChatStatusResponseEventName } from '../../services/chat/chat.event';
 import { getErrorMessage } from '../../utils/error.utils';
 
 interface ChatOptions {

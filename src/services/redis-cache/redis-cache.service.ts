@@ -4,9 +4,7 @@ import { createClient, RedisClientType } from 'redis';
 import { ZodType } from 'zod';
 import { getErrorMessage } from '../../utils/error.utils';
 
-
-
-export type RedisCacheKey = string ;
+export type RedisCacheKey = string;
 
 /**
  * Default time-to-live applied when a caller does not pass one and
@@ -79,8 +77,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {
     this.keyPrefix = this.configService.get<string>('REDIS_KEY_PREFIX') || FALLBACK_KEY_PREFIX;
     this.defaultTtlSeconds = Number(this.configService.get<string>('REDIS_TTL_SECONDS')) || FALLBACK_TTL_SECONDS;
-    this.connectTimeoutMs =
-      Number(this.configService.get<string>('REDIS_CONNECT_TIMEOUT_MS')) || FALLBACK_CONNECT_TIMEOUT_MS;
+    this.connectTimeoutMs = Number(this.configService.get<string>('REDIS_CONNECT_TIMEOUT_MS')) || FALLBACK_CONNECT_TIMEOUT_MS;
 
     this.url = this.buildUrl();
     if (!this.url) {
@@ -119,9 +116,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.warn(
-      `Redis cache UNAVAILABLE at ${this.safeUrl()} — reads will miss and writes will be dropped: ${error}`,
-    );
+    this.logger.warn(`Redis cache UNAVAILABLE at ${this.safeUrl()} — reads will miss and writes will be dropped: ${error}`);
   }
 
   /** Whether a Redis server was configured at all. */
@@ -166,7 +161,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
    * @returns The parsed JSON as `unknown`, or `null` on a miss
    */
   public async get(key: string): Promise<unknown>;
-  public async get<T>(key: string, schema?: ZodType<T>): Promise<T | unknown | null> {
+  public async get<T>(key: string, schema?: ZodType<T>): Promise<unknown> {
     const client = await this.connect();
     if (!client) return null;
 
@@ -228,11 +223,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await client.set(
-        this.namespaced(key),
-        serialised,
-        ttlSeconds > 0 ? { expiration: { type: 'EX', value: Math.floor(ttlSeconds) } } : undefined,
-      );
+      await client.set(this.namespaced(key), serialised, ttlSeconds > 0 ? { expiration: { type: 'EX', value: Math.floor(ttlSeconds) } } : undefined);
       return true;
     } catch (error: unknown) {
       this.logger.warn(`Failed to write cache key "${key}": ${getErrorMessage(error)}`);
@@ -277,12 +268,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
    * @param factory - Produces the value when the cache misses
    * @param ttlSeconds - Expiry in seconds; defaults to `REDIS_TTL_SECONDS`
    */
-  public async getOrSet<T>(
-    key: string,
-    schema: ZodType<T>,
-    factory: () => Promise<T>,
-    ttlSeconds: number = this.defaultTtlSeconds,
-  ): Promise<T> {
+  public async getOrSet<T>(key: string, schema: ZodType<T>, factory: () => Promise<T>, ttlSeconds: number = this.defaultTtlSeconds): Promise<T> {
     const cached = await this.get(key, schema);
     if (cached !== null) return cached;
 
@@ -411,9 +397,7 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
       })
       .catch((error: unknown) => {
         this.lastConnectError = getErrorMessage(error);
-        this.logger.warn(
-          `Redis unreachable at ${this.safeUrl()}, cache disabled for ${RECONNECT_COOLDOWN_MS / 1000}s: ${this.lastConnectError}`,
-        );
+        this.logger.warn(`Redis unreachable at ${this.safeUrl()}, cache disabled for ${RECONNECT_COOLDOWN_MS / 1000}s: ${this.lastConnectError}`);
         this.cooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
         this.discard();
         return false;

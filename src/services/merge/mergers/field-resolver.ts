@@ -5,16 +5,7 @@ import { containsNonAscii } from '../../../utils/string.utils';
 const GENRE_FIELDS = new Set(['genre', 'primary_genres']);
 
 /** Fields where the non-English (non-ASCII) detection rule applies */
-const TEXT_FIELDS = new Set([
-  'title',
-  'artist',
-  'album_artist',
-  'composer',
-  'subtitle',
-  'description',
-  'short_intro',
-  'biography',
-]);
+const TEXT_FIELDS = new Set(['title', 'artist', 'album_artist', 'composer', 'subtitle', 'description', 'short_intro', 'biography']);
 
 /**
  * Determines whether a value should be considered empty for merge purposes.
@@ -38,13 +29,7 @@ function isEmptyValue(value: unknown): boolean {
  * 4. Then → prefer any source over 'youtube', whose metadata is guessed rather than delivered
  * 5. Fallback → if only one value is non-empty, use that; otherwise keep primary
  */
-export function resolveFieldValue<T>(
-  fieldName: string,
-  primaryValue: T,
-  duplicateValue: T,
-  primarySources: Source[],
-  duplicateSources: Source[],
-): T {
+export function resolveFieldValue<T>(fieldName: string, primaryValue: T, duplicateValue: T, primarySources: Source[], duplicateSources: Source[]): T {
   const primaryEmpty = isEmptyValue(primaryValue);
   const duplicateEmpty = isEmptyValue(duplicateValue);
 
@@ -68,10 +53,8 @@ export function resolveFieldValue<T>(
 
   // Text fields: non-ASCII wins
   if (TEXT_FIELDS.has(fieldName)) {
-    const pNonAscii =
-      typeof primaryValue === 'string' && containsNonAscii(primaryValue);
-    const dNonAscii =
-      typeof duplicateValue === 'string' && containsNonAscii(duplicateValue);
+    const pNonAscii = typeof primaryValue === 'string' && containsNonAscii(primaryValue);
+    const dNonAscii = typeof duplicateValue === 'string' && containsNonAscii(duplicateValue);
 
     if (pNonAscii && !dNonAscii) return primaryValue;
     if (dNonAscii && !pNonAscii) return duplicateValue;

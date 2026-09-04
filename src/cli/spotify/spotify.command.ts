@@ -11,7 +11,8 @@ import { SpotifyImportLikedSongsSubCommand } from './import-liked-songs.subcomma
 })
 @Injectable()
 export class SpotifyCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: auth, listUserLibrary, import');
+    return Promise.resolve();
   }
 }

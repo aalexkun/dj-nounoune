@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { PopulatedSong } from '../music-db/music-db.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -29,8 +30,16 @@ import {
 } from './qobuz.interfaces';
 import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
+
+/** What `.qobuz-session.json` holds; anything else in the file is ignored. */
+const QobuzSessionSchema = z.object({
+  userId: z.string().optional(),
+  userAuthToken: z.string().optional(),
+});
+
+type QobuzSession = z.infer<typeof QobuzSessionSchema>;
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
@@ -146,8 +155,7 @@ export class QobuzService implements OnModuleInit {
    * Send a GET request to the Qobuz API with signature authentication.
    */
   private async qobuzGet<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>): Promise<T> {
-
-    if (!this.userAuthToken){
+    if (!this.userAuthToken) {
       throw new Error('User authentication token is missing. Please authenticate first.');
     }
 
@@ -163,7 +171,7 @@ export class QobuzService implements OnModuleInit {
     const url = `${this.API_BASE_URL}${endpoint}?${queryString}`;
 
     const response = await fetch(url, { headers });
-    const jsonData = await response.json() as unknown;
+    const jsonData = (await response.json()) as unknown;
 
     const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
     if (errorResult.success && errorResult.data.status === 'error') {
@@ -210,15 +218,15 @@ export class QobuzService implements OnModuleInit {
     return path.join(process.cwd(), '.qobuz-session.json');
   }
 
-  private loadSession(): { userId?: string, userAuthToken?: string } {
+  private loadSession(): QobuzSession {
     try {
       const sessionPath = this.getSessionFilePath();
       if (fs.existsSync(sessionPath)) {
         const data = fs.readFileSync(sessionPath, 'utf8');
-        return JSON.parse(data);
+        return QobuzSessionSchema.parse(JSON.parse(data));
       }
     } catch (error) {
-      this.logger.error(`Error loading Qobuz session: ${error}`);
+      this.logger.error(`Error loading Qobuz session: ${getErrorMessage(error)}`);
     }
     return {};
   }
@@ -226,17 +234,19 @@ export class QobuzService implements OnModuleInit {
   /**
    * Authenticate with the Qobuz API using the username and md5 password
    */
-  public async login(): Promise<string> {
+  public login(): Promise<string> {
     if (this.userAuthToken) {
-      return this.userAuthToken;
+      return Promise.resolve(this.userAuthToken);
     }
 
     const session = this.loadSession();
-    this.userAuthToken   = session.userAuthToken;
+    this.userAuthToken = session.userAuthToken;
     if (!this.userAuthToken) {
-      throw new Error('Qobuz session data (.qobuz-session.json) is missing. Please authenticate first by running the auth CLI command.');
+      return Promise.reject(
+        new Error('Qobuz session data (.qobuz-session.json) is missing. Please authenticate first by running the auth CLI command.'),
+      );
     }
-    return this.userAuthToken;
+    return Promise.resolve(this.userAuthToken);
   }
 
   /**
@@ -333,9 +343,7 @@ export class QobuzService implements OnModuleInit {
         id: parsed.data.id.toString(),
         name: parsed.data.name,
         albumsCount: parsed.data.albums_count,
-        picture:
-          parsed.data.picture ??
-          (typeof image === 'string' ? image : (image?.large ?? image?.medium ?? image?.small)),
+        picture: parsed.data.picture ?? (typeof image === 'string' ? image : (image?.large ?? image?.medium ?? image?.small)),
       });
     }
 
@@ -405,11 +413,7 @@ export class QobuzService implements OnModuleInit {
   /**
    * Raw catalog search restricted to the `tracks` bucket.
    */
-  private async searchCatalogTracks(
-    query: string,
-    limit: number,
-    offset: number = 0,
-  ): Promise<QobuzTrackSearchResponse> {
+  private async searchCatalogTracks(query: string, limit: number, offset: number = 0): Promise<QobuzTrackSearchResponse> {
     const params = {
       query,
       type: 'tracks',
@@ -417,11 +421,7 @@ export class QobuzService implements OnModuleInit {
       offset: offset.toString(),
     };
 
-    return this.qobuzGet<QobuzTrackSearchResponse>(
-      '/catalog/search',
-      params,
-      QobuzTrackSearchResponseSchema,
-    );
+    return this.qobuzGet<QobuzTrackSearchResponse>('/catalog/search', params, QobuzTrackSearchResponseSchema);
   }
 
   /**
@@ -614,9 +614,7 @@ export class QobuzService implements OnModuleInit {
       return { artist, candidates, albums, tracks: [], source: 'none' };
     }
 
-    this.logger.debug(
-      `Album "${wanted}" resolved to "${matchedAlbum.title}" (${matchedAlbum.id}, ${albumScore.toFixed(2)})`,
-    );
+    this.logger.debug(`Album "${wanted}" resolved to "${matchedAlbum.title}" (${matchedAlbum.id}, ${albumScore.toFixed(2)})`);
 
     let detail: QobuzAlbum;
 
@@ -634,18 +632,12 @@ export class QobuzService implements OnModuleInit {
     // Scoring a tracklist against the album it *is* would be circular, so the criteria used here
     // are the ones that were genuinely in question: the title, when one was asked for.
     const scored = items.map((track) =>
-      this.toTrackMatch(
-        track,
-        { title: criteria.title?.trim() || getTrackDisplayTitle(track), artist: artist.name },
-        `album:${matchedAlbum.id}`,
-      ),
+      this.toTrackMatch(track, { title: criteria.title?.trim() || getTrackDisplayTitle(track), artist: artist.name }, `album:${matchedAlbum.id}`),
     );
 
     // Without a title the whole record is the answer, in running order.
     const tracks = criteria.title?.trim()
-      ? scored
-          .filter((match) => match.score.title >= MATCH_FLOOR.title)
-          .sort((left, right) => right.score.title - left.score.title)
+      ? scored.filter((match) => match.score.title >= MATCH_FLOOR.title).sort((left, right) => right.score.title - left.score.title)
       : scored;
 
     return {
@@ -683,10 +675,7 @@ export class QobuzService implements OnModuleInit {
    * Convenience wrapper over {@link searchTracks} returning the single best
    * candidate, or `null` when nothing scored above `minimumScore`.
    */
-  public async findTrack(
-    criteria: QobuzTrackSearchCriteria,
-    minimumScore: number = MINIMUM_MATCH_SCORE,
-  ): Promise<QobuzTrackMatch | null> {
+  public async findTrack(criteria: QobuzTrackSearchCriteria, minimumScore: number = MINIMUM_MATCH_SCORE): Promise<QobuzTrackMatch | null> {
     const [best] = await this.searchTracks(criteria);
 
     if (!best || best.score.total < minimumScore) {
@@ -696,11 +685,7 @@ export class QobuzService implements OnModuleInit {
     return best;
   }
 
-  private toTrackMatch(
-    track: QobuzTrack,
-    criteria: QobuzTrackSearchCriteria,
-    matchedQuery: string,
-  ): QobuzTrackMatch {
+  private toTrackMatch(track: QobuzTrack, criteria: QobuzTrackSearchCriteria, matchedQuery: string): QobuzTrackMatch {
     return {
       id: track.id.toString(),
       title: track.title,
@@ -783,9 +768,7 @@ export class QobuzService implements OnModuleInit {
 
       if (existingArtist) {
         artistDoc = existingArtist;
-        const sourceExists = (artistDoc.source ?? []).some(
-          (s) => s.name === 'qobuz' && s.sourceId === artistQobuzId,
-        );
+        const sourceExists = (artistDoc.source ?? []).some((s) => s.name === 'qobuz' && s.sourceId === artistQobuzId);
 
         if (!sourceExists) {
           artistDoc.source = artistDoc.source ?? [];
@@ -823,9 +806,7 @@ export class QobuzService implements OnModuleInit {
 
       if (existingAlbum) {
         albumDoc = existingAlbum;
-        const sourceExists = (albumDoc.source ?? []).some(
-          (s) => s.name === 'qobuz' && s.sourceId === albumQobuzId,
-        );
+        const sourceExists = (albumDoc.source ?? []).some((s) => s.name === 'qobuz' && s.sourceId === albumQobuzId);
 
         if (!sourceExists) {
           albumDoc.source = albumDoc.source ?? [];
@@ -835,8 +816,8 @@ export class QobuzService implements OnModuleInit {
         }
 
         // Ensure the album is linked to the artist.
-        if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
-          artistDoc.albums.push(albumDoc._id as Types.ObjectId);
+        if (!artistDoc.albums.includes(albumDoc._id)) {
+          artistDoc.albums.push(albumDoc._id);
           await artistDoc.save();
         }
       }
@@ -845,7 +826,7 @@ export class QobuzService implements OnModuleInit {
     if (!albumDoc) {
       const releaseYear = albumDetails.release_date_original ? albumDetails.release_date_original.substring(0, 4) : undefined;
       const genre = albumDetails.genre ? [albumDetails.genre.name] : [];
-      
+
       albumDoc = new this.albumModel({
         title: albumDetails.title,
         artist: artistDoc._id,
@@ -861,10 +842,10 @@ export class QobuzService implements OnModuleInit {
       });
       await albumDoc.save();
       this.logger.debug(`Created new album: ${albumDoc.title}`);
-      
+
       // Update artist albums list
-      if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
-        artistDoc.albums.push(albumDoc._id as Types.ObjectId);
+      if (!artistDoc.albums.includes(albumDoc._id)) {
+        artistDoc.albums.push(albumDoc._id);
         await artistDoc.save();
       }
     }
@@ -898,9 +879,7 @@ export class QobuzService implements OnModuleInit {
         });
 
         if (existingSong) {
-          const sourceExists = (existingSong.source ?? []).some(
-            (s) => s.name === 'qobuz' && s.sourceId === trackQobuzId,
-          );
+          const sourceExists = (existingSong.source ?? []).some((s) => s.name === 'qobuz' && s.sourceId === trackQobuzId);
 
           if (!sourceExists) {
             existingSong.source = existingSong.source ?? [];
@@ -948,7 +927,7 @@ export class QobuzService implements OnModuleInit {
             title: songDoc.title || '',
             artist: artistDoc,
             album: albumDoc,
-          } as any;
+          } as unknown as PopulatedSong; // a deliberate partial: the index only reads ids, titles and the artist/album names
           await this.opensearchService.indexSongs([songForIndex]);
           this.logger.debug(`Indexed song ${songDoc.title} in OpenSearch.`);
         } catch (error) {
@@ -1044,9 +1023,7 @@ export class QobuzService implements OnModuleInit {
     }
   }
 
-  private async findExistingSong(
-    attributes: Omit<DuplicateSongCheck, 'songId'>,
-  ): Promise<SongDocument | null> {
+  private async findExistingSong(attributes: Omit<DuplicateSongCheck, 'songId'>): Promise<SongDocument | null> {
     try {
       const searchResponse = await this.opensearchService.findDuplicatesSongs({
         songId: '',
@@ -1058,9 +1035,7 @@ export class QobuzService implements OnModuleInit {
       }
 
       // Only treat high-confidence matches as the same song.
-      const bestHit = searchResponse.hits.hits
-        .filter((hit) => hit._score >= 100)
-        .sort((a, b) => b._score - a._score)[0];
+      const bestHit = searchResponse.hits.hits.filter((hit) => hit._score >= 100).sort((a, b) => b._score - a._score)[0];
 
       if (!bestHit) {
         return null;

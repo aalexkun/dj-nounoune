@@ -6,14 +6,13 @@ import { ProfilerRunSubCommand } from './run.subcommand';
   name: 'profiler',
   arguments: '<task>',
   description: 'Run data profiling tools',
-  subCommands: [
-    ProfilerRunSubCommand,
-  ],
+  subCommands: [ProfilerRunSubCommand],
 })
 export class ProfilerCommand extends CommandRunner {
   private readonly logger = new Logger(ProfilerCommand.name);
 
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: run');
+    return Promise.resolve();
   }
 }

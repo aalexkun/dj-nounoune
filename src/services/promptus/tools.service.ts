@@ -59,7 +59,7 @@ export class ToolsService {
     private youtubeService: YoutubeService,
   ) {
     // Generic and global accessible Tool and function
-    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService,this.redisCacheService));
+    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService, this.redisCacheService));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
     this.registerTool(new NextSongHandler(this.mpdClientService));
     this.registerTool(new PreviousSongHandler(this.mpdClientService));
@@ -128,7 +128,7 @@ export class ToolsService {
 
   public async proceedFunctionCall(fc: FunctionCall, sessionId?: string): Promise<FunctionCallResult> {
     if (!fc.name) {
-      throw new Error(`Unsupported function call: ${fc}`);
+      throw new Error(`Unsupported function call: ${JSON.stringify(fc)}`);
     }
 
     const handler = this.toolRegistry.get(fc.name);

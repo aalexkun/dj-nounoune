@@ -11,6 +11,12 @@ interface ClearCommandOptions {
   collections?: string[];
 }
 
+/** The two calls `clearCollection` makes, so each of the three injected models fits without a generic. */
+interface ClearableModel {
+  countDocuments(): { exec(): Promise<number> };
+  deleteMany(filter: Record<string, never>): { exec(): Promise<unknown> };
+}
+
 @SubCommand({
   name: 'clear',
   description: 'Clear songs, albums, and artists collections',
@@ -26,7 +32,7 @@ export class ClearCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: ClearCommandOptions): Promise<void> {
+  async run(_inputs: string[], options: ClearCommandOptions): Promise<void> {
     const { dryRun, collections } = options;
     const targetCollections = collections && collections.length > 0 ? collections : ['songs', 'albums', 'artists'];
 
@@ -50,12 +56,12 @@ export class ClearCommand extends CommandRunner {
     this.logger.log('Clear process completed.');
   }
 
-  private async clearCollection(model: Model<any>, name: string, dryRun?: boolean) {
-    const count = await model.countDocuments();
+  private async clearCollection(model: ClearableModel, name: string, dryRun?: boolean) {
+    const count = await model.countDocuments().exec();
     if (dryRun) {
       this.logger.log(`[DryRun] Would delete ${count} documents from ${name}`);
     } else {
-      await model.deleteMany({});
+      await model.deleteMany({}).exec();
       this.logger.log(`Deleted ${count} documents from ${name}`);
     }
   }

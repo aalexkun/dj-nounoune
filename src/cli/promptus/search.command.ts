@@ -18,8 +18,9 @@ export class PromptusSearchCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[]): Promise<void> {
-    const searchText = inputs.join(' ');
+  run(inputs: string[]): Promise<void> {
+    this.logger.warn(`promptus search is not implemented yet (request: "${inputs.join(' ')}")`);
+    return Promise.resolve();
 
     // const response = await this.promptusService.generate(new SearchRequest(searchText));
     //

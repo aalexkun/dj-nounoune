@@ -5,14 +5,24 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SpotifyAuthUtil } from './spotify-auth.util';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
+import { z } from 'zod';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { SongSource } from '../../schemas/source.schema';
 import { TechnicalInfo } from '../../schemas/technical-info.schema';
-import { OpensearchService, DuplicateSongCheck } from '../opensearch/opensearch.service';
+import { OpensearchService } from '../opensearch/opensearch.service';
 import { PopulatedSong } from '../music-db/music-db.service';
+import { getErrorMessage } from '../../utils/error.utils';
+import { OpenSearchAlbumSearchResponse, OpenSearchArtistSearchResponse, OpenSearchSearchResponse } from '../opensearch/types';
+
+/** What `.spotify-session.json` holds; anything else in the file is ignored. */
+const SpotifySessionSchema = z.object({
+  accessToken: z.string().optional(),
+  refreshToken: z.string().optional(),
+  expirationTime: z.number().optional(),
+});
 @Injectable()
 export class SpotifyService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SpotifyService.name);
@@ -44,7 +54,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     if (fs.existsSync(sessionPath)) {
       try {
         const data = fs.readFileSync(sessionPath, 'utf8');
-        const session = JSON.parse(data);
+        const session = SpotifySessionSchema.parse(JSON.parse(data));
         if (session.accessToken) {
           this.spotifyApi.setAccessToken(session.accessToken);
         }
@@ -58,7 +68,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
         // Start token refresh interval and check immediately
         this.startTokenRefreshInterval();
       } catch (error) {
-        this.logger.error(`Error loading Spotify session: ${error}`);
+        this.logger.error(`Error loading Spotify session: ${getErrorMessage(error)}`);
       }
     } else {
       this.logger.warn('Spotify session data (.spotify-session.json) is missing. Please authenticate first by running the auth CLI command.');
@@ -85,7 +95,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       const newAccessToken = data.body.access_token;
       const newExpiresIn = data.body.expires_in;
       const newExpirationTime = Date.now() + newExpiresIn * 1000;
-      
+
       this.spotifyApi.setAccessToken(newAccessToken);
       this.currentExpirationTime = newExpirationTime;
 
@@ -107,24 +117,24 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
-    
+
     // Check immediately if we need to refresh (if missing or already expired/close to expiry)
     const checkRefresh = () => {
       // If we don't have an expiration time but we have a refresh token, refresh it just to be safe
       if (!this.currentExpirationTime && this.spotifyApi.getRefreshToken()) {
-        this.refreshToken();
+        void this.refreshToken();
         return;
       }
-      
+
       if (this.currentExpirationTime) {
         const timeRemaining = this.currentExpirationTime - Date.now();
         // Refresh if within 5 minutes of expiring
         if (timeRemaining < 5 * 60 * 1000) {
-          this.refreshToken();
+          void this.refreshToken();
         }
       }
     };
-    
+
     checkRefresh();
 
     // Then check every 1 minute
@@ -178,7 +188,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       const stats = {
         artists: { created: 0, updated: 0, existed: 0 },
         albums: { created: 0, updated: 0, existed: 0 },
-        songs: { created: 0, updated: 0, existed: 0 }
+        songs: { created: 0, updated: 0, existed: 0 },
       };
 
       do {
@@ -247,7 +257,10 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async importTrack(track: SpotifyApi.TrackObjectFull, dryRun: boolean): Promise<{ artist: 'created' | 'updated' | 'none', album: 'created' | 'updated' | 'none', song: 'created' | 'updated' | 'none' } | null> {
+  private async importTrack(
+    track: SpotifyApi.TrackObjectFull,
+    dryRun: boolean,
+  ): Promise<{ artist: 'created' | 'updated' | 'none'; album: 'created' | 'updated' | 'none'; song: 'created' | 'updated' | 'none' } | null> {
     const artistSpotifyId = track.artists[0]?.id;
     const artistName = track.artists[0]?.name;
 
@@ -259,7 +272,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     // 1. Search phase
     let artistDoc = await this.resolveExistingArtist(artistSpotifyId, artistName);
     let albumDoc = await this.resolveExistingAlbum(track.album.id, track.album.name);
-    let songDoc = await this.resolveExistingSong(track.id, track, artistDoc, albumDoc);
+    const songDoc = await this.resolveExistingSong(track.id, track, artistDoc, albumDoc);
 
     // 2. Creation / Update phase
     const artistResult = await this.createOrUpdateArtist(artistDoc, artistSpotifyId, artistName, dryRun);
@@ -273,7 +286,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     return {
       artist: artistResult.action,
       album: albumResult.action,
-      song: songResult.action
+      song: songResult.action,
     };
   }
 
@@ -284,14 +297,15 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       'source.sourceId': spotifyId,
     });
     if (artistDoc) {
-      this.logger.debug(`Found artist by Spotify ID: "${artistDoc.artist}" (ID: ${artistDoc._id})`);
+      this.logger.debug(`Found artist by Spotify ID: "${artistDoc.artist}" (ID: ${artistDoc._id.toString()})`);
       return artistDoc;
     }
 
     this.logger.log(`Artist not found by ID. Checking OpenSearch for fuzzy match on name: "${name}"`);
-    const existingArtist = await this.findExistingEntity<ArtistDocument>('artist', name);
+    const existingArtistId = await this.findExistingEntityId('artist', name);
+    const existingArtist = existingArtistId ? await this.artistModel.findById(existingArtistId) : null;
     if (existingArtist) {
-      this.logger.log(`Found existing artist via OpenSearch: "${existingArtist.artist}" (ID: ${existingArtist._id})`);
+      this.logger.log(`Found existing artist via OpenSearch: "${existingArtist.artist}" (ID: ${existingArtist._id.toString()})`);
       return existingArtist;
     }
 
@@ -305,28 +319,34 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       'source.sourceId': spotifyId,
     });
     if (albumDoc) {
-      this.logger.debug(`Found album by Spotify ID: "${albumDoc.title}" (ID: ${albumDoc._id})`);
+      this.logger.debug(`Found album by Spotify ID: "${albumDoc.title}" (ID: ${albumDoc._id.toString()})`);
       return albumDoc;
     }
 
     this.logger.log(`Album not found by ID. Checking OpenSearch for fuzzy match on title: "${title}"`);
-    const existingAlbum = await this.findExistingEntity<AlbumDocument>('album', title);
+    const existingAlbumId = await this.findExistingEntityId('album', title);
+    const existingAlbum = existingAlbumId ? await this.albumModel.findById(existingAlbumId) : null;
     if (existingAlbum) {
-      this.logger.log(`Found existing album via OpenSearch: "${existingAlbum.title}" (ID: ${existingAlbum._id})`);
+      this.logger.log(`Found existing album via OpenSearch: "${existingAlbum.title}" (ID: ${existingAlbum._id.toString()})`);
       return existingAlbum;
     }
 
     return null;
   }
 
-  private async resolveExistingSong(spotifyId: string, track: SpotifyApi.TrackObjectFull, artistDoc: ArtistDocument | null, albumDoc: AlbumDocument | null): Promise<SongDocument | null> {
+  private async resolveExistingSong(
+    spotifyId: string,
+    track: SpotifyApi.TrackObjectFull,
+    artistDoc: ArtistDocument | null,
+    albumDoc: AlbumDocument | null,
+  ): Promise<SongDocument | null> {
     this.logger.debug(`Checking if song exists by Spotify ID: ${spotifyId}`);
     const songDoc = await this.songModel.findOne({
       'source.name': 'spotify',
       'source.sourceId': spotifyId,
     });
     if (songDoc) {
-      this.logger.debug(`Found song by Spotify ID: "${songDoc.title}" (ID: ${songDoc._id})`);
+      this.logger.debug(`Found song by Spotify ID: "${songDoc.title}" (ID: ${songDoc._id.toString()})`);
       return songDoc;
     }
 
@@ -334,23 +354,31 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     const albumIdStr = albumDoc?._id?.toString() || null;
     const artistName = artistDoc?.artist || track.artists[0]?.name || '';
     const albumName = albumDoc?.title || track.album.name || '';
-    
-    this.logger.log(`Song not found by ID. Checking OpenSearch for fuzzy match on title: "${track.name}", artist ID: "${artistIdStr}", album ID: "${albumIdStr}"`);
-    const existingSong = await this.findExistingEntity<SongDocument>('song', track.name, {
+
+    this.logger.log(
+      `Song not found by ID. Checking OpenSearch for fuzzy match on title: "${track.name}", artist ID: "${artistIdStr}", album ID: "${albumIdStr}"`,
+    );
+    const existingSongId = await this.findExistingEntityId('song', track.name, {
       artistName,
       albumName,
       artistId: artistIdStr,
       albumId: albumIdStr,
     });
+    const existingSong = existingSongId ? await this.songModel.findById(existingSongId) : null;
     if (existingSong) {
-      this.logger.log(`Found existing song via OpenSearch: "${existingSong.title}" (ID: ${existingSong._id})`);
+      this.logger.log(`Found existing song via OpenSearch: "${existingSong.title}" (ID: ${existingSong._id.toString()})`);
       return existingSong;
     }
 
     return null;
   }
 
-  private async createOrUpdateArtist(artistDoc: ArtistDocument | null, spotifyId: string, name: string, dryRun: boolean): Promise<{ doc: ArtistDocument, action: 'created' | 'updated' | 'none' }> {
+  private async createOrUpdateArtist(
+    artistDoc: ArtistDocument | null,
+    spotifyId: string,
+    name: string,
+    dryRun: boolean,
+  ): Promise<{ doc: ArtistDocument; action: 'created' | 'updated' | 'none' }> {
     let action: 'created' | 'updated' | 'none' = 'none';
     if (!artistDoc) {
       this.logger.log(`Artist "${name}" does not exist. Creating new artist...`);
@@ -361,7 +389,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
           genres = artistFull.body.genres;
         }
       } catch (e) {
-        this.logger.warn(`Could not fetch full artist info for ${name} to get genres: ${e}`);
+        this.logger.warn(`Could not fetch full artist info for ${name} to get genres: ${getErrorMessage(e)}`);
       }
 
       artistDoc = new this.artistModel({
@@ -390,7 +418,12 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     return { doc: artistDoc, action };
   }
 
-  private async createOrUpdateAlbum(albumDoc: AlbumDocument | null, trackAlbum: SpotifyApi.AlbumObjectSimplified, artistDoc: ArtistDocument, dryRun: boolean): Promise<{ doc: AlbumDocument, action: 'created' | 'updated' | 'none' }> {
+  private async createOrUpdateAlbum(
+    albumDoc: AlbumDocument | null,
+    trackAlbum: SpotifyApi.AlbumObjectSimplified,
+    artistDoc: ArtistDocument,
+    dryRun: boolean,
+  ): Promise<{ doc: AlbumDocument; action: 'created' | 'updated' | 'none' }> {
     let action: 'created' | 'updated' | 'none' = 'none';
     const spotifyId = trackAlbum.id;
     if (!albumDoc) {
@@ -421,9 +454,9 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
 
       if (!dryRun) {
         await albumDoc.save();
-        if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
-          artistDoc.albums.push(albumDoc._id as Types.ObjectId);
-          await (artistDoc as any).save();
+        if (!artistDoc.albums.includes(albumDoc._id)) {
+          artistDoc.albums.push(albumDoc._id);
+          await artistDoc.save();
         }
       }
       this.logger.log(`Successfully created new album: "${albumDoc.title}"`);
@@ -442,10 +475,10 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
         this.logger.debug(`Spotify source already exists on album: "${albumDoc.title}"`);
       }
 
-      if (!artistDoc.albums.includes(albumDoc._id as Types.ObjectId)) {
+      if (!artistDoc.albums.includes(albumDoc._id)) {
         if (!dryRun) {
-          artistDoc.albums.push(albumDoc._id as Types.ObjectId);
-          await (artistDoc as any).save();
+          artistDoc.albums.push(albumDoc._id);
+          await artistDoc.save();
         }
         this.logger.log(`Linked existing album "${albumDoc.title}" to artist "${artistDoc.artist}"`);
         action = 'updated';
@@ -454,7 +487,13 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     return { doc: albumDoc, action };
   }
 
-  private async createOrUpdateSong(songDoc: SongDocument | null, track: SpotifyApi.TrackObjectFull, artistDoc: ArtistDocument, albumDoc: AlbumDocument, dryRun: boolean): Promise<{ doc: SongDocument, action: 'created' | 'updated' | 'none' }> {
+  private async createOrUpdateSong(
+    songDoc: SongDocument | null,
+    track: SpotifyApi.TrackObjectFull,
+    artistDoc: ArtistDocument,
+    albumDoc: AlbumDocument,
+    dryRun: boolean,
+  ): Promise<{ doc: SongDocument; action: 'created' | 'updated' | 'none' }> {
     let action: 'created' | 'updated' | 'none' = 'none';
     const spotifyId = track.id;
     const spotifySource = this.buildSpotifySource(track, spotifyId);
@@ -463,7 +502,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Song "${track.name}" does not exist. Creating new song...`);
       const releaseYear = track.album.release_date ? track.album.release_date.substring(0, 4) : undefined;
       const albumArtistName = track.album.artists[0]?.name || artistDoc.artist;
-      
+
       songDoc = new this.songModel({
         title: track.name,
         artist: artistDoc._id,
@@ -481,9 +520,9 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
         await songDoc.save();
         if (!albumDoc.tracks.includes(songDoc._id as unknown as Song)) {
           albumDoc.tracks.push(songDoc._id as unknown as Song);
-          await (albumDoc as any).save();
+          await albumDoc.save();
         }
-        
+
         try {
           const songForIndex = {
             _id: songDoc._id,
@@ -520,7 +559,7 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       if (!albumDoc.tracks.includes(songDoc._id as unknown as Song)) {
         if (!dryRun) {
           albumDoc.tracks.push(songDoc._id as unknown as Song);
-          await (albumDoc as any).save();
+          await albumDoc.save();
         }
         this.logger.log(`Added existing song "${songDoc.title}" to album "${albumDoc.title}"`);
         action = 'updated';
@@ -547,7 +586,11 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async findExistingEntity<T>(
+  /**
+   * The Mongo id behind the best OpenSearch hit for a name, or `null` when nothing matched. The
+   * caller loads the document from its own model, which is what keeps this free of a generic.
+   */
+  private async findExistingEntityId(
     type: 'album' | 'artist' | 'song',
     name: string,
     options?: {
@@ -555,42 +598,37 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       albumName?: string;
       artistId?: string | null;
       albumId?: string | null;
-    }
-  ): Promise<T | null> {
+    },
+  ): Promise<string | null> {
     try {
-      let searchResponse;
+      let searchResponse: OpenSearchSearchResponse | OpenSearchArtistSearchResponse | OpenSearchAlbumSearchResponse | null;
       let idField: string;
-      let model: any;
 
       if (type === 'song') {
         searchResponse = await this.opensearchService.fuzzySearchSong(
-          name, 
-          options?.albumName || '', 
-          options?.artistName || '', 
-          options?.albumId, 
-          options?.artistId
+          name,
+          options?.albumName || '',
+          options?.artistName || '',
+          options?.albumId,
+          options?.artistId,
         );
         idField = 'song_id';
-        model = this.songModel;
       } else if (type === 'album') {
         searchResponse = await this.opensearchService.fuzzySearchAlbum(name);
         idField = 'album_id';
-        model = this.albumModel;
       } else {
         searchResponse = await this.opensearchService.fuzzySearchArtist(name);
         idField = 'artist_id';
-        model = this.artistModel;
       }
 
       if (!searchResponse) return null;
-      const hits = searchResponse.hits.hits as Array<{ _score: number; _id?: string; _source?: any }>;
-      if (!hits || hits.length === 0) return null;
-      
+      const hits = searchResponse.hits.hits as Array<{ _score: number; _id?: string; _source?: Record<string, unknown> }>;
+      if (hits.length === 0) return null;
+
       const bestHit = [...hits].sort((a, b) => b._score - a._score)[0];
-      const entityId = type === 'song' ? (bestHit?._id || bestHit?._source?.[idField]) : bestHit?._source?.[idField];
-      if (!entityId) return null;
-      
-      return model.findById(entityId);
+      const sourceId = bestHit._source?.[idField];
+      const entityId = type === 'song' ? bestHit._id || sourceId : sourceId;
+      return typeof entityId === 'string' && entityId ? entityId : null;
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Existing-${type} lookup failed for "${name}": ${errMessage}`);

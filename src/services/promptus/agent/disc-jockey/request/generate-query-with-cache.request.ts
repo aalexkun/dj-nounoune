@@ -128,7 +128,6 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
   }
 }
 
-
 /*
 aistudio
 {

@@ -24,20 +24,24 @@ const MAX_PICTURE_BYTES = 8 * 1024 * 1024;
 
 const NEWLINE = 0x0a;
 
+/**
+ * One command waiting on the wire. `unknown` because the queue holds every request type at once;
+ * `send<T>` restores the concrete response type at the call site. `resolve`/`reject` are declared
+ * as methods on purpose: method parameters stay bivariant under `strictFunctionTypes`, which is
+ * what lets a `Promise<T>` resolver be stored here.
+ */
+type PendingRequest = {
+  request: MpdRequest<unknown>;
+  resolve(value: unknown): void;
+  reject(reason?: unknown): void;
+};
+
 @Injectable()
 export class MpdClientService implements OnModuleInit, OnModuleDestroy {
   private readonly client: net.Socket;
   private readonly logger = new Logger(MpdClientService.name);
-  private requestQueue: {
-    request: MpdRequest<any>;
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
-  }[] = [];
-  private currentRequest: {
-    request: MpdRequest<any>;
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
-  } | null = null;
+  private requestQueue: PendingRequest[] = [];
+  private currentRequest: PendingRequest | null = null;
   /** Kept as bytes: a picture payload cannot survive a round trip through a string. */
   private buffer: Buffer = Buffer.alloc(0);
   private isConnected: boolean = false;
@@ -191,11 +195,7 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
    * Walks the offsets until the picture announced by `size:` is complete — the server hands over at
    * most `binarylimit` bytes (8 KiB by default) per request.
    */
-  private async fetchPicture(
-    command: string,
-    uri: string,
-    request: (offset: number) => MpdRequest<BinaryMpdResponse>,
-  ): Promise<MpdPicture | null> {
+  private async fetchPicture(command: string, uri: string, request: (offset: number) => MpdRequest<BinaryMpdResponse>): Promise<MpdPicture | null> {
     try {
       const chunks: Buffer[] = [];
       let mimeType: string | undefined;

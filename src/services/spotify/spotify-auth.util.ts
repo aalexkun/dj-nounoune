@@ -36,9 +36,7 @@ export class SpotifyAuthUtil {
       const sessionPath = path.join(process.cwd(), '.spotify-session.json');
       fs.writeFileSync(sessionPath, JSON.stringify({ accessToken, refreshToken, expirationTime }, null, 2), 'utf8');
 
-      this.logger.log(
-        `\nSuccess! Authenticated with Spotify. Session saved to .spotify-session.json`,
-      );
+      this.logger.log(`\nSuccess! Authenticated with Spotify. Session saved to .spotify-session.json`);
 
       return { accessToken, refreshToken };
     } catch (error) {

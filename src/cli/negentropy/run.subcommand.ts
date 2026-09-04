@@ -35,9 +35,7 @@ export class NegentropyRunSubCommand extends CommandRunner {
       this.logger.log(
         `Scanned ${result.scanned} upcoming entrie(s), ${result.candidates} low quality candidate(s), ${result.lookups} Qobuz lookup(s)`,
       );
-      this.logger.log(
-        `Upgraded ${result.upgraded}, reused ${result.reused}, no match ${result.noMatch}, failed ${result.failed}`,
-      );
+      this.logger.log(`Upgraded ${result.upgraded}, reused ${result.reused}, no match ${result.noMatch}, failed ${result.failed}`);
 
       for (const action of result.actions) {
         console.log(`  ${action}`);

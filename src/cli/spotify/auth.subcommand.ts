@@ -16,13 +16,13 @@ export class SpotifyAuthSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(): Promise<void> {
     this.logger.log('Starting Spotify Authentication...');
     const scopes = ['user-read-private', 'user-read-email', 'user-library-read', 'playlist-modify-public', 'playlist-modify-private'];
-    
+
     // We get the authorize URL and the auth utility logs the instructions
     this.spotifyService.auth.getAuthorizeUrl(scopes);
-    
+
     // Wait for the user to input the code
     const rl = readline.createInterface({ input, output });
 

@@ -4,7 +4,7 @@ import { Artist, ArtistDocument } from '../../schemas/artist.schema';
 import { Album, AlbumDocument } from '../../schemas/albums.schema';
 import { Song, SongDocument } from '../../schemas/song.schema';
 import { Enrich, EnrichDocument } from '../../schemas/enrich.schema';
-import { Model, PipelineStage, QueryFilter, Types } from 'mongoose';
+import { Model, PipelineStage, Schema, Types } from 'mongoose';
 import { SongSource, SourceType } from '../../schemas/source.schema';
 import { buildActiveSourceMatch, getActiveSourceTypes, isSourceActive } from '../../config/active-source.util';
 import { z } from 'zod';
@@ -13,6 +13,17 @@ import { buildMatch, MongoMatch, SchemaPathResolver } from './mongo-filter.util'
 import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
+
+/**
+ * What {@link MusicDbService.resolveRefIds} needs from a model: its schema (to type the filter
+ * paths) and a `distinct` over `_id`. Structural on purpose: a `Model<T>` generic would have
+ * TypeScript infer `T` from the model's hydrated document, and since mongoose 9.9 that inferred
+ * `Model<Artist>` is no longer assignable from the injected `Model<ArtistDocument>`.
+ */
+interface RefLookupModel {
+  readonly schema: Schema;
+  distinct(field: '_id', filter: MongoMatch): { exec(): Promise<unknown[]> };
+}
 
 /** The enrichers a song passes through. Each one is a key of `EnrichStatus`. */
 export const ENRICH_TYPES = ['ai', 'bpm', 'ffprobe', 'lyric_semantic'] as const;
@@ -30,8 +41,10 @@ export type PopulatedSong = Omit<SongDocument, 'artist' | 'album'> & {
   album: AlbumDocument;
 };
 
-export const PopulatedSongSchema = z.custom<PopulatedSong>((val: any) => {
-  return typeof val === 'object' && val !== null && 'artist' in val && typeof val.artist === 'object' && 'album' in val && typeof val.album === 'object';
+export const PopulatedSongSchema = z.custom<PopulatedSong>((val: unknown) => {
+  if (typeof val !== 'object' || val === null) return false;
+  const candidate = val as { artist?: unknown; album?: unknown };
+  return typeof candidate.artist === 'object' && typeof candidate.album === 'object';
 });
 
 /** Album artwork urls, in the shape the album document stores them. */
@@ -114,10 +127,7 @@ export class MusicDbService {
     // `status.<type>: 'queued'` then matches nothing. Backfill here rather than in a one-off
     // migration: it runs on every pass, is idempotent, and covers the next enricher too.
     for (const type of ENRICH_TYPES) {
-      await this.enrichModel.updateMany(
-        { [`status.${type}`]: { $exists: false } },
-        { $set: { [`status.${type}`]: 'queued' } },
-      );
+      await this.enrichModel.updateMany({ [`status.${type}`]: { $exists: false } }, { $set: { [`status.${type}`]: 'queued' } });
     }
   }
 
@@ -141,7 +151,7 @@ export class MusicDbService {
       }
     }
 
-    await this.enrichModel.updateOne({ _id: songId as any }, { $set: update }, { upsert: true });
+    await this.enrichModel.updateOne({ _id: songId }, { $set: update }, { upsert: true });
   }
 
   getEnrichCursor(type: EnrichType, status: EnrichState = 'queued', limit?: number) {
@@ -168,11 +178,7 @@ export class MusicDbService {
       Object.assign(filter, this.activeSourceMatch() ?? {});
     }
 
-    const results = await this.songModel
-      .find(filter)
-      .populate('artist')
-      .populate('album')
-      .exec();
+    const results = await this.songModel.find(filter).populate('artist').populate('album').exec();
     return z.array(PopulatedSongSchema).parse(results);
   }
 
@@ -195,7 +201,7 @@ export class MusicDbService {
     const [song] = await this.getPopulatedSongsByIds([playlog.songId.toString()]);
 
     if (!song) {
-      this.logger.warn(`Playlog ${playlog._id} points at song ${playlog.songId}, which no longer exists`);
+      this.logger.warn(`Playlog ${playlog._id.toString()} points at song ${playlog.songId.toString()}, which no longer exists`);
       return null;
     }
 
@@ -203,7 +209,8 @@ export class MusicDbService {
   }
 
   async getRecentlyPlayedArtist(): Promise<RecentlyPlayedArtist[]> {
-    const results: unknown[] = await this.playlogModel.aggregate([
+    const results: unknown[] = await this.playlogModel
+      .aggregate([
         {
           $group: {
             _id: '$artist',
@@ -243,7 +250,8 @@ export class MusicDbService {
             },
           },
         },
-      ]).exec();
+      ])
+      .exec();
 
     // The $lookup preserves playlog rows whose artist document is gone, so those come back
     // without an `artist` field — drop them instead of failing the whole batch.
@@ -399,7 +407,7 @@ export class MusicDbService {
 
   async getArtistDistribution(): Promise<{ artist: string; count: number }[]> {
     return await this.songModel
-      .aggregate([
+      .aggregate<{ artist: string; count: number }>([
         ...this.activeSourceStage(),
         {
           $group: {
@@ -434,7 +442,7 @@ export class MusicDbService {
 
   async getGenreDistribution(): Promise<{ genre: string; count: number }[]> {
     return await this.songModel
-      .aggregate([
+      .aggregate<{ genre: string; count: number }>([
         ...this.activeSourceStage(),
         {
           $group: {
@@ -460,7 +468,7 @@ export class MusicDbService {
     const activeSources = getActiveSourceTypes();
 
     return this.songModel
-      .aggregate([
+      .aggregate<{ bpm: number; count: number }>([
         ...this.activeSourceStage(),
         {
           $unwind: '$source',
@@ -528,14 +536,16 @@ export class MusicDbService {
    * are left alone on purpose: their `source[]` records where the *document* came from, so
    * filtering there would hide an artist whose songs are perfectly playable from another source.
    */
-  async aggregate(collection: string, params: any): Promise<MusicDbAggregateResult[]> {
+  async aggregate(collection: string, params: Record<string, unknown>[]): Promise<MusicDbAggregateResult[]> {
+    // The stages are LLM-authored and validated only as objects. `PipelineStage` is the driver's
+    // contract for them, and this cast is the one place the two meet.
+    const pipeline = params as unknown as PipelineStage[];
     if (collection === 'artists') {
-      return this.artistModel.aggregate(params);
+      return this.artistModel.aggregate<MusicDbAggregateResult>(pipeline);
     } else if (collection === 'albums') {
-      return this.albumModel.aggregate(params);
+      return this.albumModel.aggregate<MusicDbAggregateResult>(pipeline);
     } else if (collection === 'songs') {
-      const pipeline = Array.isArray(params) ? [...this.activeSourceStage(), ...params] : params;
-      return this.songModel.aggregate(pipeline);
+      return this.songModel.aggregate<MusicDbAggregateResult>([...this.activeSourceStage(), ...pipeline]);
     } else {
       throw new Error('Unsupported collection');
     }
@@ -601,7 +611,7 @@ export class MusicDbService {
     // The active-source match is a separate stage rather than a merge into `match`: the LLM filter
     // may already carry a `source` key, and merging would silently drop one of the two.
     const sampled = await this.songModel
-      .aggregate([{ $match: match }, ...this.activeSourceStage(), { $sample: { size: sampleSize } }])
+      .aggregate<{ _id: Types.ObjectId }>([{ $match: match }, ...this.activeSourceStage(), { $sample: { size: sampleSize } }])
       .exec();
     const ids = sampled.map((song) => song._id.toString());
     if (ids.length === 0) {
@@ -615,7 +625,7 @@ export class MusicDbService {
    * @returns the matching ids, or `null` when there was nothing usable to resolve —
    *   which the caller must distinguish from an empty match (no such artist/album).
    */
-  private async resolveRefIds<T>(model: Model<T>, conditions: FilterCondition[]): Promise<Types.ObjectId[] | null> {
+  private async resolveRefIds(model: RefLookupModel, conditions: FilterCondition[]): Promise<Types.ObjectId[] | null> {
     if (conditions.length === 0) {
       return null;
     }
@@ -623,7 +633,7 @@ export class MusicDbService {
     if (!match) {
       return null;
     }
-    return (await model.distinct('_id', match as QueryFilter<T>).exec()) as Types.ObjectId[];
+    return (await model.distinct('_id', match).exec()) as Types.ObjectId[];
   }
 
   /** The `$match` fragment restricting songs to the currently active sources, or `null`. */
@@ -634,10 +644,10 @@ export class MusicDbService {
   /** Spreadable form of {@link activeSourceMatch} - an empty array when nothing is restricted. */
   private activeSourceStage(): PipelineStage.Match[] {
     const match = this.activeSourceMatch();
-    return match ? [{ $match: match as Record<string, any> }] : [];
+    return match ? [{ $match: match }] : [];
   }
 
-  getSchema(collection: string): any {
+  getSchema(collection: string): Schema {
     if (collection === 'artists') return this.artistModel.schema;
     if (collection === 'albums') return this.albumModel.schema;
     if (collection === 'songs') return this.songModel.schema;
@@ -653,10 +663,10 @@ export class MusicDbService {
   }
 
   isArtist(document: MusicDbAggregateResult): boolean {
-    return 'albums' in document && Array.isArray((document as any).albums);
+    return 'albums' in document && Array.isArray((document as { albums?: unknown }).albums);
   }
 
   isSong(document: MusicDbAggregateResult): boolean {
-    return 'source' in document && Array.isArray((document as any).source);
+    return 'source' in document && Array.isArray((document as { source?: unknown }).source);
   }
 }

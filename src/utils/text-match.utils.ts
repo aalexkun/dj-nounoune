@@ -20,18 +20,20 @@ export function normalizeForMatch(value: string | null | undefined): string {
     return '';
   }
 
-  return value
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/['’ʼ]/g, '')
-    // Split letter/digit runs so a tokenised title lines up with a spaced one.
-    // Qobuz lists "Code 4" where the file tag says "Code4"; sharing no token,
-    // that pair scored a flat zero and the track looked like a different song.
-    .replace(/(\p{L})(\p{N})/gu, '$1 $2')
-    .replace(/(\p{N})(\p{L})/gu, '$1 $2')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
+  return (
+    value
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .replace(/['’ʼ]/g, '')
+      // Split letter/digit runs so a tokenised title lines up with a spaced one.
+      // Qobuz lists "Code 4" where the file tag says "Code4"; sharing no token,
+      // that pair scored a flat zero and the track looked like a different song.
+      .replace(/(\p{L})(\p{N})/gu, '$1 $2')
+      .replace(/(\p{N})(\p{L})/gu, '$1 $2')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+  );
 }
 
 /**
@@ -63,11 +65,7 @@ export function identitySimilarity(left: string | null | undefined, right: strin
   return compare(left, right, false);
 }
 
-function compare(
-  left: string | null | undefined,
-  right: string | null | undefined,
-  allowShortContainment: boolean,
-): number {
+function compare(left: string | null | undefined, right: string | null | undefined, allowShortContainment: boolean): number {
   const normalizedLeft = normalizeForMatch(left);
   const normalizedRight = normalizeForMatch(right);
 

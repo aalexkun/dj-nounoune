@@ -18,6 +18,9 @@
     // up-to-date program, skips emit, and `nest build` exits 0 having produced
     // no dist/main.js at all. Incremental buys nothing here anyway, since
     // deleteOutDir forces a full re-emit on every build.
+    // TS6 no longer auto-includes every @types package: name the ambient ones. `jest` is here so
+    // the type-checked lint sees typed globals in *.spec.ts; tsconfig.build.json narrows it to node.
+    "types": ["node", "jest"],
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": false,

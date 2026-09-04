@@ -8,10 +8,7 @@ import { ArtistMerger } from './mergers/artist.merger';
 import { Song, SongSchema } from '../../schemas/song.schema';
 import { Album, AlbumSchema } from '../../schemas/albums.schema';
 import { Artist, ArtistSchema } from '../../schemas/artist.schema';
-import {
-  Deduplication,
-  DeduplicationSchema,
-} from '../../schemas/deduplication.schema';
+import { Deduplication, DeduplicationSchema } from '../../schemas/deduplication.schema';
 import { OpensearchModule } from '../opensearch/opensearch.module';
 
 @Module({
@@ -24,13 +21,7 @@ import { OpensearchModule } from '../opensearch/opensearch.module';
     ]),
     OpensearchModule,
   ],
-  providers: [
-    MergeFactory,
-    MergeService,
-    SongMerger,
-    AlbumMerger,
-    ArtistMerger,
-  ],
+  providers: [MergeFactory, MergeService, SongMerger, AlbumMerger, ArtistMerger],
   exports: [MergeFactory, MergeService],
 })
 export class MergeModule {}

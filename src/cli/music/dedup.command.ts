@@ -11,7 +11,8 @@ import { DedupProcessCommand } from './dedup-process.subcommand';
 export class DedupCommand extends CommandRunner {
   private readonly logger = new Logger(DedupCommand.name);
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: search, process');
+    return Promise.resolve();
   }
 }

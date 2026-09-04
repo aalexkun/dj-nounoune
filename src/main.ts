@@ -16,8 +16,7 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 
-
   const version = process.env.npm_package_version || 'unknown';
   Logger.log(`Application version: ${version} is running!`, 'Bootstrap');
 }
-bootstrap();
+void bootstrap();

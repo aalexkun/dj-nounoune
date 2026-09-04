@@ -14,7 +14,7 @@ export class QobuzImportFavoriteAlbumsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  async run(): Promise<void> {
     await this.qobuzService.importFavoriteAlbums();
   }
 }

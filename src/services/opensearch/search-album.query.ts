@@ -1,11 +1,9 @@
-import { SearchQuery } from './query.interface';
+import { SearchQuery, SearchRequestBody } from './query.interface';
 
 export class AlbumSearchQuery implements SearchQuery {
-  constructor(
-    private album: string,
-  ) {}
+  constructor(private album: string) {}
 
-  getQuery(): Record<string, any> {
+  getQuery(): SearchRequestBody {
     return {
       size: 10,
       query: {

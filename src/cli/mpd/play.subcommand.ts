@@ -2,6 +2,7 @@ import { SubCommand, CommandRunner } from 'nest-commander';
 import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
 import { PlayMpdRequest } from '../../services/mpd-client/requests/PlayMpdRequest';
 import { Injectable, Logger } from '@nestjs/common';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @SubCommand({
   name: 'play',
@@ -18,7 +19,7 @@ export class PlayMpdSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[]): Promise<void> {
     const pos = inputs[0] ? parseInt(inputs[0], 10) : undefined;
 
     this.logger.log(`Sending Play command${pos !== undefined ? ' for pos ' + pos : ''}...`);
@@ -28,8 +29,8 @@ export class PlayMpdSubCommand extends CommandRunner {
     try {
       await this.mpdClient.send(new PlayMpdRequest(pos));
       this.logger.log('Playback started.');
-    } catch (error: any) {
-      this.logger.error(`Failed to play: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Failed to play: ${getErrorMessage(error)}`);
     }
   }
 }

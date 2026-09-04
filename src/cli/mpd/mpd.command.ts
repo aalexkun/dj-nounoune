@@ -14,8 +14,9 @@ import { PlaylistMpdSubCommand } from './playlist.subcommand';
 })
 @Injectable()
 export class MpdCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     // Root command execution if needed, usually empty for subcommands container
     console.log('Use subcommands: test, add, play');
+    return Promise.resolve();
   }
 }

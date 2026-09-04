@@ -1,4 +1,4 @@
-import { SearchQuery } from './query.interface';
+import { SearchQuery, SearchRequestBody } from './query.interface';
 import { buildActiveSourceFilter } from './source-filter.util';
 
 /**
@@ -17,7 +17,7 @@ export class SearchSemanticQuery implements SearchQuery {
     private activeSources: string[] | null = null,
   ) {}
 
-  getQuery(): Record<string, any> {
+  getQuery(): SearchRequestBody {
     const filter = buildActiveSourceFilter(this.activeSources);
 
     return {

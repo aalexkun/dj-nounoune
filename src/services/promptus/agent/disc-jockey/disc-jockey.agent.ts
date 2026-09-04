@@ -1,10 +1,11 @@
 import { GEMINI_FLASH } from '../../config';
-import { Agent,  ReadonlyAgentCache } from '../../agent';
+import { Agent, ReadonlyAgentCache } from '../../agent';
 import { Logger } from '@nestjs/common';
 import { ToolsService } from '../../tools.service';
 import { PromptusRequest } from '../../promptus.request';
 import { GenerateContentResponse } from '@google/genai';
 import { z } from 'zod';
+import { Types } from 'mongoose';
 import { CreatePlaylistRequest } from './request/create-playlist.request';
 import { CreatePlaylistResponse } from './response/create-playlist.response';
 import { WhatIsPlayingRequest } from './request/what-is-playing.request';
@@ -30,7 +31,7 @@ import { FileService } from '../../../file/file.service';
 import { GenerateQueryWithCacheRequest } from './request/generate-query-with-cache.request';
 import { generateQueryWithCache } from './request/generate-query-with-cache.prompt';
 import { GenerateQueryWithCacheResponse } from './response/generate-query-with-cache.response';
-import { MongoWrapperResult, MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
+import { MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
 import { OpensearchService } from '../../../opensearch/opensearch.service';
 import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
 import { filterActiveSources } from '../../../../config/active-source.util';
@@ -125,20 +126,25 @@ export const MusicSearchResultsSchema: z.ZodType<MusicSearchResult[]> = z.array(
  * reaches the cache, and therefore never reaches MPD.
  */
 export const PopulatedSongToMusicSearchResultSchema = z.object({
-  id: z.any().transform((val) => val.toString()),
-  source: z.array(
-    z.object({
-      sourceId: z.string().optional().default(''),
-      name: z.enum(['file', 'spotify', 'qobuz', 'youtube'], {
-        message: 'source name is not valid',
-      }),
-    }).passthrough()
-  ).transform((sources) =>
-    filterActiveSources(sources).map((source) => ({
-      sourceId: source.sourceId || '',
-      name: source.name,
-    }))
-  ),
+  // A hydrated document exposes `id` as a string; a raw aggregate row carries the ObjectId.
+  id: z.union([z.string(), z.instanceof(Types.ObjectId).transform((id) => id.toHexString())]),
+  source: z
+    .array(
+      z
+        .object({
+          sourceId: z.string().optional().default(''),
+          name: z.enum(['file', 'spotify', 'qobuz', 'youtube'], {
+            message: 'source name is not valid',
+          }),
+        })
+        .passthrough(),
+    )
+    .transform((sources) =>
+      filterActiveSources(sources).map((source) => ({
+        sourceId: source.sourceId || '',
+        name: source.name,
+      })),
+    ),
   title: z.string(),
   artist: z.object({ artist: z.string() }).transform((val) => val.artist),
   album: z.object({ title: z.string() }).transform((val) => val.title),
@@ -157,13 +163,14 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
   return (
     typeof record.id === 'string' &&
     Array.isArray(record.source) &&
-    record.source.every(
-      (src: any) =>
-        typeof src === 'object' &&
-        src !== null &&
-        typeof src.sourceId === 'string' &&
-        (src.name === 'qobuz' || src.name === 'file' || src.name === 'spotify' || src.name === 'youtube'),
-    ) &&
+    record.source.every((src: unknown) => {
+      if (typeof src !== 'object' || src === null) return false;
+      const candidate = src as Record<string, unknown>;
+      return (
+        typeof candidate.sourceId === 'string' &&
+        (candidate.name === 'qobuz' || candidate.name === 'file' || candidate.name === 'spotify' || candidate.name === 'youtube')
+      );
+    }) &&
     typeof record.title === 'string' &&
     typeof record.artist === 'string' &&
     typeof record.album === 'string'
@@ -247,7 +254,7 @@ export class DiscJockeyAgent extends Agent {
     // Each definition is sampled on its own, so the same song can come back from several
     // intents — the map collapses them while keeping the first populated copy.
     const musicResult = new Map<string, { intent: string; song: PopulatedSong }>();
-    const groupedResults = await this.musicDBService.findByMongoWrapper(generateQueryWithCacheResponse.aggregate,50);
+    const groupedResults = await this.musicDBService.findByMongoWrapper(generateQueryWithCacheResponse.aggregate, 50);
     for (const group of groupedResults) {
       this.logger.log(`${group.intent}: ${group.items.length} songs`);
       group.items.forEach((song) => musicResult.set(song.id.toString(), { intent: group.intent, song }));
@@ -305,7 +312,6 @@ export class DiscJockeyAgent extends Agent {
     const postFiltering = await this.postFilteringSong(naturalLanguageRequest, musicResult, generateQueryWithCacheResponse.semantic);
     const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering);
 
-
     const playlistItemMsg = arrangePopulatedSongs
       .map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`)
       .join('\n');
@@ -319,8 +325,8 @@ export class DiscJockeyAgent extends Agent {
   }
 
   private async findBestArrangement(naturalLanguageRequest: string, populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
-    let arrangedSongs: PopulatedSong[] = [];
-    let aiRequestMap = new Map<number, string>();
+    const arrangedSongs: PopulatedSong[] = [];
+    const aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
     // `+=`, not `=`: the query used to be overwritten by the header, so the arrangement model never
     // saw the request it was ordering for.
@@ -354,11 +360,7 @@ export class DiscJockeyAgent extends Agent {
    * nothing else, so the model judges it on meaning rather than on tags it was never selected by.
    * Ids run in one sequence across both.
    */
-  async postFilteringSong(
-    request: string,
-    candidates: Map<string, { intent: string; song: PopulatedSong }>,
-    semanticQuery?: string,
-  ) {
+  async postFilteringSong(request: string, candidates: Map<string, { intent: string; song: PopulatedSong }>, semanticQuery?: string) {
     const recentlyPlayed = await this.musicDBService.getRecentlyPlayedArtist();
 
     const categoryHeader = 'ID|Artist|Album|Title|emotion|pace|genre|track_number|language';
@@ -392,9 +394,7 @@ export class DiscJockeyAgent extends Agent {
     // Only rendered when the branch produced something: an empty section would invite the model
     // to reason about a pool that does not exist.
     const semanticSection =
-      semanticRows.length > 0
-        ? `\n# Semantic Songs\nMatched on: "${semanticQuery ?? ''}"\n${semanticHeader}\n${semanticRows.join('\n')}\n`
-        : '';
+      semanticRows.length > 0 ? `\n# Semantic Songs\nMatched on: "${semanticQuery ?? ''}"\n${semanticHeader}\n${semanticRows.join('\n')}\n` : '';
 
     const reactionSection = await this.buildReactionSection(candidates, idRemap);
 
@@ -413,7 +413,7 @@ ${categorySection}${semanticSection}${reactionSection}`;
 
     const result: PopulatedSong[] = [];
 
-    for(const filteredCandidate of response.items){
+    for (const filteredCandidate of response.items) {
       const id = idRemap.get(filteredCandidate) || '';
       const song = candidates.get(id);
       if (song) {
@@ -423,8 +423,6 @@ ${categorySection}${semanticSection}${reactionSection}`;
 
     return result;
   }
-
-
 
   /**
    * The `# Reactions` section of the post-filtering prompt: every candidate the listeners have ever

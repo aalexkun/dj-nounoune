@@ -67,8 +67,8 @@ export class SearchQobuzArtistHandler implements ToolHandler {
         // Ranked, not restricted: these hits were scored against the artist, never verified to be
         // theirs. Anything that does not actually look like their recording is dropped rather than
         // listed under their name — `qobuz_find_artist_track` is the lookup that can promise more.
-        const tracks = (await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name })).filter(
-          (track) => trackBelongsToArtist(track.track, best),
+        const tracks = (await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name })).filter((track) =>
+          trackBelongsToArtist(track.track, best),
         );
 
         sections.push(this.renderTracks(trackTitle, best, tracks));
@@ -83,9 +83,7 @@ export class SearchQobuzArtistHandler implements ToolHandler {
   }
 
   private renderArtists(artists: QobuzArtistMatch[]): string {
-    const rows = artists
-      .map((artist) => `${artist.id}|${artist.name}|${artist.albumsCount ?? ''}`)
-      .join('\n');
+    const rows = artists.map((artist) => `${artist.id}|${artist.name}|${artist.albumsCount ?? ''}`).join('\n');
 
     return `# ARTISTS (best match first)\nqobuzArtistId|name|albums\n${rows}`;
   }

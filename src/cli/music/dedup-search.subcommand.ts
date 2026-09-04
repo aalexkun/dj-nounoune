@@ -32,11 +32,7 @@ export class DedupSearchCommand extends CommandRunner {
   async run(): Promise<void> {
     this.logger.log('Starting deduplication search...');
 
-    const cursor = this.songModel
-      .find()
-      .populate('artist')
-      .populate('album')
-      .cursor();
+    const cursor = this.songModel.find().populate('artist').populate('album').cursor();
 
     let processed = 0;
     let skipped = 0;
@@ -44,7 +40,7 @@ export class DedupSearchCommand extends CommandRunner {
 
     for await (const rawSong of cursor) {
       const song = rawSong as unknown as PopulatedSongDocument;
-      const songId = song._id as Types.ObjectId;
+      const songId = song._id;
 
       try {
         // Double-listing check: skip if this song is already in any dedup record
@@ -58,12 +54,8 @@ export class DedupSearchCommand extends CommandRunner {
         }
 
         // Build search attributes
-        const artistName = typeof song.artist === 'object' && song.artist?.artist
-          ? song.artist.artist
-          : '';
-        const albumTitle = typeof song.album === 'object' && song.album?.title
-          ? song.album.title
-          : '';
+        const artistName = typeof song.artist === 'object' && song.artist?.artist ? song.artist.artist : '';
+        const albumTitle = typeof song.album === 'object' && song.album?.title ? song.album.title : '';
 
         const songAttributes: DuplicateSongCheck = {
           songId: songId.toString(),
@@ -112,15 +104,19 @@ export class DedupSearchCommand extends CommandRunner {
 
           // Fetch full song documents for archiving
           const allSongIds = duplicates.map((d) => d.songId);
-          const archivedDocs = await this.songModel.find({
-            _id: { $in: allSongIds },
-          }).lean().exec();
+          const archivedDocs = await this.songModel
+            .find({
+              _id: { $in: allSongIds },
+            })
+            .lean()
+            .exec();
 
           // Create the deduplication record
           await this.deduplicationModel.create({
             duplicates,
             status: 'pending',
-            archived: archivedDocs,
+            // Stored as plain records: the archive is a snapshot, not a live document.
+            archived: archivedDocs.map((doc) => ({ ...doc.toObject() })),
           });
 
           grouped++;
@@ -130,7 +126,7 @@ export class DedupSearchCommand extends CommandRunner {
         processed++;
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        this.logger.error(`Error processing song ${songId}: ${err.message}`);
+        this.logger.error(`Error processing song ${songId.toString()}: ${err.message}`);
         processed++;
       }
     }

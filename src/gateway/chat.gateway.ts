@@ -11,10 +11,11 @@ import { Server, Socket } from 'socket.io';
 import { AuthService } from '../services/auth/auth.service';
 import { Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import * as chatGatewayTypes from './chat.gateway.types';
 import { SessionService } from '../services/session/session.service';
 import { ChatService } from '../services/chat/chat.service';
 import {
+  ChatFeedbackEvent,
+  ChatMessageEvent,
   ChatMessageResponseEvent,
   ChatMessageResponseEventName,
   ChatStatusResponseEvent,
@@ -39,11 +40,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly sessionService: SessionService,
   ) {}
 
-  async handleConnection(client: Socket) {
-    const apiKey = client.handshake.headers['x-api-key'] || client.handshake.auth['apiKey'];
-    const userId = client.handshake.headers['x-user-id'] || client.handshake.auth['userId'];
+  /**
+   * A credential from the handshake: the header first, then socket.io's `auth` bag. The bag is
+   * typed as `any` by socket.io, so only a string is accepted out of it.
+   */
+  private credential(client: Socket, header: string, authKey: string): string | undefined {
+    const fromHeader = client.handshake.headers[header];
+    const headerValue = Array.isArray(fromHeader) ? fromHeader[0] : fromHeader;
+    if (headerValue) return headerValue;
+    const fromAuth: unknown = client.handshake.auth[authKey];
+    return typeof fromAuth === 'string' ? fromAuth : undefined;
+  }
 
-    if (!this.authService.validateApiKey(apiKey as string | undefined)) {
+  async handleConnection(client: Socket) {
+    const apiKey = this.credential(client, 'x-api-key', 'apiKey');
+    const userId = this.credential(client, 'x-user-id', 'userId');
+
+    if (!this.authService.validateApiKey(apiKey)) {
       this.logger.warn(`Unauthorised connection attempt from ${client.id}`);
       client.disconnect();
       return;
@@ -58,7 +71,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const session = await this.sessionService.retrieveUserSession(userId, client);
       if (session) {
-        client.join(session.id);
+        void client.join(session.id);
         this.logger.log(`Reconnecting client ${session.id} |=| ${client.id}`);
         session.status.next('active');
       } else {
@@ -73,7 +86,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.logger.log(`Creating session for user ${userId} |+| ${session.id} `);
         this.chatService.subscribeToChat(session);
         this.chatService.subscribeToFeedback(session.id);
-        client.join(session.id);
+        void client.join(session.id);
       }
     } catch (error) {
       this.logger.error(`Error handleConnection session: ${getErrorMessage(error)}`);
@@ -88,7 +101,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat-feedback')
-  handleDataStream(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
+  handleDataStream(@MessageBody() payload: ChatFeedbackEvent, @ConnectedSocket() client: Socket) {
     const sessionId = this.sessionService.getSession(client.id)?.id;
 
     if (!sessionId) {
@@ -100,16 +113,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat-message')
-  handleChatMessage(@MessageBody() payload: any, @ConnectedSocket() client: Socket) {
+  handleChatMessage(@MessageBody() payload: ChatMessageEvent, @ConnectedSocket() client: Socket) {
     const sessionId = this.sessionService.getSession(client.id)?.id;
     if (!sessionId) {
       this.logger.error(`No session id found chat-feedback ${client.id}`);
       return;
     }
 
-    this.chatService.processChatMessage(sessionId, payload).then((message) => {
-      this.logger.debug(`chat-message to ${sessionId} Exited`);
-    });
+    this.chatService
+      .processChatMessage(sessionId, payload)
+      .then(() => this.logger.debug(`chat-message to ${sessionId} Exited`))
+      .catch((error: unknown) => this.logger.error(`chat-message to ${sessionId} failed: ${getErrorMessage(error)}`));
   }
 
   /**

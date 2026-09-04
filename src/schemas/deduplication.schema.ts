@@ -33,7 +33,7 @@ export class Deduplication {
   status: string;
 
   @Prop({ type: [MongooseSchema.Types.Mixed], default: [], description: 'Archived duplicate records that have been resolved' })
-  archived: Record<string, any>[];
+  archived: Record<string, unknown>[];
 
   @Prop({ type: String, required: false, description: 'Error message if the deduplication failed' })
   errorMessage?: string;

@@ -4,7 +4,6 @@ import { Model, Types } from 'mongoose';
 import { Chat, ChatDocument, ChatMessage } from '../../schemas/chat.schema';
 import { Content } from '@google/genai';
 import { bufferTime, delayWhen, filter, map, of, Subject, Subscription, take } from 'rxjs';
-import * as chatGatewayTypes from '../../gateway/chat.gateway.types';
 import { NounouneSession, SessionId } from '../session/session.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PromptusService } from '../promptus/promptus.service';
@@ -13,10 +12,7 @@ import { ChatEvent, ChatFeedbackEvent, ChatMessageEvent, ChatMessageResponseEven
 import { PlaylogService } from '../playlog/playlog.service';
 
 export type ChannelName =
-  | `${SessionId}-chat-feedback`
-  | `${SessionId}-chat-message`
-  | `${SessionId}-chat-message-status-response`
-  | `${SessionId}-user-status`;
+  `${SessionId}-chat-feedback` | `${SessionId}-chat-message` | `${SessionId}-chat-message-status-response` | `${SessionId}-user-status`;
 
 @Injectable()
 export class ChatService {
@@ -116,8 +112,7 @@ export class ChatService {
       .subscribe((groupedCounts) => {
         // 3. The output will now be an object instead of a single integer
         this.logger.log('Count of reactions over the last 5 seconds:', groupedCounts);
-        this.playlog.handleFeedbackEvent(groupedCounts);
-
+        void this.playlog.handleFeedbackEvent(groupedCounts);
       });
 
     this.clientSubjects.set(`${sessionId}-chat-feedback`, subject);

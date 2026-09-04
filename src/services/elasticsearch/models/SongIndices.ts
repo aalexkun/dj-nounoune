@@ -48,7 +48,7 @@ export class SongIndices {
       },
       filter: {
         pinyin: {
-          // @ts-ignore
+          // @ts-expect-error the pinyin analysis plugin's filter type is not in the client's typings
           type: 'pinyin',
           keep_first_letter: true,
           keep_separate_first_letter: false,

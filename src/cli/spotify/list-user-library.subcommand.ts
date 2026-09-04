@@ -2,6 +2,10 @@ import { SubCommand, CommandRunner, Option } from 'nest-commander';
 import { Injectable, Logger } from '@nestjs/common';
 import { SpotifyService } from '../../services/spotify/spotify.service';
 
+interface ListUserLibraryOptions {
+  limit?: string;
+}
+
 @SubCommand({
   name: 'list',
   description: 'List user saved tracks from Spotify',
@@ -14,9 +18,9 @@ export class SpotifyListUserLibrarySubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(_inputs: string[], options: ListUserLibraryOptions = {}): Promise<void> {
     const limitOption = options.limit;
-    const limit = limitOption === 'all' ? Number.MAX_SAFE_INTEGER : parseInt(limitOption, 10);
+    const limit = limitOption === 'all' ? Number.MAX_SAFE_INTEGER : parseInt(limitOption ?? '', 10);
 
     if (isNaN(limit)) {
       this.logger.error('Invalid limit provided. Must be a number or "all".');

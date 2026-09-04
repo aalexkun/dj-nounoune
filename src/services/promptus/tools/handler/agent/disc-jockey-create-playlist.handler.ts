@@ -18,11 +18,7 @@ export class DiscJockeyCreatePlaylistHandler implements ToolHandler {
     }
 
     try {
-
-
-
       const cacheEntry = await this.djAgent.createPlaylist(args.natural_language_request, sessionId);
-
 
       return {
         description: 'Songs returned from Disc Jockey agent',

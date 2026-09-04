@@ -60,8 +60,7 @@ export class PlayYoutubeHandler implements ToolHandler {
     }
 
     const videosOk = record.videoIds === undefined || record.videoIds === null || this.isStringArray(record.videoIds);
-    const listsOk =
-      record.playlistIds === undefined || record.playlistIds === null || this.isStringArray(record.playlistIds);
+    const listsOk = record.playlistIds === undefined || record.playlistIds === null || this.isStringArray(record.playlistIds);
 
     return videosOk && listsOk;
   }

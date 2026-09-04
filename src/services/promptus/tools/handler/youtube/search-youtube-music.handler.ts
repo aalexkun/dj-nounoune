@@ -89,12 +89,9 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
     }
 
     const record = args as Record<string, unknown>;
-    const optionalString = (value: unknown): boolean =>
-      value === undefined || value === null || typeof value === 'string';
+    const optionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string';
 
-    return (
-      optionalString(record.artist_name) && optionalString(record.track_title) && optionalString(record.album_title)
-    );
+    return optionalString(record.artist_name) && optionalString(record.track_title) && optionalString(record.album_title);
   }
 
   async execute(args: unknown): Promise<FunctionCallResult> {
@@ -122,9 +119,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
         // answer a question nobody asked, and the next step after that is queueing the wrong album
         // — so unless a song was also named, the search ends.
         if (!title) {
-          return this.reply(
-            this.deadEnd(`No YouTube playlist is the record "${album}"${artist ? ` by ${artist}` : ''}.`),
-          );
+          return this.reply(this.deadEnd(`No YouTube playlist is the record "${album}"${artist ? ` by ${artist}` : ''}.`));
         }
       }
 
@@ -184,12 +179,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
       sections.push(
         '# OTHER PLAYLISTS THAT MATCHED THE NAME (not used)\n' +
           'youtubePlaylistId|title|channel\n' +
-          others
-            .map(
-              (entry) =>
-                `${entry.playlist.id}|${stripReleasePrefix(entry.playlist.title)}|${entry.playlist.channelTitle ?? ''}`,
-            )
-            .join('\n'),
+          others.map((entry) => `${entry.playlist.id}|${stripReleasePrefix(entry.playlist.title)}|${entry.playlist.channelTitle ?? ''}`).join('\n'),
       );
     }
 
@@ -212,10 +202,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
         const bare = stripReleasePrefix(playlist.title);
         const isRelease = playlist.id.startsWith(RELEASE_PLAYLIST_PREFIX);
 
-        const named = Math.max(
-          identitySimilarity(album, bare),
-          identitySimilarity(album, this.withoutArtist(bare, artist)),
-        );
+        const named = Math.max(identitySimilarity(album, bare), identitySimilarity(album, this.withoutArtist(bare, artist)));
 
         return {
           playlist,
@@ -268,9 +255,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
         : `# TRACKS (nothing on that record is called "${title}" — here is the whole thing, in running order)`
       : '# TRACKS (read from the playlist itself, in running order)';
 
-    const rows = shown
-      .map((track) => `${track.videoId}|${track.trackNumber}|${track.title}|${track.artist || track.channelTitle || ''}`)
-      .join('\n');
+    const rows = shown.map((track) => `${track.videoId}|${track.trackNumber}|${track.title}|${track.artist || track.channelTitle || ''}`).join('\n');
 
     return `${header}\nyoutubeVideoId|no|title|artist\n${rows}`;
   }
@@ -293,9 +278,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
         (!artist || match.score.artist >= MINIMUM_ARTIST_SCORE),
     );
 
-    this.logger.log(
-      `YouTube search for "${title}"${artist ? ` by "${artist}"` : ''}: kept ${kept.length} of ${matches.length} hit(s)`,
-    );
+    this.logger.log(`YouTube search for "${title}"${artist ? ` by "${artist}"` : ''}: kept ${kept.length} of ${matches.length} hit(s)`);
 
     if (kept.length === 0) {
       return this.deadEnd(
@@ -331,9 +314,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
   /** No song and no record named: answer with the releases carrying their name. */
   private async searchArtistReleases(artist: string, album: string): Promise<string> {
     const playlists = await this.youtubeService.searchPlaylists(artist);
-    const scored = this.scorePlaylists(playlists, artist, album || artist).filter(
-      (entry) => entry.artist >= MINIMUM_ARTIST_SCORE,
-    );
+    const scored = this.scorePlaylists(playlists, artist, album || artist).filter((entry) => entry.artist >= MINIMUM_ARTIST_SCORE);
 
     if (scored.length === 0) {
       return this.deadEnd(`YouTube has nothing filed under "${artist}".`);
@@ -341,10 +322,7 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
 
     const rows = scored
       .slice(0, MAX_ALBUMS_REPORTED)
-      .map(
-        (entry) =>
-          `${entry.playlist.id}|${stripReleasePrefix(entry.playlist.title)}|${entry.playlist.channelTitle ?? ''}`,
-      )
+      .map((entry) => `${entry.playlist.id}|${stripReleasePrefix(entry.playlist.title)}|${entry.playlist.channelTitle ?? ''}`)
       .join('\n');
 
     return (

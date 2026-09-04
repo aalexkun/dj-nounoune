@@ -13,9 +13,8 @@ export class PromptusPlaySubcommand extends CommandRunner {
   constructor(private promptusService: PromptusService) {
     super();
   }
-  async run(passedParams: string[], options?: Record<string, any>): Promise<void> {
-    const searchText = passedParams.join(' ');
-
-    //
+  run(passedParams: string[]): Promise<void> {
+    this.logger.warn(`promptus play is not implemented yet (request: "${passedParams.join(' ')}")`);
+    return Promise.resolve();
   }
 }

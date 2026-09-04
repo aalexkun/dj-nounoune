@@ -67,8 +67,9 @@ export class PsvService {
 
     // 2. Process the stream
     for await (const rawRecord of stream) {
-      // 3. TRANSFORM: Convert raw strings to actual types
-      const transformed = this.transformRecord(rawRecord);
+      // 3. TRANSFORM: Convert raw strings to actual types. With `columns: true` csv-parse yields
+      // one object per row keyed by header, which is what `transformRecord` reads.
+      const transformed = this.transformRecord(rawRecord as Record<Header, string | number>);
 
       // 4. Pass to the callback (Load)
       await onRecord(transformed);
@@ -92,7 +93,7 @@ export class PsvService {
     for await (const record of records) {
       // You can perform async operations here if needed, e.g., database calls
       // await someAsyncDbCall(record);
-      const transformed = this.transformRecord(record);
+      const transformed = this.transformRecord(record as Record<Header, string | number>);
       parsedPSV.push(transformed);
     }
 
@@ -112,13 +113,13 @@ export class PsvService {
     return psv;
   }
 
-  private mapToRaw(song: Partial<ParsedPsvRow>): any {
-    const raw: any = {};
+  private mapToRaw(song: Partial<ParsedPsvRow>): Record<string, string> {
+    const raw: Record<string, string> = {};
 
     // Helper to add property only if value is not null/undefined
-    const addIfSet = (key: string, value: any) => {
+    const addIfSet = (key: string, value: string | number | null | undefined) => {
       if (value !== null && value !== undefined) {
-        raw[key] = value;
+        raw[key] = String(value);
       }
     };
 

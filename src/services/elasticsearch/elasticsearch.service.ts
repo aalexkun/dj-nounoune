@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@elastic/elasticsearch';
-import { ZentityResolutionResponseSchema, ZentityResolutionResponse, ZentityHitSchema, ZentityHit, ZentityExplanationMatch } from './types';
+import { ZentityResolutionResponseSchema, ZentityResolutionResponse, ZentityHit, ZentityExplanationMatch } from './types';
 import { PopulatedSong } from '../music-db/music-db.service';
 import { SongEntity } from './models/SongEntity';
 import { SongIndices } from './models/SongIndices';
@@ -55,11 +55,11 @@ export class ElasticsearchService {
       this.logger.log('Registering Zentity identity model for "song"...');
 
       // We use client.request() because Zentity endpoints are not natively typed in the official client
-      const response = (await this.client.transport.request({
+      const response = await this.client.transport.request<{ statusCode?: number }>({
         method: 'POST',
         path: `${SongEntity.path}/models/${SongEntity.model}`,
         body: SongEntity.getBody(), // The model definition from the previous step
-      })) as Record<string, unknown>;
+      });
 
       if (response?.statusCode === 200 || response?.statusCode === 201) {
         this.logger.log('Successfully registered Zentity model: song_entity.');
@@ -108,14 +108,14 @@ export class ElasticsearchService {
           `Duplicate found for song: "${song.title}" by "${songAttributes.artist}" - "${songAttributes.album}" => ${song._id.toString()}`,
         );
         duplicates.hits.hits.forEach((hit: ZentityHit) => {
-          this.logger.warn(`      song: "${hit['_source'].title}" by "${hit['_source'].artist}" - "${hit['_source'].album}" => ${hit['_id']}`);
+          this.logger.warn(
+            `      song: "${String(hit._source.title)}" by "${String(hit._source.artist)}" - "${String(hit._source.album)}" => ${hit._id}`,
+          );
 
           hit['_explanation']?.matches?.forEach((match: ZentityExplanationMatch) => {
             this.logger.debug(`        Explanation match: ${match.attribute} => ${match.target_field} : ${match.target_value}`);
           });
-
         });
-
       }
 
       try {
@@ -127,9 +127,8 @@ export class ElasticsearchService {
           },
         });
       } catch (error) {
-        this.logger.error(`Failed to index song ${song._id}: ${getErrorMessage(error)}`);
+        this.logger.error(`Failed to index song ${song._id.toString()}: ${getErrorMessage(error)}`);
       }
-
     }
 
     this.logger.log(`Successfully processed ${songs.length} songs.`);
@@ -142,7 +141,6 @@ export class ElasticsearchService {
     return str.replace(punctuationRegex, '').replace(/\s+/g, ' ').trim();
   }
 
-
   async findDuplicates(songAttributes: { title: string; artist: string; album?: string }): Promise<ZentityResolutionResponse | null> {
     const attributes = {
       title: [this.escapeZentityAttributes(songAttributes.title)],
@@ -153,22 +151,21 @@ export class ElasticsearchService {
     const body = JSON.stringify({ attributes });
 
     try {
-
       const response = await this.client.transport.request(
         {
-        method: 'POST',
-        path: `${SongEntity.path}/resolution/${SongEntity.model}`,
-        querystring: {
-          _explanation: true
-        },
-        body
+          method: 'POST',
+          path: `${SongEntity.path}/resolution/${SongEntity.model}`,
+          querystring: {
+            _explanation: true,
+          },
+          body,
         },
         {
           headers: {
-            'content-type': 'application/json'
-          }
-        }
-          );
+            'content-type': 'application/json',
+          },
+        },
+      );
 
       // Validate the response using Zod
       const parsedResponse = ZentityResolutionResponseSchema.safeParse(response);

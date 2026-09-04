@@ -1,5 +1,3 @@
-
-
 export const NeuralSearch = {
   Model: 'huggingface/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
   Version: '1.0.1',

@@ -1,7 +1,8 @@
-import { SubCommand, CommandRunner, Option } from 'nest-commander';
+import { SubCommand, CommandRunner } from 'nest-commander';
 import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
 import { ShuffleMpdRequest } from '../../services/mpd-client/requests/ShuffleMpdRequest';
 import { Injectable, Logger } from '@nestjs/common';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @SubCommand({
   name: 'shuffle',
@@ -15,7 +16,7 @@ export class ShuffleMpdSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[]): Promise<void> {
     try {
       // inputs can be used for range if needed, but for now specific options or just simple shuffle
       const range = inputs[0];
@@ -23,8 +24,8 @@ export class ShuffleMpdSubCommand extends CommandRunner {
 
       const response = await this.mpdClient.send(new ShuffleMpdRequest(range));
       this.logger.log(`Response: ${response.rawResponse.trim()}`);
-    } catch (error: any) {
-      this.logger.error(`Failed to shuffle playlist: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Failed to shuffle playlist: ${getErrorMessage(error)}`);
     }
   }
 }

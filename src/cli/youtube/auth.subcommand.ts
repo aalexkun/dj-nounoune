@@ -20,9 +20,7 @@ export class YoutubeAuthSubCommand extends CommandRunner {
 
   async run(): Promise<void> {
     this.logger.log('Starting YouTube Authentication...');
-    this.logger.log(
-      'Note: searching and playing need only YOUTUBE_API_KEY. This flow is for the signed-in account only.',
-    );
+    this.logger.log('Note: searching and playing need only YOUTUBE_API_KEY. This flow is for the signed-in account only.');
 
     try {
       this.youtubeService.auth.getAuthorizeUrl();

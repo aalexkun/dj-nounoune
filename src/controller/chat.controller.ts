@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiAuthGuard } from '../services/auth/api-auth.guard';
 import { ChatService } from '../services/chat/chat.service';
 

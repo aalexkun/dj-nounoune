@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 
-export type EnrichDocument = Enrich & Document;
+export type EnrichDocument = HydratedDocument<Enrich>;
 
 @Schema({ _id: false })
 export class EnrichStatus {
@@ -32,7 +32,7 @@ export class Enrich {
   message: string;
 
   @Prop({ type: MongooseSchema.Types.Mixed })
-  response: any;
+  response: Record<string, unknown>;
 }
 
 export const EnrichSchema = SchemaFactory.createForClass(Enrich);

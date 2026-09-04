@@ -1,4 +1,3 @@
-
 export class SongEntity {
   static readonly path = '/_zentity';
   static readonly model = 'song_entity';
