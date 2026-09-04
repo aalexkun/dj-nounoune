@@ -28,11 +28,25 @@ import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../c
 import { ProfilerService } from '../../../profiler/profiler.service';
 import { FileService } from '../../../file/file.service';
 import { GenerateQueryWithCacheRequest } from './request/generate-query-with-cache.request';
+import { generateQueryWithCache } from './request/generate-query-with-cache.prompt';
 import { GenerateQueryWithCacheResponse } from './response/generate-query-with-cache.response';
 import { MongoWrapperResult, MusicDbService, PopulatedSong } from '../../../music-db/music-db.service';
 import { OpensearchService } from '../../../opensearch/opensearch.service';
 import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
 import { filterActiveSources } from '../../../../config/active-source.util';
+
+/**
+ * Label shared by every candidate the lyric-semantic branch surfaces. The intent string is the
+ * grouping key in the post-filter prompt, so it must be constant across hits - a per-hit score in
+ * it would give every song its own one-row group.
+ */
+const SEMANTIC_INTENT_PREFIX = 'Lyric Semantic Match';
+
+/** Label for the fulltext branch, constant for the same reason. */
+const FULLTEXT_INTENT = 'Fulltext Match';
+
+/** kNN candidates pulled from the semantic index per request. */
+const SEMANTIC_CANDIDATES = 20;
 
 export type TechnicalInfo = {
   size?: number;
@@ -159,12 +173,18 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
 export class DiscJockeyAgent extends Agent {
   name = 'MusicSearchAgent';
   protected readonly logger = new Logger(this.name);
+  /**
+   * The cached file is the database profile (data); the prompt is the cache's system instruction.
+   * `GenerateQueryWithCacheRequest` is the only request that references this cache, so nothing
+   * else inherits the instruction — and because CacheHandler reuses a cache by name without
+   * comparing content, editing the prompt does nothing until `promptus clear-cache`.
+   */
   protected cache: ReadonlyAgentCache = {
     name: 'dj-nounoune-cache',
     file: `files/dj-nounoune-cache`,
     fileMineType: 'text/plain',
     model: GEMINI_FLASH,
-    systemInstruction: '',
+    cacheInstruction: generateQueryWithCache,
     cacheContent: undefined,
   };
 
@@ -183,6 +203,31 @@ export class DiscJockeyAgent extends Agent {
   }
 
   /**
+   * The query generator on its own: make sure the DB-profile cache is live, then turn the request
+   * into its three branches. `createPlaylist` builds on this; `opensearch semantic` calls it directly
+   * to show what the model produced before anything is searched.
+   */
+  async generateQuery(naturalLanguageRequest: string, sessionId?: string): Promise<GenerateQueryWithCacheResponse> {
+    if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
+      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
+      await this.fileService.saveFile(this.cache.name, dbProfile);
+
+      const cacheContent = await this.cacheHandler.cache(this.cache);
+      if (!cacheContent || !cacheContent.expireTime) {
+        const error = 'Cache Creation failed. Please check cache content and cache name.';
+        if (sessionId) {
+          this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(error, sessionId));
+        }
+        throw new Error(error);
+      }
+      this.cache.cacheContent = cacheContent;
+    }
+
+    const request = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
+    return await this.generate(request, sessionId);
+  }
+
+  /**
    * [Nest] 59588  - 07/01/2026, 7:28:22 PM   ERROR [PromptusService] ApiError: {"error":{"code":403,"message":"CachedContent not found (or permission denied)","status":"PERMISSION_DENIED"}}
    *     at throwErrorIfNotOK (C:\Users\Alexandre\WebstormProjects\dj-nounoune\node_modules\@google\genai\dist\node\index.cjs:12224:30)
    *     at processTicksAndRejections (node:internal/process/task_queues:105:5)
@@ -194,22 +239,7 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('sessionId is required to createPlaylist');
     }
 
-    if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
-      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
-      await this.fileService.saveFile(this.cache.name, dbProfile);
-
-      const cacheContent = await this.cacheHandler.cache(this.cache);
-      if (!cacheContent || !cacheContent.expireTime) {
-        const error = 'Cache Creation failed. Please check cache content and cache name.';
-        this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(error, sessionId));
-
-        throw new Error(error);
-      }
-      this.cache.cacheContent = cacheContent;
-    }
-
-    const generateQueryWithCacheRequest = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
-    const generateQueryWithCacheResponse = await this.generate(generateQueryWithCacheRequest, sessionId);
+    const generateQueryWithCacheResponse = await this.generateQuery(naturalLanguageRequest, sessionId);
 
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2));
@@ -234,9 +264,36 @@ export class DiscJockeyAgent extends Agent {
             if (fullTextSong.length === 0) {
               continue;
             }
-            musicResult.set(hit._id.toString(), { intent: `Fulltext Match Score = ${hit._score}`, song: fullTextSong[0] });
+            this.logger.debug(`fulltext hit ${hit._id} score=${hit._score}`);
+            musicResult.set(hit._id.toString(), { intent: FULLTEXT_INTENT, song: fullTextSong[0] });
           }
         }
+      }
+    }
+
+    // The third branch: what the library holds that is *about* the same thing. No score floor to
+    // start with - `k` already bounds the result and kNN cosine scores are not on the BM25 scale the
+    // fulltext threshold above was tuned against. Scores are logged so a floor can be set later.
+    if (generateQueryWithCacheResponse.semantic) {
+      this.logger.log(`semantic: ${generateQueryWithCacheResponse.semantic}`);
+      const semanticResult = await this.opensearchService.searchBySemantic(generateQueryWithCacheResponse.semantic, SEMANTIC_CANDIDATES);
+      if (semanticResult) {
+        // The sentence itself goes to the curator as the section header, not in the intent.
+        const intent = SEMANTIC_INTENT_PREFIX;
+        const newIds: string[] = [];
+        for (const hit of semanticResult.hits.hits) {
+          this.logger.debug(`semantic hit ${hit._id} score=${hit._score}`);
+          if (!musicResult.has(hit._id.toString())) {
+            newIds.push(hit._id.toString());
+          }
+        }
+
+        // One round trip for the whole branch, with Mongo as the authority on source availability.
+        const semanticSongs = newIds.length > 0 ? await this.musicDBService.getPopulatedSongsByIds(newIds, true) : [];
+        for (const song of semanticSongs) {
+          musicResult.set(song.id.toString(), { intent, song });
+        }
+        this.logger.log(`${SEMANTIC_INTENT_PREFIX}: ${semanticSongs.length} songs`);
       }
     }
 
@@ -245,7 +302,7 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('No songs found');
     }
 
-    const postFiltering = await this.postFilteringSong(naturalLanguageRequest,musicResult);
+    const postFiltering = await this.postFilteringSong(naturalLanguageRequest, musicResult, generateQueryWithCacheResponse.semantic);
     const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering);
 
 
@@ -265,11 +322,13 @@ export class DiscJockeyAgent extends Agent {
     let arrangedSongs: PopulatedSong[] = [];
     let aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
+    // `+=`, not `=`: the query used to be overwritten by the header, so the arrangement model never
+    // saw the request it was ordering for.
     let prompt = `# Query \n${naturalLanguageRequest} \n`;
-    prompt = `# PSV\nid|artist|album|title|emotion|pace|track_number|language|country\n`;
+    prompt += `# PSV\nid|artist|album|title|emotion|pace|track_number|language|country|lyric_semantic\n`;
     populatedSongs.forEach((song, index) => {
       aiRequestMap.set(index + 1, song.id.toString());
-      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}${song.title}|${song.emotion}|${song.pace}|${song.track_number}|${song.language}|${song.country}\n`;
+      prompt += `${index + 1}|${song.artist.artist}|${song.album.title}|${song.title}|${song.emotion}|${song.pace}|${song.track_number}|${song.language}|${song.country}|${song.lyric_semantic ?? ''}\n`;
     });
 
     const response = await this.generate(new FindBestArrangementRequest(prompt));
@@ -287,34 +346,68 @@ export class DiscJockeyAgent extends Agent {
     return arrangedSongs;
   }
 
-  async postFilteringSong(request: string, candidates: Map<string, { intent: string; song: PopulatedSong }>){
-
+  /**
+   * The candidates reach the curator as two sections, because they are two kinds of evidence.
+   * `# Songs` is the category pool - what the tag and fulltext branches returned - grouped by the
+   * intent that produced each group, with tags. `# Semantic Songs` is the lyric pool - what the
+   * index returned for `semanticQuery` - shown with the sentence each song was matched on and
+   * nothing else, so the model judges it on meaning rather than on tags it was never selected by.
+   * Ids run in one sequence across both.
+   */
+  async postFilteringSong(
+    request: string,
+    candidates: Map<string, { intent: string; song: PopulatedSong }>,
+    semanticQuery?: string,
+  ) {
     const recentlyPlayed = await this.musicDBService.getRecentlyPlayedArtist();
 
-    const intents = {};
+    const categoryHeader = 'ID|Artist|Album|Title|emotion|pace|genre|track_number|language';
+    const semanticHeader = 'ID|Artist|Album|Title|lyric_semantic';
+
+    const intents: Record<string, string> = {};
+    const semanticRows: string[] = [];
     const idRemap = new Map<string, string>();
     let inc = 0;
     for (const curr of candidates.values()) {
       inc++;
       idRemap.set(inc.toString(), curr.song.id.toString());
-      const psvline = `${inc}|${curr.song.artist.artist}|${curr.song.album.title}|${curr.song.title}|${curr.song.emotion}|${curr.song.pace}|${curr.song.genre}|${curr.song.track_number}|${curr.song.language}`;
-      if (intents[curr.intent]){
-        intents[curr.intent] += `${psvline}\n`;
-      } else {
-        intents[curr.intent] = `ID|Artist|Album|Title|emotion|pace|genre|track_number|language\n${psvline}\n`;
+      const song = curr.song;
+
+      if (curr.intent.startsWith(SEMANTIC_INTENT_PREFIX)) {
+        semanticRows.push(`${inc}|${song.artist.artist}|${song.album.title}|${song.title}|${song.lyric_semantic ?? ''}`);
+        continue;
       }
+
+      const psvline = `${inc}|${song.artist.artist}|${song.album.title}|${song.title}|${song.emotion}|${song.pace}|${song.genre}|${song.track_number}|${song.language}`;
+      intents[curr.intent] = (intents[curr.intent] ?? `${categoryHeader}\n`) + `${psvline}\n`;
     }
 
+    const categorySection =
+      Object.keys(intents).length > 0
+        ? Object.entries(intents)
+            .map(([intent, rows]) => `### ${intent}\n${rows}`)
+            .join('\n')
+        : '(none)\n';
+
+    // Only rendered when the branch produced something: an empty section would invite the model
+    // to reason about a pool that does not exist.
+    const semanticSection =
+      semanticRows.length > 0
+        ? `\n# Semantic Songs\nMatched on: "${semanticQuery ?? ''}"\n${semanticHeader}\n${semanticRows.join('\n')}\n`
+        : '';
+
+    const reactionSection = await this.buildReactionSection(candidates, idRemap);
+
     const prompt = `
-# User Request: 
+# User Request:
 ${request}
+
 # Recently Played Artists
 Artist|Last Played
 ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n')}
-    
-# Songs 
-    ${Object.entries(intents).map(([intent, songs ]) => `### ${intent}\n${songs}\n\n`).join('\n')}
-    `;
+
+# Songs
+${categorySection}${semanticSection}${reactionSection}`;
 
     const response = await this.generate(new PostFilteringRequest(prompt));
 
@@ -332,6 +425,41 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
   }
 
 
+
+  /**
+   * The `# Reactions` section of the post-filtering prompt: every candidate the listeners have ever
+   * reacted to, on the same remapped ids as the catalogue, best received first. Songs with no
+   * reaction at all are left out rather than shown as zeros - a row of zeros reads as a verdict,
+   * and the prompt tells the model that absence is neither.
+   *
+   * `score` is the net verdict the rows are sorted by: awesome and wtf weigh double because they
+   * are the emphatic buttons. The weights are stated in the prompt; keep the two in step.
+   */
+  private async buildReactionSection(
+    candidates: Map<string, { intent: string; song: PopulatedSong }>,
+    idRemap: Map<string, string>,
+  ): Promise<string> {
+    const reactions = await this.musicDBService.getSongReactions([...candidates.keys()]);
+    if (reactions.size === 0) return '';
+
+    const rows = [...idRemap.entries()].flatMap(([promptId, songId]) => {
+      const reaction = reactions.get(songId);
+      const song = candidates.get(songId)?.song;
+      if (!reaction || !song) return [];
+      const score = reaction.awesome * 2 + reaction.great - reaction.duh - reaction.wtf * 2;
+      return [{ promptId, song, reaction, score }];
+    });
+
+    rows.sort((a, b) => b.score - a.score || b.reaction.awesome - a.reaction.awesome || b.reaction.plays - a.reaction.plays);
+
+    const header = 'ID|Artist|Title|plays|awesome|great|duh|wtf|score';
+    const lines = rows.map(
+      ({ promptId, song, reaction, score }) =>
+        `${promptId}|${song.artist.artist}|${song.title}|${reaction.plays}|${reaction.awesome}|${reaction.great}|${reaction.duh}|${reaction.wtf}|${score}`,
+    );
+
+    return `\n# Reactions\n${header}\n${lines.join('\n')}\n`;
+  }
 
   async whatIsPlaying(request: string, sessionId?: string, options?: { withoutCurrentSongTool?: boolean }) {
     const wip = new WhatIsPlayingRequest(request, options);

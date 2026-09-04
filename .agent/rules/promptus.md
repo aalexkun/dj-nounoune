@@ -116,33 +116,35 @@ For large amounts of static context (e.g., a large song database or extensive do
 ### Implementation Pattern
 
 1.  **Prepare Data**: Convert your large dataset into a format suitable for the LLM (e.g., PSV or JSON).
-2.  **Save & Upload**: Save the data to a file and upload it using `promptusService.cacheHandler.cache`.
-3.  **Create Cache**: The `cache` method uploads the file and creates a `CachedContent` object associated with a specific model and system instruction.
+2.  **Save**: Write it locally with `FileService.saveFile(name, content)` — it lands at `files/<name>`.
+3.  **Describe the cache**: Fill a `ReadonlyAgentCache` descriptor (defined in `agent.ts`). Its `cacheInstruction` is the system instruction baked into the `CachedContent`; leave it `''` when the instruction *is* the file (the enrich taxonomy does this).
+4.  **Create or reuse**: Call `cacheHandler.cache(descriptor)` on the agent that will run the request — every `Agent` owns a `CacheHandler`. It get-or-creates both the uploaded file and the `CachedContent` by name.
 
 ```typescript
-// Example implementation in a Command or Service
-const cacheName = 'my-large-context';
-const cacheFile = 'path/to/data.psv';
-const model = 'gemini-3-flash-preview'; // Cache must match the model
-const systemInstruction = 'Instructions on how to process the data';
+// Example implementation in the owning service
+const descriptor: ReadonlyAgentCache = {
+  name: 'my-large-context',
+  file: 'files/my-large-context',        // written by FileService.saveFile('my-large-context', data)
+  fileMineType: 'text/plain',
+  model: GEMINI_FLASH,                   // must equal the request's model
+  cacheInstruction: myInstructionPrompt, // or '' when the file is the instruction
+  cacheContent: undefined,
+};
 
-const cache = await this.promptusService.cacheHandler.cache(
-  cacheFile, 
-  cacheName, 
-  'text/plain', 
-  model, 
-  systemInstruction
-);
+const cache = await this.myAgent.cacheHandler.cache(descriptor);
 
 if (cache) {
-  const request = new MyPromptusRequest('Query about the cached data');
-  request.cache = cache; // Assign the cache to the request
-  const response = await this.promptusService.generate(request);
+  const request = new MyPromptusRequest('Query about the cached data'); // its own context must be ''
+  request.cache = cache;
+  const response = await this.myAgent.generate(request);
 }
 ```
 
+Full semantics — the two instruction channels, why the request's own `context`/`tools`/`grounded` are dropped, and why an edit does nothing until the cache is cleared — are in `doc/promptus-caching.md`.
+
 ### Critical Constraints
-1.  **Model Match**: The model specified when creating the cache MUST match the model used in the `PromptusRequest`.
-2.  **System Instruction Match**: The `systemInstruction` used to create the cache will be used for all requests using that cache.
-3.  **No Direct Instruction**: When `request.cache` is set, `PromptusRequest` will automatically use `cachedContent` and OMIT the `systemInstruction` from the request parameters (as it is already baked into the cache).
-4.  **Cache Duration**: Google GenAI caches have a TTL (Time To Live). The `CacheHandler` implementation currently checks for existing caches by `displayName`.
+1.  **Model Match**: `descriptor.model` MUST equal the `model` of every `PromptusRequest` that uses the cache. A mismatch fails at call time, not at compile time.
+2.  **The instruction lives on the cache**: `cacheInstruction` and/or the cached file's content is what steers every request that references the cache. The request's own `context` is never sent — set it to `''` and say why.
+3.  **No tools, no grounding**: When `request.cache` is set, `PromptusRequest` uses `cachedContent` and OMITS `systemInstruction`, `tools` and `grounded` from the request parameters. Only `structuredResponse` still applies.
+4.  **Sticky by name**: `CacheHandler.cache` reuses an existing cache and an existing uploaded file by name, without comparing content. An edited prompt, taxonomy or profile does nothing until `npm run cli -- promptus clear-cache` (or `music enrich --clear-cache` for the enrich cache) — and the owning agent may also hold the handle in memory until its `expireTime`.
+5.  **Cache Duration**: Google GenAI caches have a TTL; expired caches are re-created on demand by the owning agent.

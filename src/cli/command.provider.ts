@@ -44,12 +44,14 @@ import { OpensearchCommand } from './opensearch/opensearch.command';
 import { OpensearchCreateIndexSubCommand } from './opensearch/create-index.subcommand';
 import { OpensearchPruneIndexSubCommand } from './opensearch/prune-index.subcommand';
 import { OpensearchIndexSongsSubCommand } from './opensearch/index-songs.subcommand';
+import { OpensearchSemanticSearchSubCommand } from './opensearch/semantic-search.subcommand';
 import { DedupCommand } from './music/dedup.command';
 import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
 import { ProfilerCommand } from './profiler/profiler.command';
 import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
+import { LyricSemanticCommand } from './music/lyric-semantic.subcommand';
 import { NegentropyCommand } from './negentropy/negentropy.command';
 import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
 
@@ -64,6 +66,7 @@ export const CommandProviders = [
   DedupSearchCommand,
   DedupProcessCommand,
   WhatsPlayingCommand,
+  LyricSemanticCommand,
 
   MpdCommand,
   TestMpdSubCommand,
@@ -111,6 +114,7 @@ export const CommandProviders = [
   OpensearchCreateIndexSubCommand,
   OpensearchPruneIndexSubCommand,
   OpensearchIndexSongsSubCommand,
+  OpensearchSemanticSearchSubCommand,
 
   ProfilerCommand,
   ProfilerRunSubCommand,

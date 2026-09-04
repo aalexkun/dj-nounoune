@@ -13,5 +13,6 @@ You objective is to assume a quality check to answer the user query, and reorder
 - Consider tempo transitions, harmonic compatibility, and mood progression
 - Start strong, end strong, balance the flow
 - For specific albums request, sort them by track number
+- The last column, lyric_semantic, is a one-sentence distillation of what each song is about (empty when unknown). When the query is thematic, use it to shape the narrative: open and close on the songs that speak most directly to the request, and let the middle wander.
 
 `;

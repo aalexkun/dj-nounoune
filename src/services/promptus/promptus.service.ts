@@ -8,8 +8,8 @@ import { GenerateContentResponse } from '@google/genai';
 import { PromptusRequest } from './promptus.request';
 import { ChatPromptusResponse } from './response/chat.promptus.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EnrichPromptusRequest } from './request/enrich-promptus.request';
-import { EnrichPromptusResponse } from './response/enrich.promptus.response';
+import { RedisCacheService } from '../redis-cache/redis-cache.service';
+import { ThrottleHandler } from './handler/throttle.handler';
 
 @Injectable()
 export class PromptusService extends Agent {
@@ -21,8 +21,13 @@ export class PromptusService extends Agent {
     appService: AppService,
     protected toolService: ToolsService,
     protected eventEmitter: EventEmitter2,
+    redisCacheService: RedisCacheService,
   ) {
     super();
+
+    // Process-wide: the daily request count is shared by every agent and, through Redis, by every
+    // process on this API key. Wired here because this is the first agent to come up.
+    ThrottleHandler.useDailyCounter(redisCacheService);
 
     this.initialiseAgent(appService.getGenAiApiKey(), this.toolService, this.eventEmitter);
     this.toolService.initialiseAgent(appService.getGenAiApiKey(), this.eventEmitter);
@@ -32,10 +37,6 @@ export class PromptusService extends Agent {
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
     if (request instanceof ChatPromptusRequest) {
       return new ChatPromptusResponse(response) as ReqType;
-    }
-
-    if ( request instanceof EnrichPromptusRequest){
-      return new EnrichPromptusResponse(response) as ReqType;
     }
 
     throw new Error('Method not implemented. PromptusService::wrapResponse ');

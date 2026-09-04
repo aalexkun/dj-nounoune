@@ -56,7 +56,7 @@ Dedup flow: `music dedup search` writes `Deduplication` groups → `music dedup 
 
 ### Promptus: the AI layer (`src/services/promptus/`)
 
-Google Gemini via `@google/genai`. Read `.agent/rules/promptus.md` and `.agent/rules/genai.md` before touching this — they are the authoritative spec. Key structural facts:
+Google Gemini via `@google/genai`. Read `.agent/rules/promptus.md` and `.agent/rules/genai.md` before touching this — they are the authoritative spec for *behaviour*. For the **object model** — the `Agent` / `PromptusRequest` / `PromptusResponse` / `ToolHandler` contracts, the four request shapes, and the invariants that compile cleanly but fail at runtime — read [`doc/promptus-architecture.md`](doc/promptus-architecture.md); context caching has its own file, [`doc/promptus-caching.md`](doc/promptus-caching.md). Adding or changing a prompt is covered end to end by the `promptus-prompt` skill (`.claude/skills/promptus-prompt/`). Key structural facts:
 
 - **`Agent`** (`agent.ts`) is the abstract base running the function-calling loop (max 10 iterations, then throws). Agents are **stateless** — conversation history lives on the *request* object. Subclasses call `initialiseAgent(apiKey, toolService, eventEmitter)` from their constructor rather than relying on DI, which is why sub-agents can be plain-`new`ed.
 - **`PromptusRequest<TResponse>`** carries model, system instruction, query, tools, history and a phantom response type, so `agent.generate(request)` is statically typed to the matching response class. Each concrete agent implements `wrapResponse` as an `instanceof` chain.
@@ -75,7 +75,7 @@ One playlist holds local files, Qobuz streams, Spotify streams and YouTube strea
 - Consumers: `PlaylogService.getMpdSong` (one source-agnostic Mongo match instead of a branch per provider), `CurrentSongHandler.fromMpd`, and the negentropy candidate filter (only `file` entries can be upgraded).
 - Unrecognised shapes fall through as `file`, which is right: MPD's own music directory is addressed by plain relative paths. The patterns are anchored on provider markers (`spotify:track:`, not `spotify`) so a local path that merely contains a provider's name is not misread.
 - `youtube` matches two shapes: `yt:video:<id>`, which is what this app queues through the Mopidy proxy, and the watch-url forms another client may have queued instead. Both resolve to the same 11-character video id. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown.
-- **Context caching**: large grounding data (the DB profile, the enrich instructions) is written to `files/` by `FileService` and uploaded as a Gemini `CachedContent` (get-or-create keyed on display name). Critical constraint: when `request.cache` is set, the system instruction **and tools are omitted** from the request — a cached request cannot use tools. Cache model must match request model.
+- **Context caching**: large grounding data (the DB profile, the enrich instructions) is written to `files/` by `FileService` and uploaded as a Gemini `CachedContent` (get-or-create keyed on display name). The instruction for a cached request **travels with the cache, not with the request** — as the cached file's content (what `enrich-instruction` does, hence `EnrichMetadataRequest._context = ''`) or as `ReadonlyAgentCache.cacheInstruction` (what the DJ query generator does). When `request.cache` is set, `context`, `tools` and `grounded` are all omitted from the outbound request; only `structuredResponse` still applies. Cache model must match request model, and because the get-or-create never compares content, an edited prompt does nothing until `npm run cli -- promptus clear-cache`. Full semantics in [`doc/promptus-caching.md`](doc/promptus-caching.md).
 - `ChatTitleAgent` (`agent/chat-title/`) is entirely commented out. Dead code.
 - Handlers return PSV (pipe-separated) rather than JSON in several places purely to save tokens.
 
@@ -183,7 +183,7 @@ so the CLI never triggers a call and needs no `IS_CLI` gate.
 
 ## Conventions
 
-Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. The non-obvious ones:
+Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. Longer-form architecture references live in `doc/` — currently [`promptus-architecture.md`](doc/promptus-architecture.md) and [`promptus-caching.md`](doc/promptus-caching.md). The non-obvious ones:
 
 - **No `any`.** Use `unknown` plus narrowing. Note `noImplicitAny` is off in tsconfig and the eslint rule is disabled, so nothing enforces this — it is on you.
 - **TypeScript 6 pins `strict: false` deliberately.** TS6 flipped `strict` to default `true`; this project runs the NestJS scaffold posture instead, so `tsconfig.json` sets `strict: false` and opts individual checks back in. `strictNullChecks`, `useUnknownInCatchVariables` and `strictFunctionTypes` are **on**; `strictPropertyInitialization` is **off** because Mongoose `@Prop` and GenAI request/response classes are populated by the framework, never in a constructor. Don't "tidy" this by deleting `strict: false` — that reintroduces 116 property-init errors.

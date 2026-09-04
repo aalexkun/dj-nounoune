@@ -1,5 +1,13 @@
 import { SearchQuery } from './query.interface';
+import { buildActiveSourceFilter } from './source-filter.util';
 
+/**
+ * Lexical lookup of artists, albums and titles across the multilingual analysers.
+ *
+ * Deliberately no neural clause: `song_vector` embeds what a song is *about*, not what it is
+ * called, and scoring a name against it is noise. Identity matching belongs to the analysed text
+ * fields, which is also why this query works on a cluster with no ML model deployed.
+ */
 export class SearchFuzzyQuery implements SearchQuery {
   /**
    * @param activeSources - source types the agentic client may play, or `null` for no restriction.
@@ -7,33 +15,9 @@ export class SearchFuzzyQuery implements SearchQuery {
    */
   constructor(
     private keywords: string[],
-    private modelId: string,
     private size: number = 100,
     private activeSources: string[] | null = null,
   ) {}
-
-  /**
-   * Documents indexed incrementally by the importers carry no `source` array at all - only the
-   * full reindex writes it. Excluding them here would hide most of the recent library, so they are
-   * let through and the caller re-checks them against Mongo, which is the authority.
-   */
-  private buildSourceFilter(): Record<string, any>[] {
-    if (!this.activeSources || this.activeSources.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        bool: {
-          should: [
-            { terms: { 'source.name': this.activeSources } },
-            { bool: { must_not: { exists: { field: 'source.name' } } } },
-          ],
-          minimum_should_match: 1,
-        },
-      },
-    ];
-  }
 
   getQuery(): Record<string, any> {
     const keywordList = Array.isArray(this.keywords) ? this.keywords : [this.keywords];
@@ -58,21 +42,9 @@ export class SearchFuzzyQuery implements SearchQuery {
           },
         });
       }
-
-      // Semantic match on the vector, weighted down
-      shouldClauses.push({
-        neural: {
-          song_vector: {
-            query_text: kw,
-            model_id: this.modelId, // deployed model id for paraphrase-multilingual-MiniLM-L12-v2
-            k: 50,
-            boost: 0.3, // reduce weight vs. lexical matches
-          },
-        },
-      });
     }
 
-    const sourceFilter = this.buildSourceFilter();
+    const sourceFilter = buildActiveSourceFilter(this.activeSources);
 
     return {
       size: this.size,

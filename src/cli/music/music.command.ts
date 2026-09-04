@@ -7,6 +7,7 @@ import { MigrateTechnicalInfoCommand } from './migrate-technical-info.command';
 import { MigrateSongSourceCommand } from './migrate-song-source.command';
 import { DedupCommand } from './dedup.command';
 import { WhatsPlayingCommand } from './whats-playing.subcommand';
+import { LyricSemanticCommand } from './lyric-semantic.subcommand';
 
 @Command({
   name: 'music',
@@ -19,12 +20,13 @@ import { WhatsPlayingCommand } from './whats-playing.subcommand';
     MigrateSongSourceCommand,
     DedupCommand,
     WhatsPlayingCommand,
+    LyricSemanticCommand,
   ],
 })
 @Injectable()
 export class MusicCommand extends CommandRunner {
   async run(inputs: string[], options: Record<string, any>): Promise<void> {
-    console.log('Use subcommands: clear, import, enrich, migrate-technical-info, migrate-song-source, dedup, whats-playing');
+    console.log('Use subcommands: clear, import, enrich, lyric-semantic, migrate-technical-info, migrate-song-source, dedup, whats-playing');
   }
 }
 

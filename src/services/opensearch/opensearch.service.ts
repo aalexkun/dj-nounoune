@@ -23,7 +23,9 @@ import { SongSchema } from '../../schemas/song.schema';
 import { ArtistSchema } from '../../schemas/artist.schema';
 import { AlbumSchema } from '../../schemas/albums.schema';
 import { SearchFuzzyQuery } from './search-fuzzy.query';
+import { SearchSemanticQuery } from './search-semantic.query';
 import { getActiveSourceTypes } from '../../config/active-source.util';
+import { getErrorMessage } from '../../utils/error.utils';
 
 
 export type DuplicateSongCheck = {
@@ -303,6 +305,21 @@ export class OpensearchService {
                 field_map: {
                   song_semantic: 'song_vector',
                 },
+                // No `ignore_missing` here: the deployed neural-search plugin rejects the parameter
+                // (parse_exception on pipeline PUT), and does not need it - a field_map source that
+                // is absent from the document is skipped and the document passes through with no
+                // vector. What the processor does reject is an *empty string*, which is why
+                // buildSongDocument omits song_semantic rather than writing ''.
+              },
+            },
+          ],
+          // Belt and braces for anything the processor does throw on: keep the document and leave a
+          // note of why the vector is missing. Must not be an empty array - the API rejects that.
+          on_failure: [
+            {
+              set: {
+                field: 'embedding_error',
+                value: '{{ _ingest.on_failure_message }}',
               },
             },
           ],
@@ -511,6 +528,55 @@ export class OpensearchService {
     }
   }
 
+  /**
+   * The document as written to the `songs` index. One builder for both the bulk and the
+   * single-song path, so they cannot drift.
+   *
+   * `song_semantic` is what the ingest pipeline embeds into `song_vector`, and it carries the
+   * lyric distillation alone - identity is matched lexically on title/artist/album. It is omitted
+   * rather than emptied when a song has no distillation yet: an empty string still embeds, to a
+   * vector that means nothing and would sit in every kNN result.
+   */
+  private buildSongDocument(song: PopulatedSong): Record<string, unknown> {
+    const songObj = typeof (song as any).toObject === 'function' ? (song as any).toObject() : song;
+    const lyric = typeof songObj.lyric_semantic === 'string' ? songObj.lyric_semantic.trim() : '';
+
+    return {
+      ...songObj,
+      // Indexed as song_semantic below; not stored a second time under its Mongo name.
+      lyric_semantic: undefined,
+      artist: song.artist.artist || '',
+      album: song.album.title || '',
+      artist_info: songObj.artist,
+      album_info: songObj.album,
+      artist_id: song.artist._id.toString() || '',
+      album_id: song.album._id.toString() || '',
+      ...(lyric ? { song_semantic: lyric } : {}),
+    };
+  }
+
+  /**
+   * Index one song through the ingest pipeline - a full `index`, never an `_update`, because only
+   * the former runs the pipeline that re-embeds `song_vector`. Never throws: the song is in Mongo
+   * either way, and callers log and move on.
+   */
+  async indexSong(song: PopulatedSong): Promise<void> {
+    if (!this.client) {
+      this.logger.error('OpenSearch client is not initialized');
+      return;
+    }
+
+    try {
+      await this.client.index({
+        index: SongIndices.name,
+        id: song._id.toString(),
+        body: this.buildSongDocument(song),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to index song ${song._id}: ${getErrorMessage(error)}`);
+    }
+  }
+
   async indexSongs(songs: PopulatedSong[]): Promise<void> {
     if (!this.client) {
       this.logger.error('OpenSearch client is not initialized');
@@ -518,39 +584,7 @@ export class OpensearchService {
     }
 
     for (const song of songs) {
-
-      const songAttributes = {
-        songId: song._id.toString(),
-        track_number: song.track_number,
-        disc_number: song.disc_number,
-        year: song.year,
-        title: song.title,
-        artist: song.artist.artist || '',
-        album: song.album.title || '',
-      };
-
-      try {
-        const songObj = (typeof (song as any).toObject === 'function') ? (song as any).toObject() : song;
-
-        await this.client.index({
-          index: 'songs',
-          id: songAttributes.songId,
-          body: {
-            ...songObj,
-            artist: songAttributes.artist,
-            album: songAttributes.album,
-            artist_info: songObj.artist,
-            album_info: songObj.album,
-            artist_id: song.artist._id.toString() || '',
-            album_id: song.album._id.toString() || '',
-            song_semantic: `${songAttributes.artist} ${songAttributes.album} (track ${songAttributes.track_number}) ${songAttributes.title}`,
-          },
-        });
-
-      } catch (error) {
-        const err = error as Error;
-        this.logger.error(`Failed to index song ${song._id}: ${err.message}`);
-      }
+      await this.indexSong(song);
     }
 
     this.logger.log(`Successfully processed ${songs.length} songs.`);
@@ -582,12 +616,9 @@ export class OpensearchService {
   async findDuplicatesSongs(songAttributes: DuplicateSongCheck): Promise<OpenSearchSearchResponse | null> {
     if (!this.client) return null;
 
-    const modelId = await this.getDeployedModelId();
-    if (!modelId) {
-      this.logger.warn('Cannot query neural search duplicates: No deployed model found.');
-      return null;
-    }
-    const query = new SearchDeduplicationSongQuery(songAttributes, modelId);
+    // Purely lexical: identity is matched on the analysed title/artist/album fields, never on the
+    // vector, so this works on a cluster with no ML model deployed at all.
+    const query = new SearchDeduplicationSongQuery(songAttributes);
 
     try {
       const response = await this.client.search({
@@ -613,13 +644,10 @@ export class OpensearchService {
   async fuzzySearch(keywords: string[], limit = 200): Promise<OpenSearchSearchResponse | null> {
     if (!this.client) return null;
 
-    const modelId = await this.getDeployedModelId();
-    if(!modelId){
-      throw new Error('No deployed model found :: fuzzySearch');
-    }
-    // Only this search is on the agentic path. The dedup and importer searches below stay
-    // unfiltered on purpose - they must keep seeing every row in the index.
-    const query = new SearchFuzzyQuery(keywords, modelId, limit, getActiveSourceTypes());
+    // This search and searchBySemantic are the two on the agentic path, so both filter to the
+    // active sources. The dedup and importer searches below stay unfiltered on purpose - they
+    // must keep seeing every row in the index.
+    const query = new SearchFuzzyQuery(keywords, limit, getActiveSourceTypes());
 
 
     try {
@@ -643,6 +671,42 @@ export class OpensearchService {
     }
 
 
+  }
+
+  /**
+   * What the library holds that is *about* the same thing as `normalisedQuery` - a sentence in the
+   * same register as the stored lyric distillations, produced by the query generator. Pure kNN on
+   * `song_vector`; a song not yet enriched has no vector and simply never matches.
+   */
+  async searchBySemantic(normalisedQuery: string, limit = 20): Promise<OpenSearchSearchResponse | null> {
+    if (!this.client) return null;
+
+    const modelId = await this.getDeployedModelId();
+    if (!modelId) {
+      this.logger.warn('Cannot run semantic search: no deployed model found.');
+      return null;
+    }
+
+    const query = new SearchSemanticQuery(normalisedQuery, modelId, limit, getActiveSourceTypes());
+
+    try {
+      const response = await this.client.search({
+        index: SongIndices.name,
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      }
+
+      this.logger.error('OpenSearch semantic search response validation failed', parsedResponse.error);
+      return null;
+    } catch (error) {
+      this.logger.error(`Error querying OpenSearch semantic search: ${getErrorMessage(error)}`);
+      return null;
+    }
   }
 
   async fuzzySearchSong(title: string,album:string, artist:string,albumId?: string | null , artistId?: string | null): Promise<OpenSearchSearchResponse | null> {
