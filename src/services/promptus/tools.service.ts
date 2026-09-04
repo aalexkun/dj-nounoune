@@ -36,6 +36,7 @@ import { PlayQobuzHandler } from './tools/handler/qobuz/play-qobuz.handler';
 import { FavoriteQobuzHandler } from './tools/handler/qobuz/favorite-qobuz.handler';
 import { SearchYoutubeMusicHandler } from './tools/handler/youtube/search-youtube-music.handler';
 import { PlayYoutubeHandler } from './tools/handler/youtube/play-youtube.handler';
+import { ImportYoutubeHandler } from './tools/handler/youtube/import-youtube.handler';
 
 @Injectable()
 export class ToolsService {
@@ -78,6 +79,8 @@ export class ToolsService {
     // ones: the model has to be able to tell the user which catalog it ended up playing from.
     this.registerTool(new SearchYoutubeMusicHandler(this.youtubeService));
     this.registerTool(new PlayYoutubeHandler(this.youtubeService, this.mpdClientService, this.configService));
+    // The one YouTube tool that writes: "keep this" over a YouTube stream, imported as its album.
+    this.registerTool(new ImportYoutubeHandler(this.youtubeService));
   }
 
   /**

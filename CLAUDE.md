@@ -126,8 +126,17 @@ intended result. The `+1` name bonus only settles a tie with an equal-bitrate lo
 any of it and a YouTube re-encode outranks a local FLAC. In `field-resolver.ts` any source beats
 youtube on a *metadata* conflict, because its values were guessed rather than delivered.
 
+The chat reaches YouTube through three tools (`tools/handler/youtube/`): `youtube_search_music` and
+`youtube_start_playback` are the fallback pair for what Qobuz lacks and write nothing, and
+`youtube_import_to_library` is the YouTube counterpart of `qobuz_add_favorite` — it runs the same
+`importPlaylist` as the CLI. A video id handed to it is never imported alone: the Data API has no
+video-to-album link, so the handler searches playlists (by the `album_title` hint first, then by
+artist and track), opens the release playlists among the hits and imports the first one that
+actually contains the video. `current_song` reports a YouTube stream as `sourceName: youtube` with
+the video id in `sourceId`, which is what the prompt tells the model to pass.
+
 Not wired in: the negentropy pass still only upgrades `file` sources, so a queued YouTube stream is
-never swapped for its Qobuz equivalent, and there are no `promptus` agent tools for YouTube.
+never swapped for its Qobuz equivalent.
 
 ### Chat request flow
 
