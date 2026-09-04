@@ -13,7 +13,7 @@ npm run format             # prettier
 npm test                                        # unit tests (*.spec.ts under src/)
 npm test -- src/services/file/file.service.spec.ts   # single test file (jest rootDir is src/)
 npm test -- -t "some test name"                 # single test by name
-npm run test:e2e                                # test/**/*.e2e-spec.ts
+npm run test:e2e                                # test/**/*.e2e-spec.ts (currently only test/integration)
 npm run test:integration                        # test/integration/** (needs live credentials)
 
 npm run cli -- <command> [subcommand] [options] # CLI (note the `--`)
@@ -76,7 +76,6 @@ One playlist holds local files, Qobuz streams, Spotify streams and YouTube strea
 - Unrecognised shapes fall through as `file`, which is right: MPD's own music directory is addressed by plain relative paths. The patterns are anchored on provider markers (`spotify:track:`, not `spotify`) so a local path that merely contains a provider's name is not misread.
 - `youtube` matches two shapes: `yt:video:<id>`, which is what this app queues through the Mopidy proxy, and the watch-url forms another client may have queued instead. Both resolve to the same 11-character video id. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown.
 - **Context caching**: large grounding data (the DB profile, the enrich instructions) is written to `files/` by `FileService` and uploaded as a Gemini `CachedContent` (get-or-create keyed on display name). The instruction for a cached request **travels with the cache, not with the request** — as the cached file's content (what `enrich-instruction` does, hence `EnrichMetadataRequest._context = ''`) or as `ReadonlyAgentCache.cacheInstruction` (what the DJ query generator does). When `request.cache` is set, `context`, `tools` and `grounded` are all omitted from the outbound request; only `structuredResponse` still applies. Cache model must match request model, and because the get-or-create never compares content, an edited prompt does nothing until `npm run cli -- promptus clear-cache`. Full semantics in [`doc/promptus-caching.md`](doc/promptus-caching.md).
-- `ChatTitleAgent` (`agent/chat-title/`) is entirely commented out. Dead code.
 - Handlers return PSV (pipe-separated) rather than JSON in several places purely to save tokens.
 
 `src/lexic/songs.description.ts` is the controlled vocabulary (emotions, BPM-band pace names, genre taxonomy) shared by every prompt. It is what keeps enrichment output in a closed set — extend it there, not inline in a prompt.

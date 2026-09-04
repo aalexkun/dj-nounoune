@@ -92,9 +92,6 @@ export class ToolsService {
   }
 
   initialiseAgent(apiKey: string, eventEmitter: EventEmitter2) {
-    // const chatTitleAgent = new ChatTitleAgent(apiKey, this, this.chatService);
-    // this.registerTool(new ChatTitleHandler(chatTitleAgent));
-
     const discJokeyAgent = new DiscJockeyAgent(
       apiKey,
       this,
