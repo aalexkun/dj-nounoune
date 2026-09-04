@@ -1,10 +1,15 @@
-import { GEMINI_FLASH_LITE } from '../config';
+import { GEMINI_FLASH_LITE } from '../../../config';
 import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
-import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.request';
-import { EnrichPromptusResponse } from '../response/enrich.promptus.response';
-import { ToolDeclaration } from '../tools/tool.type';
+import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
+import { EnrichMetadataResponse } from '../response/enrich-metadata.response';
+import { ToolDeclaration } from '../../../tools/tool.type';
 
-export class EnrichPromptusRequest extends PromptusRequest<EnrichPromptusResponse> {
+/**
+ * Batch classification of genre / language / country / emotion / pace / year for a PSV page of
+ * songs. Cached: the taxonomy instruction is the cached file's content, which is why `context`
+ * is empty here — see doc/promptus-caching.md.
+ */
+export class EnrichMetadataRequest extends PromptusRequest<EnrichMetadataResponse> {
   public tools: ToolDeclaration[] = [];
   public config: Partial<GenerateContentConfig>;
   private readonly _model = GEMINI_FLASH_LITE; // GEMINI_3_FLASH

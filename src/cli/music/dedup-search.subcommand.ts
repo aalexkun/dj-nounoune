@@ -85,11 +85,9 @@ export class DedupSearchCommand extends CommandRunner {
 
         const hits = searchResponse.hits.hits;
 
-        // Classify hits by confidence
+        // A lexical match on artist + album + title (+ track) scores >= 100 through the query's
+        // boost; nothing else scores at all.
         const highConfidenceHits = hits.filter((hit: OpenSearchHit) => hit._score >= 100);
-        const lowConfidenceHits = hits.filter(
-          (hit: OpenSearchHit) => hit._score >= 0.98 && hit._score < 100,
-        );
 
         // Log high-confidence matches
         if (highConfidenceHits.length > 0) {
@@ -127,12 +125,6 @@ export class DedupSearchCommand extends CommandRunner {
 
           grouped++;
           this.logger.log(`  └─ Created dedup group with ${duplicates.length} songs.`);
-        }
-
-        if (lowConfidenceHits.length > 0) {
-          this.logger.debug(
-            `Low confidence hits for "${songAttributes.title}": ${lowConfidenceHits.length} match(es) (scores: ${lowConfidenceHits.map((h: OpenSearchHit) => h._score.toFixed(2)).join(', ')})`,
-          );
         }
 
         processed++;

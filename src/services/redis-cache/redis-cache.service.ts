@@ -241,6 +241,32 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Atomically increments a counter, creating it at 1 with `ttlSeconds` when it did not exist.
+   *
+   * Stored as a plain integer, not JSON, so it cannot be read back through {@link get}.
+   *
+   * @param key - Unprefixed cache key
+   * @param ttlSeconds - Expiry applied only when the key is created; defaults to `REDIS_TTL_SECONDS`. Pass `0` for none.
+   * @returns The new value, or `null` when Redis is disabled or the command failed
+   */
+  public async increment(key: string, ttlSeconds: number = this.defaultTtlSeconds): Promise<number | null> {
+    const client = await this.connect();
+    if (!client) return null;
+
+    const namespaced = this.namespaced(key);
+    try {
+      const value = await client.incr(namespaced);
+      if (value === 1 && ttlSeconds > 0) {
+        await client.expire(namespaced, Math.floor(ttlSeconds));
+      }
+      return value;
+    } catch (error: unknown) {
+      this.logger.warn(`Failed to increment cache key "${key}": ${getErrorMessage(error)}`);
+      return null;
+    }
+  }
+
+  /**
    * Returns the cached value, or computes it, stores it and returns it on a miss.
    *
    * The factory runs outside the cache's error handling — if it throws, the

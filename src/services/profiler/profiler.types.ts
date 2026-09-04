@@ -8,6 +8,8 @@ export interface InferredField {
   name: string;
   type: string; // 'string', 'number', 'boolean', 'object', 'array', 'date', 'unknown'
   ref?: string;
+  /** The `@Prop({ description })` string, when the schema declares one. */
+  description?: string;
 }
 
 export interface SchemaInferenceResult {

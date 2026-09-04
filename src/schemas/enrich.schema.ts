@@ -13,6 +13,9 @@ export class EnrichStatus {
 
   @Prop({ type: String, enum: ['completed', 'queued', 'notApplicable'], default: 'queued' })
   ffprobe: string;
+
+  @Prop({ type: String, enum: ['completed', 'queued', 'notApplicable'], default: 'queued' })
+  lyric_semantic: string;
 }
 
 const EnrichStatusSchema = SchemaFactory.createForClass(EnrichStatus);

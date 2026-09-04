@@ -43,6 +43,8 @@ import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
 import { NegentropyJob, NegentropyJobSchema } from './schemas/negentropy-job.schema';
 import { NegentropyService } from './services/negentropy/negentropy.service';
 import { WeatherModule } from './services/weather/weather.module';
+import { EnrichService } from './services/enrich/enrich.service';
+import { EnrichScheduler } from './schedulers/enrich.scheduler';
 
 const imports: Array<any> = [
   // Load global env
@@ -80,33 +82,38 @@ const imports: Array<any> = [
   WeatherModule,
 ];
 
+const providers: Array<any> = [
+  AppService,
+  PromptusService,
+  PsvService,
+  ...CommandProviders,
+  ChatService,
+  ShellService,
+  MusicDbService,
+  MpdClientService,
+  FileService,
+  ChatGateway,
+  VibingGateway,
+  ToolsService,
+  AuthService,
+  ApiAuthGuard,
+  SessionService,
+  ProfilerService,
+  PlaylogService,
+  NegentropyService,
+  EnrichService,
+];
+
 if (process.env.IS_CLI !== 'true') {
   imports.push(ScheduleModule.forRoot(), SchedulersModule);
+  // EnrichScheduler is declared here rather than in SchedulersModule because
+  // EnrichService is a root provider: a child module cannot see it.
+  providers.push(EnrichScheduler);
 }
-
 
 @Module({
   imports,
   controllers: [ChatController, AuthController, VibingController],
-  providers: [
-    AppService,
-    PromptusService,
-    PsvService,
-    ...CommandProviders,
-    ChatService,
-    ShellService,
-    MusicDbService,
-    MpdClientService,
-    FileService,
-    ChatGateway,
-    VibingGateway,
-    ToolsService,
-    AuthService,
-    ApiAuthGuard,
-    SessionService,
-    ProfilerService,
-    PlaylogService,
-    NegentropyService,
-  ],
+  providers,
 })
 export class AppModule {}

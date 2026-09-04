@@ -73,6 +73,12 @@ export class SongMerger implements Merger<SongDocument> {
       'category', primaryEntity.category, duplicateEntity.category,
       primarySources, duplicateSources,
     );
+    // Without this a duplicate that had already been distilled would lose its sentence on merge,
+    // and the survivor would have to wait for the enricher to reach it again.
+    primaryEntity.lyric_semantic = resolveFieldValue(
+      'lyric_semantic', primaryEntity.lyric_semantic, duplicateEntity.lyric_semantic,
+      primarySources, duplicateSources,
+    );
 
     // 3. Remove the merged (duplicate) song document from the OpenSearch index.
     // The song's id is used as the OpenSearch document id.

@@ -16,7 +16,12 @@ type AgentCache = {
   file: `files/${cacheName}`;
   fileMineType?: string;
   model: string;
-  systemInstruction: string;
+  /**
+   * Baked into the CachedContent as its system instruction and applied to every request that
+   * references the cache. Named to keep it apart from the request's own `context`, which a cached
+   * request never sends. Empty when the instruction is the cached file itself.
+   */
+  cacheInstruction: string;
   cacheContent: CachedContent | undefined;
 };
 
@@ -38,7 +43,9 @@ export abstract class Agent {
     this.client = new GoogleGenAI({ apiKey });
     this.toolService = toolService;
     this.eventEmitter = eventEmitter;
-    this.throttleHandler = new ThrottleHandler(this.client);
+    // The per-model buckets are shared by every agent in the process - the quota is per API key,
+    // not per agent - so this instance is only a handle onto them.
+    this.throttleHandler = new ThrottleHandler();
     this.cacheHandler = new CacheHandler(this.client);
   }
 
@@ -53,6 +60,8 @@ export abstract class Agent {
       const aiRequest = request.getGeneratedContent();
       await this.printTokenUsage(request.model, aiRequest.contents);
       const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
+      // Every call counts against the day, tool-loop iterations included. Displayed, not enforced.
+      await this.throttleHandler.recordRequest(request.model);
 
       if (Array.isArray(response.candidates)) {
         this.logger.debug(response?.candidates[0].content);
@@ -120,7 +129,7 @@ export abstract class Agent {
         try {
           const index = currentIndex++;
           const request = requests[index];
-          await this.throttleHandler.acquireTokens(request);
+          await this.throttleHandler.acquire(request);
           results[index] = await this.generate(request);
           this.logger.log(`Completed request ${index + 1}/${requests.length}`);
         } catch (e) {

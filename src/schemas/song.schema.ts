@@ -52,6 +52,13 @@ export class Song {
   @Prop({ description: 'Pace of the song' })
   pace?: string;
 
+  @Prop({
+    description:
+      'One-sentence third-person distillation of what the song is about, derived from its lyrics. ' +
+      'Served by the semantic search branch only — never a filter field.',
+  })
+  lyric_semantic?: string;
+
   @Prop({ type: [SongSourceSchema], default: [], description: 'List of playback sources where the track is available' })
   source: SongSource[];
 

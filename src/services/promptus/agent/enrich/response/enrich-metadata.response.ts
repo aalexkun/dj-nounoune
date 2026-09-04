@@ -1,7 +1,7 @@
 import { GenerateContentResponse } from '@google/genai';
-import { PromptusResponse } from '../promptus.response';
+import { PromptusResponse } from '../../../promptus.response';
 
-export interface EnrichResponse {
+export interface EnrichMetadataItem {
   id: string;
   genre: string;
   language: string;
@@ -11,13 +11,13 @@ export interface EnrichResponse {
   year?: string;
 }
 
-export class EnrichPromptusResponse extends PromptusResponse {
-  results: EnrichResponse[];
+export class EnrichMetadataResponse extends PromptusResponse {
+  results: EnrichMetadataItem[];
 
   constructor(raw: GenerateContentResponse) {
     super(raw);
     if (raw?.text) {
-      this.results = JSON.parse(raw.text) as EnrichResponse[];
+      this.results = JSON.parse(raw.text) as EnrichMetadataItem[];
     }
   }
 }

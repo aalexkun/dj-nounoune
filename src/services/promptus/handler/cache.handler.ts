@@ -75,7 +75,7 @@ export class CacheHandler {
         config: {
           displayName: cacheSetting.name,
           contents: createUserContent(createPartFromUri(existingFile.uri, existingFile.mimeType)),
-          systemInstruction: cacheSetting.systemInstruction || '',
+          systemInstruction: cacheSetting.cacheInstruction || '',
         },
       });
     } else {

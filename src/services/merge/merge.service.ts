@@ -9,6 +9,8 @@ import {
   DeduplicationDocument,
 } from '../../schemas/deduplication.schema';
 import { MergeFactory } from './merge.factory';
+import { OpensearchService } from '../opensearch/opensearch.service';
+import { PopulatedSong } from '../music-db/music-db.service';
 
 @Injectable()
 export class MergeService {
@@ -24,6 +26,7 @@ export class MergeService {
     @InjectModel(Deduplication.name)
     private readonly deduplicationModel: Model<DeduplicationDocument>,
     private readonly mergeFactory: MergeFactory,
+    private readonly opensearchService: OpensearchService,
   ) {}
 
   /**
@@ -94,6 +97,14 @@ export class MergeService {
       { _id: primary.album },
       { $pull: { tracks: new Types.ObjectId(duplicateId) } },
     );
+
+    // Rebuild the survivor's index entry from what was just saved. The merger only ever removed
+    // the duplicate's document; the primary's merged title, sources and lyric distillation would
+    // otherwise sit in the index exactly as they were before the merge.
+    const populatedPrimary = await this.songModel.findById(primaryId).populate('artist').populate('album').exec();
+    if (populatedPrimary) {
+      await this.opensearchService.indexSong(populatedPrimary as unknown as PopulatedSong);
+    }
 
     // Update dedup tracker status
     await this.deduplicationModel.findByIdAndUpdate(deduplicationDocId, {

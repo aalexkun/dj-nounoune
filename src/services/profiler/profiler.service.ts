@@ -120,10 +120,15 @@ export class ProfilerService {
           }
         }
 
+        // `@Prop({ description })` survives as a plain schema-type option. Passing it through is
+        // what lets the query generator read a field's purpose off the profile instead of needing
+        // a hand-written rule per field in its prompt.
+        const description = typeof schemaType.options?.description === 'string' ? schemaType.options.description : undefined;
+
         if (typeStr === 'mongoose.Schema.Types.ObjectId') {
-          fields.push({ name: fullPath, type: 'mongoose.Schema.Types.ObjectId', ref: schemaType.options.ref });
+          fields.push({ name: fullPath, type: 'mongoose.Schema.Types.ObjectId', ref: schemaType.options.ref, description });
         } else {
-          fields.push({ name: fullPath, type: typeStr });
+          fields.push({ name: fullPath, type: typeStr, description });
         }
 
         // Recursively extract embedded sub-schemas

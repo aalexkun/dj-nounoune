@@ -3,13 +3,15 @@ import { SearchQuery } from './query.interface';
 
 
 
+/**
+ * Purely lexical. The `boost: 100` on the match clause is a contract, not a tuning knob: the
+ * dedup CLI and the Qobuz and YouTube importers all read `_score >= 100` as "same recording",
+ * and the importers insert a second copy of the song for anything below it. Leave the clause
+ * exactly as it is.
+ */
 export class SearchDeduplicationSongQuery implements SearchQuery {
-  constructor(
-    private songAttributes: DuplicateSongCheck,
-    private modelId: string,
-  ) {}
+  constructor(private songAttributes: DuplicateSongCheck) {}
 
-  // fix the return to work with the new query
   getQuery(): Record<string, any> {
 
     const mustNotClause = this.songAttributes.songId
@@ -92,15 +94,6 @@ export class SearchDeduplicationSongQuery implements SearchQuery {
                     },
                   },
                 ],
-              },
-            },
-            {
-              neural: {
-                song_vector: {
-                  query_text: `"""${this.songAttributes.artist} ${this.songAttributes.album} (track ${this.songAttributes.track_number}) ${this.songAttributes.title}"""`,
-                  model_id: this.modelId,
-                  k: 5,
-                },
               },
             },
           ],

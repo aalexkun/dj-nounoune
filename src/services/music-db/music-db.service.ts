@@ -14,6 +14,11 @@ import { Playlog, PlaylogDocument } from '../../schemas/playlog.schema';
 
 export type MusicDbAggregateResult = ArtistDocument | AlbumDocument | SongDocument;
 
+/** The enrichers a song passes through. Each one is a key of `EnrichStatus`. */
+export const ENRICH_TYPES = ['ai', 'bpm', 'ffprobe', 'lyric_semantic'] as const;
+export type EnrichType = (typeof ENRICH_TYPES)[number];
+export type EnrichState = 'queued' | 'completed' | 'notApplicable';
+
 /** One resolved LLM query: the intent it was generated for, and the songs it yielded. */
 export type MongoWrapperResult = {
   intent: string;
@@ -51,6 +56,21 @@ export const RecentlyPlayedArtistSchema = z.object({
 
 export type RecentlyPlayedArtist = z.infer<typeof RecentlyPlayedArtistSchema>;
 
+/**
+ * Listener reactions for one song, summed over every play in the playlog. `plays` counts the rows,
+ * reacted to or not, so a caller can tell one enthusiastic play from a steady favourite.
+ */
+export const SongReactionsSchema = z.object({
+  songId: z.string(),
+  plays: z.number().int().nonnegative(),
+  awesome: z.number().int().nonnegative(),
+  great: z.number().int().nonnegative(),
+  duh: z.number().int().nonnegative(),
+  wtf: z.number().int().nonnegative(),
+});
+
+export type SongReactions = z.infer<typeof SongReactionsSchema>;
+
 @Injectable()
 export class MusicDbService {
   private readonly logger = new Logger(MusicDbService.name);
@@ -72,6 +92,7 @@ export class MusicDbService {
               ai: 'queued',
               bpm: 'queued',
               ffprobe: 'queued',
+              lyric_semantic: 'queued',
             },
             createdAt: '$$NOW',
             updatedAt: '$$NOW',
@@ -87,22 +108,43 @@ export class MusicDbService {
         },
       ])
       .exec();
+
+    // `keepExisting` above leaves every document that already exists untouched, so an enricher
+    // added after a song was first queued never gets a status key on it — and a cursor on
+    // `status.<type>: 'queued'` then matches nothing. Backfill here rather than in a one-off
+    // migration: it runs on every pass, is idempotent, and covers the next enricher too.
+    for (const type of ENRICH_TYPES) {
+      await this.enrichModel.updateMany(
+        { [`status.${type}`]: { $exists: false } },
+        { $set: { [`status.${type}`]: 'queued' } },
+      );
+    }
   }
 
   async updateEnrichStatus(
     songId: string,
-    type: 'ai' | 'bpm' | 'ffprobe',
-    status: 'completed' | 'queued' | 'notApplicable',
+    type: EnrichType,
+    status: EnrichState,
     message?: string,
-    response?: any,
+    response?: Record<string, unknown>,
   ): Promise<void> {
-    const update: any = { [`status.${type}`]: status };
+    const update: Record<string, unknown> = { [`status.${type}`]: status };
     if (message !== undefined) update.message = message;
-    if (response !== undefined) update.response = response;
+
+    // Merge, never replace. `response` is shared by every enricher — the AI pass leaves
+    // `{ genre, language, ... }` there, the lyric pass adds `{ semantic }` — and a whole-field
+    // `$set` would throw away whatever the previous one stored. Dot paths let Mongo write each
+    // key on its own and leave the siblings alone.
+    if (response !== undefined) {
+      for (const [key, value] of Object.entries(response)) {
+        update[`response.${key}`] = value;
+      }
+    }
+
     await this.enrichModel.updateOne({ _id: songId as any }, { $set: update }, { upsert: true });
   }
 
-  getEnrichCursor(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued', limit?: number) {
+  getEnrichCursor(type: EnrichType, status: EnrichState = 'queued', limit?: number) {
     let query = this.enrichModel.find({ [`status.${type}`]: status });
     if (limit && limit > 0) {
       query = query.limit(limit);
@@ -110,7 +152,7 @@ export class MusicDbService {
     return query.cursor();
   }
 
-  async getEnrichItems(type: 'ai' | 'bpm' | 'ffprobe', status: 'queued' | 'completed' | 'notApplicable' = 'queued'): Promise<EnrichDocument[]> {
+  async getEnrichItems(type: EnrichType, status: EnrichState = 'queued'): Promise<EnrichDocument[]> {
     return this.enrichModel.find({ [`status.${type}`]: status }).exec();
   }
 
@@ -215,6 +257,48 @@ export class MusicDbService {
     }
 
     return parsed;
+  }
+
+  /**
+   * Reactions summed over every play of each song, keyed by song id. Songs that were never reacted
+   * to are absent from the map - a play with no reaction says nothing, and the caller must not read
+   * absence as dislike.
+   *
+   * `songId` is compared as a string on both sides so rows written before the ref was typed as an
+   * ObjectId still count. The playlog is small enough that skipping the index does not matter.
+   */
+  async getSongReactions(songIds: string[]): Promise<Map<string, SongReactions>> {
+    if (songIds.length === 0) return new Map();
+
+    const results: unknown[] = await this.playlogModel
+      .aggregate([
+        { $match: { $expr: { $in: [{ $toString: '$songId' }, songIds] } } },
+        {
+          $group: {
+            _id: { $toString: '$songId' },
+            plays: { $sum: 1 },
+            awesome: { $sum: { $ifNull: ['$feedback.awesome', 0] } },
+            great: { $sum: { $ifNull: ['$feedback.great', 0] } },
+            duh: { $sum: { $ifNull: ['$feedback.duh', 0] } },
+            wtf: { $sum: { $ifNull: ['$feedback.wtf', 0] } },
+          },
+        },
+        { $match: { $expr: { $gt: [{ $add: ['$awesome', '$great', '$duh', '$wtf'] }, 0] } } },
+        { $project: { _id: 0, songId: '$_id', plays: 1, awesome: 1, great: 1, duh: 1, wtf: 1 } },
+      ])
+      .exec();
+
+    const reactions = new Map<string, SongReactions>();
+    for (const row of results) {
+      const parsed = SongReactionsSchema.safeParse(row);
+      if (parsed.success) {
+        reactions.set(parsed.data.songId, parsed.data);
+      } else {
+        this.logger.warn(`Discarded a reaction row that failed validation: ${JSON.stringify(row)}`);
+      }
+    }
+
+    return reactions;
   }
 
   /**

@@ -3,7 +3,7 @@ import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promp
 import { GenerateQueryWithCacheResponse } from '../response/generate-query-with-cache.response';
 import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { ToolDeclaration } from '../../../tools/tool.type';
-import { generateQueryWithCache, MAX_MONGO_DB_QUERY } from './generate-query-with-cache.prompt';
+import { MAX_MONGO_DB_QUERY } from './generate-query-with-cache.prompt';
 
 export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQueryWithCacheResponse> {
   cache: CachedContent;
@@ -12,7 +12,9 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
       thinkingLevel: ThinkingLevel.HIGH,
     },
   };
-  context: string = generateQueryWithCache;
+  // Cached as the CachedContent system instruction - see DiscJockeyAgent.cache. A cached request
+  // never sends its own context, so anything written here would be inert.
+  context: string = '';
   history: Content[];
   readonly model: string = GEMINI_FLASH;
   query: string;
@@ -22,8 +24,9 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
    * The model emits structured filter conditions, never a raw pipeline — the backend
    * compiles them into `$match` (see `buildMatch` in `music-db/mongo-filter.util.ts`).
    *
-   * These `description` strings are the model's primary instructions: a cached request
-   * carries no system instruction, so what is written here is what steers the output.
+   * The reasoning lives in `generateQueryWithCache`, which reaches the model as the cache's system
+   * instruction (see `DiscJockeyAgent.cache`); these `description` strings are the field specs.
+   * Write them as real sentences all the same - the model reads them as instructions too.
    */
   public readonly structuredResponse: StructuredResponse = {
     responseMimeType: 'application/json',
@@ -103,9 +106,18 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
             type: 'STRING',
           },
         },
+        semantic: {
+          type: 'STRING',
+          description:
+            'One dense, third-person, declarative sentence of 20-35 words describing what a matching song is ABOUT - ' +
+            'its situation, power dynamic, moral dilemma or narrative reality - written in the same register as the ' +
+            'stored lyric distillations it is matched against. Empty string when the request is about identity ' +
+            '(a named artist, album or track) or about a formal dimension (year, audio quality, pace) rather than ' +
+            'subject matter.',
+        },
       },
-      propertyOrdering: ['aggregate', 'fulltext'],
-      required: ['aggregate', 'fulltext'],
+      propertyOrdering: ['aggregate', 'fulltext', 'semantic'],
+      required: ['aggregate', 'fulltext', 'semantic'],
     },
   };
 

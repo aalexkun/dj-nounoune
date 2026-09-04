@@ -1,6 +1,11 @@
-import { SONGS_EMOTIONS_DESCRIPTION, SONGS_GENRE_DESCRIPTION, SONGS_PACE_DESCRIPTION } from '../../../lexic/songs.description';
+import { SONGS_EMOTIONS_DESCRIPTION, SONGS_GENRE_DESCRIPTION, SONGS_PACE_DESCRIPTION } from '../../../../../lexic/songs.description';
 
-export const enrichPromptusCachePrompt = `### Role
+/**
+ * Written to `files/enrich-instruction` and uploaded as the cached content of the
+ * `enrich-instruction` cache — it reaches the model as cached content, not as a system
+ * instruction. Editing it does nothing until the cache is cleared.
+ */
+export const enrichMetadataCachePrompt = `### Role
 
 You are an expert music data taxonomist. Your task is to enrich music metadata for a library of songs.
 
