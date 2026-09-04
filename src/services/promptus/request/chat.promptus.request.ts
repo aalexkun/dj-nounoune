@@ -30,6 +30,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     QobuzToolsDefinition.favoriteCommand,
     YoutubeToolsDefinition.searchMusicCommand,
     YoutubeToolsDefinition.playCommand,
+    YoutubeToolsDefinition.importCommand,
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;

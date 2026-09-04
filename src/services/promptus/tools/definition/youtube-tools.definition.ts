@@ -12,8 +12,10 @@ import { Type } from '@google/genai';
  * YouTube hit is worth playing when the alternative is nothing, and is not worth preferring when
  * Qobuz already answered.
  *
- * Nothing here writes to Mongo — same stance as the Qobuz tools. `youtube import-playlist` on the
- * CLI is the only path that creates song documents.
+ * The search and play tools write nothing to Mongo — same stance as the Qobuz tools. The one
+ * exception is `youtube_import_to_library`, which is the chat's door onto `youtube import-playlist`:
+ * it runs the same `YoutubeService.importPlaylist`, and only when the user asked for the music to
+ * be kept.
  */
 export class YoutubeToolsDefinition {
   private constructor() {}
@@ -70,6 +72,42 @@ export class YoutubeToolsDefinition {
         },
       },
       required: ['clearQueue'],
+    },
+  } as const;
+
+  public static readonly importCommand: ToolDeclaration = {
+    name: 'youtube_import_to_library',
+    description:
+      'Import music that is on YouTube into the household music library, so it becomes a permanent part of the collection rather than a one-off stream. Use it when the user wants to KEEP, ADD, SAVE or IMPORT into the library something that is playing from YouTube or something youtube_search_music just found — this is the YouTube counterpart of qobuz_add_favorite, and the right tool whenever current_song reports sourceName "youtube". ' +
+      'A playlist is what gets imported, as an album: give playlistIds when you have them (from youtube_search_music, or the playlist the user named). ' +
+      'When all you have is a video — the one playing now, its id in the sourceId of current_song, or a hit from the track search — give it in videoIds and the release playlist holding that video is found and imported whole, which is what people mean by "add this" said over a track: the record, not the lone upload. Pass artist_name and album_title from current_song alongside it whenever they are known; they are what make that lookup land on the right record. ' +
+      'Never invent an id, and never use this for Qobuz ids or for music the library already holds. Report exactly what was imported, by album and artist, so the user can catch a wrong record.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        playlistIds: {
+          type: Type.ARRAY,
+          description: 'YouTube playlist ids to import, each as one album. Release playlists (ids starting with OLAK5uy_) are the ideal input.',
+          items: { type: Type.STRING },
+        },
+        videoIds: {
+          type: Type.ARRAY,
+          description:
+            'YouTube video ids (11 characters). Each is resolved to the release playlist that contains it, and that playlist is imported as the album. Use this for "the song playing now" when current_song says the source is youtube.',
+          items: { type: Type.STRING },
+        },
+        artist_name: {
+          type: Type.STRING,
+          description:
+            'Optional. The artist of the video(s), as current_song or the search reported it. Sharpens the search for the release playlist.',
+        },
+        album_title: {
+          type: Type.STRING,
+          description:
+            'Optional. The album the video(s) belong to, when current_song or the search reported one. With it the release playlist is looked up by name first, which is far more reliable than by track.',
+        },
+      },
+      required: [],
     },
   } as const;
 }
