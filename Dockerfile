@@ -1,5 +1,5 @@
 # Stage 1: Base image using Node 24 Alpine
-FROM node:24-alpine AS base
+FROM node:26-alpine AS base
 WORKDIR /usr/src/app
 
 # Stage 2: Builder (Requires dev tools to compile TypeScript)

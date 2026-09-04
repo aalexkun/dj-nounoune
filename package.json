@@ -23,7 +23,8 @@
     "release": "npm version minor && npm run docker:build && npm run docker:tag && npm run docker:push",
     "docker:build": "docker build --network=host --build-arg APP_VERSION=$npm_package_version -t dj-nounoune:latest .",
     "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
-    "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest"
+    "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest",
+    "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.19.1",
@@ -68,6 +69,7 @@
     "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsgo": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.20.0"
   },
@@ -80,7 +82,14 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": { "rootDir": "." } }]
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "rootDir": "."
+          }
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
