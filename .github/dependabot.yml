@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Security advisories are raised regardless of this grouping.
+    groups:
+      nestjs:
+        patterns:
+          - "@nestjs/*"
+          - nest-commander
+      lint-and-test:
+        patterns:
+          - eslint
+          - "@eslint/*"
+          - typescript-eslint
+          - eslint-*
+          - prettier
+          - jest
+          - ts-jest
+          - "@types/*"
+          - globals
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Major bumps are reviewed by hand: NestJS 12, ESLint 10, TypeScript 7 (see CLAUDE.md).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

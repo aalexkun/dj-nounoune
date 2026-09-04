@@ -5,6 +5,10 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
   "scripts": {
     "build": "nest build",
     "cli": "cross-env IS_CLI=true ts-node -r tsconfig-paths/register src/cli.ts",
@@ -23,7 +27,9 @@
     "release": "npm version minor && npm run docker:build && npm run docker:tag && npm run docker:push",
     "docker:build": "docker build --network=host --build-arg APP_VERSION=$npm_package_version -t dj-nounoune:latest .",
     "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
-    "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest"
+    "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest",
+    "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.build.json --noEmit",
+    "security:check": "npm audit --audit-level=moderate && npm audit signatures --min-release-age=0 && npm approve-scripts --allow-scripts-pending"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.19.1",
@@ -50,7 +56,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.1.0",
@@ -59,17 +64,17 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
     "@types/spotify-web-api-node": "^5.0.11",
-    "@types/supertest": "^6.0.2",
     "cross-env": "^10.1.0",
     "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.0.0",
     "jest": "^30.5.1",
     "prettier": "^3.4.2",
-    "source-map-support": "^0.5.21",
-    "supertest": "^7.0.0",
-    "ts-loader": "^9.5.2",
+    "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsgo": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.20.0"
   },
@@ -82,12 +87,25 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "rootDir": "."
+          }
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "allowScripts": {
+    "@google/genai@2.13.0": true,
+    "@parcel/watcher@2.6.0": true,
+    "protobufjs@7.6.5": true,
+    "unrs-resolver@1.12.2": true
   }
 }

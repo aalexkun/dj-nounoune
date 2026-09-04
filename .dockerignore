@@ -1,0 +1,41 @@
+# Keep secrets, local state and build output out of every image layer.
+# The builder stage runs `COPY . .`; anything not listed here ends up in the image history.
+
+# Secrets and live sessions
+.env
+.env.*
+!.env.template
+.qobuz-session.json
+.spotify-session.json
+.youtube-session.json
+docker/keys/
+
+# Dependencies and build output (rebuilt inside the image)
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Local data and caches
+files/
+!files/*.template.*
+import/
+docker/
+client/
+.temp/
+.tmp/
+logs/
+*.log
+
+# VCS, IDE, agent tooling
+.git/
+.gitignore
+.idea/
+.vscode/
+.agent/
+.claude/
+doc/
+test/
+README.md
+CLAUDE.md

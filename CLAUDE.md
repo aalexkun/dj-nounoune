@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run build              # nest build — THE validation gate (see Testing below)
+npm run typecheck          # TypeScript 7 native tsc, --noEmit on tsconfig.build.json; fast pre-check, not a substitute for build
 npm run start:dev          # REST + WebSocket server, watch mode
 npm run lint               # eslint --fix
 npm run format             # prettier
@@ -13,7 +14,7 @@ npm run format             # prettier
 npm test                                        # unit tests (*.spec.ts under src/)
 npm test -- src/services/file/file.service.spec.ts   # single test file (jest rootDir is src/)
 npm test -- -t "some test name"                 # single test by name
-npm run test:e2e                                # test/**/*.e2e-spec.ts
+npm run test:e2e                                # test/**/*.e2e-spec.ts (currently only test/integration)
 npm run test:integration                        # test/integration/** (needs live credentials)
 
 npm run cli -- <command> [subcommand] [options] # CLI (note the `--`)
@@ -76,7 +77,6 @@ One playlist holds local files, Qobuz streams, Spotify streams and YouTube strea
 - Unrecognised shapes fall through as `file`, which is right: MPD's own music directory is addressed by plain relative paths. The patterns are anchored on provider markers (`spotify:track:`, not `spotify`) so a local path that merely contains a provider's name is not misread.
 - `youtube` matches two shapes: `yt:video:<id>`, which is what this app queues through the Mopidy proxy, and the watch-url forms another client may have queued instead. Both resolve to the same 11-character video id. `applemusic` is deliberately absent: nothing queues it and its uri shape is unknown.
 - **Context caching**: large grounding data (the DB profile, the enrich instructions) is written to `files/` by `FileService` and uploaded as a Gemini `CachedContent` (get-or-create keyed on display name). The instruction for a cached request **travels with the cache, not with the request** — as the cached file's content (what `enrich-instruction` does, hence `EnrichMetadataRequest._context = ''`) or as `ReadonlyAgentCache.cacheInstruction` (what the DJ query generator does). When `request.cache` is set, `context`, `tools` and `grounded` are all omitted from the outbound request; only `structuredResponse` still applies. Cache model must match request model, and because the get-or-create never compares content, an edited prompt does nothing until `npm run cli -- promptus clear-cache`. Full semantics in [`doc/promptus-caching.md`](doc/promptus-caching.md).
-- `ChatTitleAgent` (`agent/chat-title/`) is entirely commented out. Dead code.
 - Handlers return PSV (pipe-separated) rather than JSON in several places purely to save tokens.
 
 `src/lexic/songs.description.ts` is the controlled vocabulary (emotions, BPM-band pace names, genre taxonomy) shared by every prompt. It is what keeps enrichment output in a closed set — extend it there, not inline in a prompt.
@@ -196,6 +196,7 @@ Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `g
 
 - **No `any`.** Use `unknown` plus narrowing. Note `noImplicitAny` is off in tsconfig and the eslint rule is disabled, so nothing enforces this — it is on you.
 - **TypeScript 6 pins `strict: false` deliberately.** TS6 flipped `strict` to default `true`; this project runs the NestJS scaffold posture instead, so `tsconfig.json` sets `strict: false` and opts individual checks back in. `strictNullChecks`, `useUnknownInCatchVariables` and `strictFunctionTypes` are **on**; `strictPropertyInitialization` is **off** because Mongoose `@Prop` and GenAI request/response classes are populated by the framework, never in a constructor. Don't "tidy" this by deleting `strict: false` — that reintroduces 116 property-init errors.
+- **Two TypeScripts are installed, and `typescript` must stay on 6.** `typescript@7` is the native Go compiler: its main export is a version stub, with no programmatic compiler API, in 7.0 and in the 7.1 nightlies alike. `@nestjs/cli`, `ts-node`, `ts-jest` and `typescript-eslint` all require that API, so with 7 at the root `nest build`, the CLI, jest and lint each crash on startup. An npm `overrides` block cannot route around it either: npm refuses to nest a peer dependency of a root package, so there is no way to hand those tools a 6 while the root holds a 7. TypeScript 7 is therefore installed under the `tsgo` alias (`npm:typescript@^7.0.2`) and reached by explicit path from `npm run typecheck`. Both packages publish a `tsc` bin, so `npx tsc` may resolve to either; never rely on it, use the script. Revisit once the tools ship TS 7 support.
 - **Catch variables are `unknown`.** Use `getErrorMessage(e)` from `src/utils/error.utils.ts` rather than reaching for `e.message`.
 - **Zod at every external boundary.** Third-party API responses and untrusted JSON start as `unknown`, get parsed by a Zod schema, and only then propagate as `z.infer<...>`. This is followed consistently in the Spotify/Qobuz/OpenSearch services; match it.
 - **CLI commands are thin.** Parse options, call a service. All logic lives in `src/services/`. Register every command class in `src/cli/command.provider.ts` or it will not exist.
@@ -204,6 +205,14 @@ Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `g
 ### Testing
 
 Unit tests are largely bypassed in this project. `npm run build` is the real gate — **run it after any change** and make sure it compiles clean. Do not mark work done on a TypeScript error.
+
+### Dependency hygiene
+
+- `npm run security:check` is the supply-chain gate: `npm audit` at moderate, registry signature verification, and a listing of any package whose install script has not been reviewed. Run it after touching `package.json`.
+- **Install scripts are allow-listed** in `package.json` `allowScripts` (npm 11), pinned to `pkg@version`. A bump of one of those packages puts it back in the pending list on purpose: read the new script, then `npm approve-scripts <pkg>`. Never `--all`.
+- `.npmrc` sets `engine-strict` and a 7-day `min-release-age`. The latter means a fix published this week is not installable until it ages; that is the intended trade against a poisoned release, override per command with `--min-release-age=0` only when the advisory justifies it. Versions already in the lockfile are never re-judged by `npm install` or `npm ci`, but `npm audit signatures` rebuilds the tree and would reject a fresh locked version, which is why the script passes `--min-release-age=0` to that one step.
+- `.dockerignore` is what keeps `.env` and the three `*-session.json` token files out of the image. Both Docker `npm ci` calls run `--ignore-scripts`; if a future runtime dependency genuinely needs its install script, drop the flag on the `deps` stage only.
+- Dependabot (`.github/dependabot.yml`) opens grouped weekly PRs for minor/patch bumps and ignores majors; those are reviewed by hand.
 
 ## Known drift
 

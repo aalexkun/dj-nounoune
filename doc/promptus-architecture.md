@@ -293,5 +293,3 @@ src/services/promptus/
     └── handler/<domain>/<action>.handler.ts
 ```
 
-`ChatTitleAgent` under `agent/chat-title/` is entirely commented out. Dead code — do not use it as a
-template.
