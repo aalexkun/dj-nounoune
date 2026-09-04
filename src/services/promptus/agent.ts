@@ -30,7 +30,7 @@ export type ReadonlyAgentCache = ReadonlyExcept<AgentCache, 'cacheContent'>
 export abstract class Agent {
   public readonly name: string;
   protected readonly logger: Logger;
-  private maxThinkingLoop = 10;
+  private maxThinkingLoop = 25;
   protected client: GoogleGenAI;
   protected toolService: ToolsService;
   protected eventEmitter: EventEmitter2;
