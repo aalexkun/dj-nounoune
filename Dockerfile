@@ -1,4 +1,4 @@
-# Stage 1: Base image using Node 24 Alpine
+# Stage 1: Base image using Node 26 Alpine
 FROM node:26-alpine AS base
 WORKDIR /usr/src/app
 
@@ -6,12 +6,15 @@ WORKDIR /usr/src/app
 FROM base AS builder
 # Install build tools in case native dependencies need compiling
 RUN apk add --no-cache python3 make g++
-COPY package*.json ./
+# .npmrc carries the project policy (engine-strict, min-release-age); no secrets live in it.
+COPY package*.json .npmrc ./
 
-# Install ALL dependencies required for the build process
-RUN npm ci
+# Install ALL dependencies required for the build process.
+# --ignore-scripts: nothing the build needs runs an install script (the only ones in the tree are
+# no-ops or optional native rebuilds, see "allowScripts" in package.json), so skip them wholesale.
+RUN npm ci --ignore-scripts
 
-# Copy the source code and compile it
+# Copy the source code and compile it (.dockerignore keeps .env, session tokens and node_modules out)
 COPY . .
 RUN npm run build
 
@@ -19,9 +22,9 @@ RUN npm run build
 FROM base AS deps
 # Install build tools for native dependencies
 RUN apk add --no-cache python3 make g++
-COPY package*.json ./
-# Install ONLY production dependencies
-RUN npm ci --omit=dev
+COPY package*.json .npmrc ./
+# Install ONLY production dependencies, again without install scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 # Stage 4: Pure Production Image
 FROM base AS production

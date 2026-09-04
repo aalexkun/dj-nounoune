@@ -206,6 +206,14 @@ Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `g
 
 Unit tests are largely bypassed in this project. `npm run build` is the real gate — **run it after any change** and make sure it compiles clean. Do not mark work done on a TypeScript error.
 
+### Dependency hygiene
+
+- `npm run security:check` is the supply-chain gate: `npm audit` at moderate, registry signature verification, and a listing of any package whose install script has not been reviewed. Run it after touching `package.json`.
+- **Install scripts are allow-listed** in `package.json` `allowScripts` (npm 11), pinned to `pkg@version`. A bump of one of those packages puts it back in the pending list on purpose: read the new script, then `npm approve-scripts <pkg>`. Never `--all`.
+- `.npmrc` sets `engine-strict` and a 7-day `min-release-age`. The latter means a fix published this week is not installable until it ages; that is the intended trade against a poisoned release, override per command with `--min-release-age=0` only when the advisory justifies it. Versions already in the lockfile are never re-judged by `npm install` or `npm ci`, but `npm audit signatures` rebuilds the tree and would reject a fresh locked version, which is why the script passes `--min-release-age=0` to that one step.
+- `.dockerignore` is what keeps `.env` and the three `*-session.json` token files out of the image. Both Docker `npm ci` calls run `--ignore-scripts`; if a future runtime dependency genuinely needs its install script, drop the flag on the `deps` stage only.
+- Dependabot (`.github/dependabot.yml`) opens grouped weekly PRs for minor/patch bumps and ignores majors; those are reviewed by hand.
+
 ## Known drift
 
 - `README.md` documents `npm run spotify:auth` and a `docker-compose.yml`; neither exists. Use `npm run cli -- spotify auth`.

@@ -5,6 +5,10 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
   "scripts": {
     "build": "nest build",
     "cli": "cross-env IS_CLI=true ts-node -r tsconfig-paths/register src/cli.ts",
@@ -24,7 +28,8 @@
     "docker:build": "docker build --network=host --build-arg APP_VERSION=$npm_package_version -t dj-nounoune:latest .",
     "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
     "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest",
-    "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.build.json --noEmit",
+    "security:check": "npm audit --audit-level=moderate && npm audit signatures --min-release-age=0 && npm approve-scripts --allow-scripts-pending"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.19.1",
@@ -96,5 +101,11 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "allowScripts": {
+    "@google/genai@2.13.0": true,
+    "@parcel/watcher@2.6.0": true,
+    "protobufjs@7.6.5": true,
+    "unrs-resolver@1.12.2": true
   }
 }
