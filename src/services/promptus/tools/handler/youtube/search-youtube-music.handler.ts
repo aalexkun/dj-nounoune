@@ -72,8 +72,8 @@ const MAX_LOOSE_TRACKS_REPORTED = 8;
  * where assembling a record out of loose video hits is not. A song with no album goes through the
  * video search.
  *
- * Every reply that finds nothing is worded as an ending. This tool is the second attempt, so the
- * model reaching an empty answer here has already been told once that Qobuz does not have it;
+ * Every reply that finds nothing is worded as an ending. This tool is the last attempt, so the
+ * model reaching an empty answer here has already been told that neither Qobuz nor Spotify has it;
  * without wording that closes the door the thinking loop spends its remaining iterations
  * re-spelling a name that is simply not anywhere.
  */
@@ -340,8 +340,8 @@ export class SearchYoutubeMusicHandler implements ToolHandler {
    */
   private deadEnd(what: string): string {
     return (
-      `${what} Qobuz did not have it either, so there is nowhere else to look: this is the end of the search. ` +
-      'Tell the user the music could not be found on Qobuz or on YouTube and stop. ' +
+      `${what} Qobuz and Spotify did not have it either, so there is nowhere else to look: this is the end of the search. ` +
+      'Tell the user the music could not be found on Qobuz, Spotify or YouTube and stop. ' +
       'Do not search again with another spelling, do not try another tool, and do not play something else instead.'
     );
   }

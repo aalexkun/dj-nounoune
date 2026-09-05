@@ -42,6 +42,17 @@ export type YoutubeErrorResponse = z.infer<typeof YoutubeErrorResponseSchema>;
 /** Error reasons that mean the daily quota is spent, not that the request was malformed. */
 export const QUOTA_ERROR_REASONS = new Set(['quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded']);
 
+/** How `YoutubeService` words a quota failure, so a caller can tell it from a real error. */
+export const YOUTUBE_QUOTA_ERROR_PREFIX = 'YouTube API quota exhausted';
+
+/**
+ * Whether a failure is YouTube refusing on quota rather than on the request. Callers that would
+ * otherwise record the failure as permanent — the negentropy ledger — use this to defer instead.
+ */
+export function isYoutubeQuotaError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith(YOUTUBE_QUOTA_ERROR_PREFIX);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Shared snippet pieces                                                      */
 /* -------------------------------------------------------------------------- */

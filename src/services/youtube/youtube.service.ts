@@ -13,6 +13,7 @@ import { PopulatedSong } from '../music-db/music-db.service';
 import { YoutubeAuthUtil } from './youtube-auth.util';
 import {
   QUOTA_ERROR_REASONS,
+  YOUTUBE_QUOTA_ERROR_PREFIX,
   YoutubeChannel,
   YoutubeChannelSchema,
   YoutubeErrorResponseSchema,
@@ -276,7 +277,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       // request was wrong and retrying it today will not help.
       if (reason && QUOTA_ERROR_REASONS.has(reason)) {
         throw new Error(
-          `YouTube API quota exhausted (${reason}): ${message}. ` + 'The default allowance is 10,000 units per day and a single search costs 100.',
+          `${YOUTUBE_QUOTA_ERROR_PREFIX} (${reason}): ${message}. ` + 'The default allowance is 10,000 units per day and a single search costs 100.',
         );
       }
 

@@ -1,6 +1,7 @@
 import { SubCommand, CommandRunner, Option } from 'nest-commander';
 import { Injectable, Logger } from '@nestjs/common';
 import { SpotifyService } from '../../services/spotify/spotify.service';
+import { describeSpotifyError } from '../../services/spotify/spotify-error.util';
 
 interface ListUserLibraryOptions {
   limit?: string;
@@ -59,7 +60,7 @@ export class SpotifyListUserLibrarySubCommand extends CommandRunner {
 
       this.logger.log(`Finished fetching ${fetched} tracks.`);
     } catch (err) {
-      this.logger.error('Error listing user library: ' + (err instanceof Error ? err.message : String(err)));
+      this.logger.error(`Error listing user library: ${describeSpotifyError(err)}`);
     }
   }
 

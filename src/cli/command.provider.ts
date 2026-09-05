@@ -20,6 +20,8 @@ import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
 import { SpotifyListUserLibrarySubCommand } from './spotify/list-user-library.subcommand';
 import { SpotifyImportLikedSongsSubCommand } from './spotify/import-liked-songs.subcommand';
+import { SpotifySearchTrackSubCommand } from './spotify/search-track.subcommand';
+import { SpotifySearchArtistSubCommand } from './spotify/search-artist.subcommand';
 import { QobuzCommand } from './qobuz/qobuz.command';
 import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
@@ -86,6 +88,8 @@ export const CommandProviders = [
   SpotifyAuthSubCommand,
   SpotifyListUserLibrarySubCommand,
   SpotifyImportLikedSongsSubCommand,
+  SpotifySearchTrackSubCommand,
+  SpotifySearchArtistSubCommand,
 
   QobuzCommand,
   QobuzFavoritesSubCommand,

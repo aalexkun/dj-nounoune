@@ -10,7 +10,7 @@ interface NegentropyRunOptions {
 
 @SubCommand({
   name: 'run',
-  description: 'Run one pass over the upcoming MPD queue, upgrading low quality tracks to Qobuz',
+  description: 'Run one pass over the upcoming MPD queue, upgrading low quality tracks to Qobuz, Spotify or YouTube',
 })
 @Injectable()
 export class NegentropyRunSubCommand extends CommandRunner {
@@ -29,13 +29,18 @@ export class NegentropyRunSubCommand extends CommandRunner {
 
       if (options.dryRun) {
         this.logger.warn('Dry run: nothing was written to Mongo or to the MPD queue.');
-        this.logger.warn('Qobuz was still queried, and with no job records written it will be queried again next run.');
+        this.logger.warn('The providers were still queried, and with no job records written they will be queried again next run.');
       }
 
+      const calls = result.providerLookups;
+
       this.logger.log(
-        `Scanned ${result.scanned} upcoming entrie(s), ${result.candidates} low quality candidate(s), ${result.lookups} Qobuz lookup(s)`,
+        `Scanned ${result.scanned} upcoming entrie(s), ${result.candidates} low quality candidate(s), ${result.lookups} song(s) looked up ` +
+          `(qobuz ${calls.qobuz}, spotify ${calls.spotify}, youtube ${calls.youtube})`,
       );
-      this.logger.log(`Upgraded ${result.upgraded}, reused ${result.reused}, no match ${result.noMatch}, failed ${result.failed}`);
+      this.logger.log(
+        `Upgraded ${result.upgraded}, reused ${result.reused}, no match ${result.noMatch}, failed ${result.failed}, skipped ${result.skipped}, deferred ${result.deferred}`,
+      );
 
       for (const action of result.actions) {
         console.log(`  ${action}`);
@@ -60,7 +65,7 @@ export class NegentropyRunSubCommand extends CommandRunner {
 
   @Option({
     flags: '-l, --limit <limit>',
-    description: 'Qobuz lookups allowed this pass (default 5)',
+    description: 'Songs looked up this pass, each taking up to three provider calls (default 5)',
   })
   parseLimit(val: string): number {
     return parseInt(val, 10);

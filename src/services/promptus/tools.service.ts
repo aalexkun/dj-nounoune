@@ -26,6 +26,7 @@ import { FileService } from '../file/file.service';
 import { OpensearchService } from '../opensearch/opensearch.service';
 import { RedisCacheService } from '../redis-cache/redis-cache.service';
 import { QobuzService } from '../qobuz/qobuz.service';
+import { SpotifyService } from '../spotify/spotify.service';
 import { YoutubeService } from '../youtube/youtube.service';
 import { NowPlayingSource } from '../playlog/now-playing.event';
 import { DiscJockeyArtistPerformanceHandler } from './tools/handler/agent/disc-jockey-artist-performance.handler';
@@ -34,6 +35,9 @@ import { SearchQobuzArtistHandler } from './tools/handler/qobuz/search-qobuz-art
 import { FindQobuzArtistTrackHandler } from './tools/handler/qobuz/find-qobuz-artist-track.handler';
 import { PlayQobuzHandler } from './tools/handler/qobuz/play-qobuz.handler';
 import { FavoriteQobuzHandler } from './tools/handler/qobuz/favorite-qobuz.handler';
+import { SearchSpotifyArtistHandler } from './tools/handler/spotify/search-spotify-artist.handler';
+import { SearchSpotifyMusicHandler } from './tools/handler/spotify/search-spotify-music.handler';
+import { PlaySpotifyHandler } from './tools/handler/spotify/play-spotify.handler';
 import { SearchYoutubeMusicHandler } from './tools/handler/youtube/search-youtube-music.handler';
 import { PlayYoutubeHandler } from './tools/handler/youtube/play-youtube.handler';
 import { ImportYoutubeHandler } from './tools/handler/youtube/import-youtube.handler';
@@ -56,6 +60,7 @@ export class ToolsService {
     private opensearchService: OpensearchService,
     private redisCacheService: RedisCacheService,
     private qobuzService: QobuzService,
+    private spotifyService: SpotifyService,
     private youtubeService: YoutubeService,
   ) {
     // Generic and global accessible Tool and function
@@ -75,8 +80,14 @@ export class ToolsService {
     this.registerTool(new PlayQobuzHandler(this.qobuzService, this.mpdClientService, this.configService));
     this.registerTool(new FavoriteQobuzHandler(this.qobuzService));
 
-    // The fallback, for what Qobuz does not carry. Separate tools rather than a mode on the Qobuz
-    // ones: the model has to be able to tell the user which catalog it ended up playing from.
+    // The second rung, for what Qobuz does not carry: a licensed catalog like Qobuz, lossy unlike
+    // it. Separate tools rather than a mode on the Qobuz ones: the model has to be able to tell
+    // the user which catalog it ended up playing from.
+    this.registerTool(new SearchSpotifyArtistHandler(this.spotifyService));
+    this.registerTool(new SearchSpotifyMusicHandler(this.spotifyService));
+    this.registerTool(new PlaySpotifyHandler(this.spotifyService, this.mpdClientService, this.configService));
+
+    // The last rung, for what neither licensed catalog carries.
     this.registerTool(new SearchYoutubeMusicHandler(this.youtubeService));
     this.registerTool(new PlayYoutubeHandler(this.youtubeService, this.mpdClientService, this.configService));
     // The one YouTube tool that writes: "keep this" over a YouTube stream, imported as its album.

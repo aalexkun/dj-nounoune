@@ -69,7 +69,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         // trying spellings of a name the catalog does not have.
         return this.reply(
           `No artist named "${artistName}" exists in the Qobuz catalog. Do not search Qobuz again with another spelling. ` +
-            'The one thing left to try is youtube_search_music, once, with the same name — and if that is empty too, tell the user the artist is on neither and stop.',
+            'The next thing to try is spotify_search_music, once, with the same artist, album and song; youtube_search_music comes only after Spotify is empty too — and if all three are, tell the user and stop.',
         );
       }
 
@@ -89,7 +89,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
       sections.push(
         `# ALBUM ("${albumTitle}")\n` +
           `${artist.name} has no album by that name in the Qobuz catalog. Their releases are listed below; if one of them is what the user meant, ask before playing it. ` +
-          'Otherwise the record may still be on YouTube: youtube_search_music, once, is the only search left.',
+          'Otherwise the record may still be on Spotify: spotify_search_music, once, with the same artist and album, is the next search, and youtube_search_music the one after that.',
       );
       sections.push(this.renderAlbums(artist, result));
 
@@ -156,7 +156,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         `# TRACKS (${asked} by ${artist.name})\n` +
         `${artist.name} has no such recording in the Qobuz catalog. ` +
         'Do not fall back to a plain Qobuz catalog search: any hit it produced would be a different performer. ' +
-        'youtube_search_music, once, is the only search left — and if that is empty too, say it is on neither and stop.'
+        'spotify_search_music, once, with the same artist, album and song, is the next search; youtube_search_music only after that — and if both are empty, say it is on none of the three and stop.'
       );
     }
 
