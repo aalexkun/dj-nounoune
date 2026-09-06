@@ -50,6 +50,7 @@ import { OpensearchSemanticSearchSubCommand } from './opensearch/semantic-search
 import { DedupCommand } from './music/dedup.command';
 import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
+import { DedupReviewCommand } from './music/dedup-review.subcommand';
 import { ProfilerCommand } from './profiler/profiler.command';
 import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
@@ -67,6 +68,7 @@ export const CommandProviders = [
   DedupCommand,
   DedupSearchCommand,
   DedupProcessCommand,
+  DedupReviewCommand,
   WhatsPlayingCommand,
   LyricSemanticCommand,
 

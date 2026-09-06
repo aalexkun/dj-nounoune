@@ -8,9 +8,12 @@ import { EnrichMetadataRequest } from './request/enrich-metadata.request';
 import { EnrichMetadataResponse } from './response/enrich-metadata.response';
 import { LyricSemanticRequest } from './request/lyric-semantic.request';
 import { LyricSemanticResponse } from './response/lyric-semantic.response';
+import { DuplicateVerdictRequest } from './request/duplicate-verdict.request';
+import { DuplicateVerdictResponse } from './response/duplicate-verdict.response';
 
 /**
- * Library enrichment: batch metadata classification and per-song lyric distillation.
+ * Library enrichment: batch metadata classification, per-song lyric distillation, and the
+ * same-recording verdict the deduplication review tier asks for.
  *
  * Never registered as a tool. Enrichment is driven by the CLI and the scheduler, and no user
  * utterance should be able to start a run over the library.
@@ -31,6 +34,10 @@ export class EnrichAgent extends Agent {
 
     if (request instanceof LyricSemanticRequest) {
       return new LyricSemanticResponse(response) as ReqType;
+    }
+
+    if (request instanceof DuplicateVerdictRequest) {
+      return new DuplicateVerdictResponse(response) as ReqType;
     }
 
     throw new Error('Unsupported request in EnrichAgent.wrapResponse: ' + request.constructor.name);

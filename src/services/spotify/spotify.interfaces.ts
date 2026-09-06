@@ -52,6 +52,8 @@ export const SpotifyTrackHitSchema = z.object({
   explicit: z.boolean().optional(),
   /** Present only when a market was applied to the request. Absent means "not checked". */
   is_playable: z.boolean().optional(),
+  /** Deprecated for Development Mode apps since February 2026, so usually absent — kept for when it is not. */
+  external_ids: z.object({ isrc: z.string().optional() }).optional(),
   artists: z.array(SpotifyArtistRefSchema).default([]),
   album: SpotifyAlbumRefSchema,
 });

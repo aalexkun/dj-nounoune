@@ -239,7 +239,7 @@ long-running ones accept `--limit`.
 
 | Group | Subcommands |
 |---|---|
-| `music` | `import -f <psv> [-p playlist] [-d]`, `clear [-c songs albums artists] [-d]`, `enrich [--ai] [--bpm] [--Ffprobe] [--clear-cache] [-l n] [-b n] [--createdAt yyyy-mm-dd]`, `lyric-semantic [-l n] [-b n] [-c n]`, `dedup search`, `dedup process [-d]`, `whats-playing [-a artist] [-l album] [--no-cover] [--no-commentary]`, `migrate-technical-info`, `migrate-song-source [-d]` |
+| `music` | `import -f <psv> [-p playlist] [-d]`, `clear [-c songs albums artists] [-d]`, `enrich [--ai] [--bpm] [--Ffprobe] [--clear-cache] [-l n] [-b n] [--createdAt yyyy-mm-dd]`, `lyric-semantic [-l n] [-b n] [-c n]`, `dedup search [-d] [-l n] [--created-after yyyy-mm-dd]`, `dedup review [-d] [-l n] [-c n]`, `dedup process [-d]`, `whats-playing [-a artist] [-l album] [--no-cover] [--no-commentary]`, `migrate-technical-info`, `migrate-song-source [-d]` |
 | `promptus` | `search <query>`, `play <query>`, `chat [-m msg] [-s session] [--show-tools] [-q] [-j]`, `clear-cache` |
 | `mpd` | `test`, `add`, `play`, `clear`, `shuffle`, `playlist` |
 | `spotify` | `auth`, `list [-l n or all]`, `import [-d] [-l n]`, `search-track [-t] [-a] [-b] [-l] [--all] [-j]`, `search-artist -a <artist> [-b] [-t] [-l] [-j]` |
@@ -265,12 +265,30 @@ npm run cli -- music enrich --ai --limit 200
 ```
 
 ```bash
-npm run cli -- music dedup search
+npm run cli -- music dedup search --dry-run
+```
+
+```bash
+npm run cli -- music dedup review --dry-run
 ```
 
 ```bash
 npm run cli -- music dedup process --dry-run
 ```
+
+Deduplication runs in three passes. `search` recalls likely duplicates from OpenSearch and scores
+each pair in code: certain ones (identical title, artist and album with matching duration, or a
+shared ISRC) are written as `auto`, doubtful ones (a deluxe edition, a remaster, a spelling gap) as
+`review`, and everything else is dropped. `review` asks the model whether each doubtful pair is the
+same recording and records its verdict. `process` merges the `auto` entries and the ones decided
+`same`, and leaves the rest. A live take, a remix, a different album, a different track number on
+the same record, or durations far apart are never merged. Names are compared with their symbols
+intact before any tokenised comparison, so `M.I.A.` is never `Mia` and `bbno$` keeps its dollar.
+
+The recall query reads every name several ways: an exact symbol-preserving form, an
+accent-folded form, an ICU transliteration (Cyrillic, Hangul, Han and kana to Latin) and the pinyin
+and romaji readings. The cluster needs the `analysis-icu`, `analysis-kuromoji` and
+`analysis-pinyin` plugins for `opensearch create` to accept the mapping.
 
 ## HTTP and WebSocket API
 

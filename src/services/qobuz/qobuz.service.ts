@@ -945,6 +945,8 @@ export class QobuzService implements OnModuleInit {
       sourceId: trackQobuzId,
       path: `/qobuz/track/version/1/trackId/${trackQobuzId}`,
       filename: track.title,
+      // The one identity key that survives every spelling: dedup treats a shared ISRC as proof.
+      isrc: track.isrc ?? undefined,
       technical_info: {
         bitrate: 0,
         sample_rate: track.maximum_sampling_rate * 1000,

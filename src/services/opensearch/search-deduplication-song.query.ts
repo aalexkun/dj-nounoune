@@ -33,7 +33,7 @@ export class SearchDeduplicationSongQuery implements SearchQuery {
                 must: [
                   {
                     multi_match: {
-                      query: `"""${this.songAttributes.artist}"""`,
+                      query: this.songAttributes.artist,
                       fields: ['artist.keyword^5', 'artist.normalizer', 'artist.pinyin', 'artist.romaji^2'],
                       type: 'best_fields',
                       operator: 'and',
@@ -42,7 +42,7 @@ export class SearchDeduplicationSongQuery implements SearchQuery {
                   },
                   {
                     multi_match: {
-                      query: `"""${this.songAttributes.album}"""`,
+                      query: this.songAttributes.album,
                       fields: ['album.keyword^5', 'album.normalizer', 'album.pinyin', 'album.romaji^2'],
                       type: 'best_fields',
                       operator: 'and',
@@ -54,7 +54,7 @@ export class SearchDeduplicationSongQuery implements SearchQuery {
                       must: [
                         {
                           multi_match: {
-                            query: `"""${this.songAttributes.title}"""`,
+                            query: this.songAttributes.title,
                             fields: ['title.keyword^5', 'title.normalizer', 'title.pinyin', 'title.romaji^2'],
                             type: 'best_fields',
                             operator: 'and',

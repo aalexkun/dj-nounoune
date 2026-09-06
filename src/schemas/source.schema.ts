@@ -38,6 +38,14 @@ export class SongSource extends Source {
   @Prop({ type: String, required: true, description: 'Filename of the track on this source' })
   filename: string;
 
+  @Prop({
+    type: String,
+    required: false,
+    description:
+      'International Standard Recording Code of the recording on this source, when the provider reports one. Two sources sharing an ISRC are the same recording.',
+  })
+  isrc?: string;
+
   @Prop({ type: TechnicalInfoSchema, required: false, description: 'Per-source technical metadata of the track' })
   technical_info?: TechnicalInfo;
 }

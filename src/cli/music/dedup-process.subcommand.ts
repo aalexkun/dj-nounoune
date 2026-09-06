@@ -1,9 +1,7 @@
 import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Deduplication, DeduplicationDocument } from '../../schemas/deduplication.schema';
-import { MergeService } from '../../services/merge/merge.service';
+import { DeduplicationService } from '../../services/deduplication/deduplication.service';
+import { getErrorMessage } from '../../utils/error.utils';
 
 interface DedupProcessCommandOptions {
   dryRun?: boolean;
@@ -11,92 +9,48 @@ interface DedupProcessCommandOptions {
 
 @SubCommand({
   name: 'process',
-  description: 'Process pending deduplication records',
+  description: 'Merge the pending groups: auto entries and entries the review decided are the same recording',
 })
 export class DedupProcessCommand extends CommandRunner {
   private readonly logger = new Logger(DedupProcessCommand.name);
 
-  constructor(
-    @InjectModel(Deduplication.name)
-    private readonly deduplicationModel: Model<DeduplicationDocument>,
-    private readonly mergeService: MergeService,
-  ) {
+  constructor(private readonly deduplicationService: DeduplicationService) {
     super();
   }
 
   async run(inputs: string[], options: DedupProcessCommandOptions): Promise<void> {
-    const isDryRun = options.dryRun ?? true;
+    const dryRun = options.dryRun ?? false;
 
-    if (isDryRun) {
+    if (dryRun) {
       this.logger.warn('DRY RUN ACTIVE: No changes will be committed.');
     }
 
-    const pendingRecords = await this.deduplicationModel.find({ status: 'pending' }).exec();
+    try {
+      const result = await this.deduplicationService.process({ dryRun });
 
-    this.logger.log(`Found ${pendingRecords.length} pending deduplication record(s).`);
-
-    let processed = 0;
-    let errors = 0;
-
-    for (const record of pendingRecords) {
-      const docId = String(record._id);
-      const duplicates = record.duplicates;
-
-      if (duplicates.length < 2) {
-        this.logger.warn(`Dedup record ${docId} has fewer than 2 entries — skipping.`);
-        continue;
+      for (const action of result.actions) {
+        console.log(`  ${action}`);
       }
 
-      // First entry (score 0) is the primary
-      const primarySongId = duplicates[0].songId.toString();
-      const duplicateEntries = duplicates.slice(1);
+      this.logger.log(`\nDedup processing complete.`);
+      this.logger.log(`  Groups: ${result.groups}, completed: ${result.completed}, errors: ${result.errors}`);
+      this.logger.log(`  Merged: ${result.merged}, left as different: ${result.leftDifferent}, still waiting for review: ${result.waiting}`);
 
-      this.logger.log(`Processing dedup ${docId}: primary=${primarySongId}, ${duplicateEntries.length} duplicate(s)`);
-
-      try {
-        for (const entry of duplicateEntries) {
-          const duplicateSongId = entry.songId.toString();
-
-          if (isDryRun) {
-            this.logger.log(`  [DRY RUN] Would merge song ${duplicateSongId} (score: ${entry.score}) into ${primarySongId}`);
-            continue;
-          }
-
-          this.logger.log(`  Merging song ${duplicateSongId} (score: ${entry.score}) into ${primarySongId}...`);
-
-          await this.mergeService.mergeDuplicateTracks(primarySongId, duplicateSongId, docId);
-        }
-
-        if (isDryRun) {
-          this.logger.log(`  [DRY RUN] Would set dedup ${docId} to status: 'completed'`);
-        }
-
-        processed++;
-      } catch (error) {
-        const errMessage = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Failed to process dedup ${docId}: ${errMessage}`);
-
-        if (!isDryRun) {
-          await this.deduplicationModel.findByIdAndUpdate(docId, {
-            $set: { status: 'error', errorMessage: errMessage },
-          });
-        }
-
-        errors++;
+      if (result.waiting > 0) {
+        this.logger.log('Run `music dedup review` to decide the waiting entries.');
       }
-    }
 
-    this.logger.log(`\nDedup processing complete.`);
-    this.logger.log(`  Processed: ${processed}`);
-    this.logger.log(`  Errors: ${errors}`);
-    if (isDryRun) {
-      this.logger.warn('DRY RUN: No changes were committed.');
+      if (dryRun) {
+        this.logger.warn('DRY RUN: No changes were committed.');
+      }
+    } catch (error) {
+      this.logger.error(`Deduplication processing failed: ${getErrorMessage(error)}`);
     }
   }
 
   @Option({
     flags: '-d, --dry-run',
-    description: 'Preview changes without committing to the database',
+    description: 'Preview the merges without committing to the database',
     defaultValue: false,
   })
   parseDryRun(): boolean {

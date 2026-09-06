@@ -19,6 +19,18 @@ export class SongIndices {
           pattern: '[^\\p{L}\\p{Nd}\\s]',
           replacement: '',
         },
+        ampersand_to_and: {
+          type: 'mapping',
+          mappings: ['& => and'],
+        },
+      },
+      normalizer: {
+        // Whole-string, case-insensitive, symbols intact: `/\/\/\ Y /\` is a term, `bbno$` is a
+        // term, `M.I.A.` is not `Mia`. The exact layer every other subfield is a fallback to.
+        exact_normalizer: {
+          type: 'custom',
+          filter: ['lowercase', 'trim'],
+        },
       },
       analyzer: {
         artistic_text_analyzer: {
@@ -32,6 +44,27 @@ export class SongIndices {
           type: 'custom',
           tokenizer: 'standard',
           filter: ['lowercase'],
+        },
+        // Identity matching without any plugin: accents folded (Beyoncé = Beyonce), `&` read as
+        // `and`, punctuation left to the standard tokenizer (`M.I.A.` stays one token, so it is
+        // not `Mia`). Neither of the two analyzers above folds, and the pinyin filter *removes*
+        // the accented letter (`beyonc`) rather than folding it. Used by the dedup recall query.
+        identity_text_analyzer: {
+          type: 'custom',
+          char_filter: ['ampersand_to_and'],
+          tokenizer: 'standard',
+          filter: ['lowercase', 'asciifolding'],
+        },
+        // The ICU counterpart, and the one that reaches every script: Cyrillic, Greek, Hangul,
+        // Han and kana are transliterated to Latin and folded, so `Кино` and `Kino` are one term
+        // and `소녀시대` is `sonyeosidae`. Whitespace-tokenised on purpose: the ICU tokenizer would
+        // drop the `$` of `bbno$`, the dots of `M.I.A.` and the whole of `/\/\/\`, and those are
+        // the names that need an identity most. Two transliteration paths (this and the pinyin /
+        // romaji filters) so the recall does not hinge on one plugin's reading of a name.
+        icu_transliteration_analyzer: {
+          type: 'custom',
+          tokenizer: 'whitespace',
+          filter: ['icu_latin_transform', 'icu_folding'],
         },
         // Handles Western + Chinese Pinyin
         chinese_pinyin_analyzer: {
@@ -49,6 +82,10 @@ export class SongIndices {
         },
       },
       filter: {
+        icu_latin_transform: {
+          type: 'icu_transform',
+          id: 'Any-Latin; Latin-ASCII',
+        },
         kuromoji_readingform_romaji: {
           type: 'kuromoji_readingform',
           use_romaji: true,
@@ -91,6 +128,19 @@ export class SongIndices {
             type: 'text',
             analyzer: 'japanese_romaji_analyzer',
           },
+          identity: {
+            type: 'text',
+            analyzer: 'identity_text_analyzer',
+          },
+          icu: {
+            type: 'text',
+            analyzer: 'icu_transliteration_analyzer',
+          },
+          exact: {
+            type: 'keyword',
+            normalizer: 'exact_normalizer',
+            ignore_above: 512,
+          },
         },
       },
       artist: {
@@ -112,6 +162,19 @@ export class SongIndices {
             type: 'text',
             analyzer: 'japanese_romaji_analyzer',
           },
+          identity: {
+            type: 'text',
+            analyzer: 'identity_text_analyzer',
+          },
+          icu: {
+            type: 'text',
+            analyzer: 'icu_transliteration_analyzer',
+          },
+          exact: {
+            type: 'keyword',
+            normalizer: 'exact_normalizer',
+            ignore_above: 512,
+          },
         },
       },
       album: {
@@ -132,6 +195,19 @@ export class SongIndices {
           romaji: {
             type: 'text',
             analyzer: 'japanese_romaji_analyzer',
+          },
+          identity: {
+            type: 'text',
+            analyzer: 'identity_text_analyzer',
+          },
+          icu: {
+            type: 'text',
+            analyzer: 'icu_transliteration_analyzer',
+          },
+          exact: {
+            type: 'keyword',
+            normalizer: 'exact_normalizer',
+            ignore_above: 512,
           },
         },
       },

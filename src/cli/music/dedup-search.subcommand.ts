@@ -1,139 +1,84 @@
-import { CommandRunner, SubCommand } from 'nest-commander';
+import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Song, SongDocument } from '../../schemas/song.schema';
-import { Deduplication, DeduplicationDocument } from '../../schemas/deduplication.schema';
-import { OpensearchService, DuplicateSongCheck } from '../../services/opensearch/opensearch.service';
-import { Artist } from '../../schemas/artist.schema';
-import { Album } from '../../schemas/albums.schema';
-import { OpenSearchHit } from '../../services/opensearch/types';
+import { DeduplicationService } from '../../services/deduplication/deduplication.service';
+import { getErrorMessage } from '../../utils/error.utils';
 
-type PopulatedSongDocument = Omit<SongDocument, 'artist' | 'album'> & {
-  artist: Artist;
-  album: Album;
-};
+interface DedupSearchOptions {
+  dryRun?: boolean;
+  limit?: number;
+  createdAfter?: Date;
+}
 
 @SubCommand({
   name: 'search',
-  description: 'Search for duplicate songs using OpenSearch and group them',
+  description: 'Find likely duplicate songs and write them as groups: certain ones as auto, doubtful ones for review',
 })
 export class DedupSearchCommand extends CommandRunner {
   private readonly logger = new Logger(DedupSearchCommand.name);
 
-  constructor(
-    @InjectModel(Song.name) private readonly songModel: Model<SongDocument>,
-    @InjectModel(Deduplication.name) private readonly deduplicationModel: Model<DeduplicationDocument>,
-    private readonly opensearchService: OpensearchService,
-  ) {
+  constructor(private readonly deduplicationService: DeduplicationService) {
     super();
   }
 
-  async run(): Promise<void> {
+  async run(inputs: string[], options: DedupSearchOptions): Promise<void> {
     this.logger.log('Starting deduplication search...');
 
-    const cursor = this.songModel.find().populate('artist').populate('album').cursor();
+    try {
+      const result = await this.deduplicationService.search({
+        dryRun: options.dryRun,
+        limit: options.limit,
+        createdAfter: options.createdAfter,
+      });
 
-    let processed = 0;
-    let skipped = 0;
-    let grouped = 0;
-
-    for await (const rawSong of cursor) {
-      const song = rawSong as unknown as PopulatedSongDocument;
-      const songId = song._id;
-
-      try {
-        // Double-listing check: skip if this song is already in any dedup record
-        const alreadyListed = await this.deduplicationModel.exists({
-          'duplicates.songId': songId,
-        });
-
-        if (alreadyListed) {
-          skipped++;
-          continue;
-        }
-
-        // Build search attributes
-        const artistName = typeof song.artist === 'object' && song.artist?.artist ? song.artist.artist : '';
-        const albumTitle = typeof song.album === 'object' && song.album?.title ? song.album.title : '';
-
-        const songAttributes: DuplicateSongCheck = {
-          songId: songId.toString(),
-          track_number: song.track_number ?? 0,
-          disc_number: song.disc_number ?? 0,
-          year: song.year ?? '',
-          title: song.title ?? '',
-          artist: artistName,
-          album: albumTitle,
-        };
-
-        // Query OpenSearch
-        const searchResponse = await this.opensearchService.findDuplicatesSongs(songAttributes);
-
-        if (!searchResponse) {
-          processed++;
-          continue;
-        }
-
-        const hits = searchResponse.hits.hits;
-
-        // A lexical match on artist + album + title (+ track) scores >= 100 through the query's
-        // boost; nothing else scores at all.
-        const highConfidenceHits = hits.filter((hit: OpenSearchHit) => hit._score >= 100);
-
-        // Log high-confidence matches
-        if (highConfidenceHits.length > 0) {
-          this.logger.log(
-            `\n━━━ HIGH CONFIDENCE DUPLICATES for "${songAttributes.artist} - ${songAttributes.album} - ${songAttributes.title}" (track ${songAttributes.track_number}) ━━━`,
-          );
-
-          for (const hit of highConfidenceHits) {
-            this.logger.log(
-              `  ├─ [score: ${hit._score.toFixed(2)}] Artist: "${hit._source.artist}" | Album: "${hit._source.album}" | Title: "${hit._source.title}" | Track: ${hit._source.track_number ?? 'N/A'}`,
-            );
-          }
-
-          // Build the duplicates array: include the current song + all high-confidence hits
-          const duplicates = [
-            { songId: songId, score: 0 },
-            ...highConfidenceHits.map((hit: OpenSearchHit) => ({
-              songId: new Types.ObjectId(hit._id),
-              score: hit._score,
-            })),
-          ];
-
-          // Fetch full song documents for archiving
-          const allSongIds = duplicates.map((d) => d.songId);
-          const archivedDocs = await this.songModel
-            .find({
-              _id: { $in: allSongIds },
-            })
-            .lean()
-            .exec();
-
-          // Create the deduplication record
-          await this.deduplicationModel.create({
-            duplicates,
-            status: 'pending',
-            // Stored as plain records: the archive is a snapshot, not a live document.
-            archived: archivedDocs.map((doc) => ({ ...doc.toObject() })),
-          });
-
-          grouped++;
-          this.logger.log(`  └─ Created dedup group with ${duplicates.length} songs.`);
-        }
-
-        processed++;
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        this.logger.error(`Error processing song ${songId.toString()}: ${err.message}`);
-        processed++;
+      for (const action of result.actions) {
+        console.log(`  ${action}`);
       }
+
+      if (options.dryRun) {
+        this.logger.warn('Dry run: no group was written.');
+      }
+
+      this.logger.log(`Scanned ${result.scanned} song(s), skipped ${result.skipped} already pending, rejected ${result.rejected} candidate(s)`);
+      this.logger.log(
+        `${result.groups} group(s): ${result.autoEntries} auto entr(ies), ${result.reviewEntries} review entr(ies), ${result.errors} error(s)`,
+      );
+
+      if (result.reviewEntries > 0) {
+        this.logger.log('Run `music dedup review` to have the review entries decided, then `music dedup process`.');
+      }
+    } catch (error) {
+      this.logger.error(`Deduplication search failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  @Option({
+    flags: '-d, --dry-run',
+    description: 'Report the groups that would be written without writing them',
+    defaultValue: false,
+  })
+  parseDryRun(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: '-l, --limit <limit>',
+    description: 'Songs looked up at most',
+  })
+  parseLimit(val: string): number {
+    return parseInt(val, 10);
+  }
+
+  @Option({
+    flags: '--created-after <date>',
+    description: 'Only songs created on or after this date (yyyy-mm-dd)',
+  })
+  parseCreatedAfter(val: string): Date {
+    const date = new Date(val);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(`Invalid date: ${val}`);
     }
 
-    this.logger.log(`\nDeduplication search complete.`);
-    this.logger.log(`  Processed: ${processed}`);
-    this.logger.log(`  Skipped (already listed): ${skipped}`);
-    this.logger.log(`  Groups created: ${grouped}`);
+    return date;
   }
 }

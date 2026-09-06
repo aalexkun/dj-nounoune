@@ -1050,12 +1050,13 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
    * and an imported library track build the same source. `path` holds the bare `spotify:track:`
    * uri; the proxy host is deployment configuration and lives in `SPOTIFY_PROXY_AUDIO`.
    */
-  public buildSpotifySource(track: { name: string; duration_ms?: number }, trackSpotifyId: string): SongSource {
+  public buildSpotifySource(track: { name: string; duration_ms?: number; external_ids?: { isrc?: string } }, trackSpotifyId: string): SongSource {
     return {
       name: 'spotify',
       sourceId: trackSpotifyId,
       path: `spotify:track:${trackSpotifyId}`,
       filename: track.name,
+      isrc: track.external_ids?.isrc || undefined,
       technical_info: {
         ...SPOTIFY_TECHNICAL_DEFAULTS,
         duration: track.duration_ms ? track.duration_ms / 1000 : 0,

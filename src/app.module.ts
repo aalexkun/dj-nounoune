@@ -44,6 +44,7 @@ import { NegentropyJob, NegentropyJobSchema } from './schemas/negentropy-job.sch
 import { NegentropyService } from './services/negentropy/negentropy.service';
 import { WeatherModule } from './services/weather/weather.module';
 import { EnrichService } from './services/enrich/enrich.service';
+import { DeduplicationService } from './services/deduplication/deduplication.service';
 import { EnrichScheduler } from './schedulers/enrich.scheduler';
 
 const imports: NonNullable<ModuleMetadata['imports']> = [
@@ -102,6 +103,8 @@ const providers: Provider[] = [
   PlaylogService,
   NegentropyService,
   EnrichService,
+  // Root for the same reason as EnrichService: it needs AppService and ToolsService.
+  DeduplicationService,
 ];
 
 if (process.env.IS_CLI !== 'true') {

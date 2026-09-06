@@ -18,6 +18,7 @@ import {
   OpenSearchAlbumSearchResponseSchema,
 } from './types';
 import { SearchDeduplicationSongQuery } from './search-deduplication-song.query';
+import { DuplicateCandidateCriteria, SearchDuplicateCandidatesQuery } from './search-duplicate-candidates.query';
 import { SearchSongQuery } from './search-song.query';
 import { ArtistSearchQuery } from './search-artist.query';
 import { AlbumSearchQuery } from './search-album.query';
@@ -635,6 +636,37 @@ export class OpensearchService {
       const err = error as Error;
       this.logger.error(`Error querying OpenSearch Neural Search: ${err.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Recall for deduplication: everything that might be the same recording, loosely matched on
+   * title and artist. Nothing here is a verdict — see `SearchDuplicateCandidatesQuery`.
+   */
+  async findDuplicateCandidates(criteria: DuplicateCandidateCriteria): Promise<OpenSearchSearchResponse | null> {
+    if (!this.client) return null;
+
+    const query = new SearchDuplicateCandidatesQuery(criteria);
+
+    try {
+      const response = await this.client.search({
+        index: 'songs',
+        body: query.getQuery(),
+      });
+
+      const parsedResponse = OpenSearchSearchResponseSchema.safeParse(response.body);
+
+      if (parsedResponse.success) {
+        return parsedResponse.data;
+      }
+
+      this.logger.error('OpenSearch duplicate candidate response validation failed', parsedResponse.error);
+      return null;
+    } catch (error) {
+      // Rethrown rather than swallowed, unlike the other searches here: a recall that fails is
+      // not "no duplicates", and the dedup run has to count it as an error instead of quietly
+      // moving on while the cluster logs a stack trace.
+      throw new Error(`Error querying OpenSearch for duplicate candidates: ${getErrorMessage(error)}`);
     }
   }
 
