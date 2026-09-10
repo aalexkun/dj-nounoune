@@ -10,16 +10,13 @@ interface MigrateSongSourceOptions {
 
 @SubCommand({
   name: 'migrate-song-source',
-  description:
-    'Migrate root-level path and filename into source[0]. Assumes each song has at most one legacy path/filename pair.',
+  description: 'Migrate root-level path and filename into source[0]. Assumes each song has at most one legacy path/filename pair.',
 })
 @Injectable()
 export class MigrateSongSourceCommand extends CommandRunner {
   private readonly logger = new Logger(MigrateSongSourceCommand.name);
 
-  constructor(
-    @InjectModel(Song.name) private songModel: Model<SongDocument>,
-  ) {
+  constructor(@InjectModel(Song.name) private songModel: Model<SongDocument>) {
     super();
   }
 
@@ -34,10 +31,7 @@ export class MigrateSongSourceCommand extends CommandRunner {
     // Only select documents that still have the legacy root-level fields
     const cursor = this.songModel
       .find({
-        $or: [
-          { path: { $exists: true } },
-          { filename: { $exists: true } },
-        ],
+        $or: [{ path: { $exists: true } }, { filename: { $exists: true } }],
       })
       .cursor();
 
@@ -60,17 +54,15 @@ export class MigrateSongSourceCommand extends CommandRunner {
 
         // Skip if no source entries exist to receive the data
         if (!song.source || song.source.length === 0) {
-          this.logger.warn(
-            `Song "${song.title}" (${song._id}) has no source entries – skipping`,
-          );
+          this.logger.warn(`Song "${song.title}" (${song._id.toString()}) has no source entries – skipping`);
           skipped++;
           continue;
         }
 
         if (dryRun) {
           this.logger.log(
-            `[DryRun] Would migrate song "${song.title}" (${song._id}): ` +
-            `path="${legacyPath ?? ''}", filename="${legacyFilename ?? ''}" → source[0]`,
+            `[DryRun] Would migrate song "${song.title}" (${song._id.toString()}): ` +
+              `path="${legacyPath ?? ''}", filename="${legacyFilename ?? ''}" → source[0]`,
           );
           migrated++;
           continue;
@@ -103,16 +95,12 @@ export class MigrateSongSourceCommand extends CommandRunner {
       } catch (err) {
         errored++;
         const errorMessage = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Failed to migrate song "${song.title}" (${song._id}): ${errorMessage}`,
-        );
+        this.logger.error(`Failed to migrate song "${song.title}" (${song._id.toString()}): ${errorMessage}`);
       }
     }
 
     const verb = dryRun ? 'Would migrate' : 'Migrated';
-    this.logger.log(
-      `Migration complete. ${verb}: ${migrated}, Skipped: ${skipped}, Errors: ${errored}`,
-    );
+    this.logger.log(`Migration complete. ${verb}: ${migrated}, Skipped: ${skipped}, Errors: ${errored}`);
   }
 
   @Option({

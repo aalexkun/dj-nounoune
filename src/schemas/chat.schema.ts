@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, SchemaTypes } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
 import { Content, Part } from '@google/genai';
 
 export type ChatDocument = HydratedDocument<Chat>;
@@ -29,6 +29,15 @@ export class Chat {
 
   @Prop({ type: String, required: true, description: 'Topic of the chat conversation' })
   topic: string;
+
+  /**
+   * Allocated with `$inc` so two writers cannot land on the same value. It lives on the chat
+   * document rather than in Redis so that it is durable alongside the envelopes the
+   * `{ chatId, seq }` unique index protects — a cache flush would restart a Redis counter at one
+   * and every allocation after it would collide.
+   */
+  @Prop({ type: Number, default: 0, description: 'Monotonic counter handing out `seq` to this chat’s envelopes' })
+  seqCounter: number;
 }
 
 export const ChatSchema = SchemaFactory.createForClass(Chat);

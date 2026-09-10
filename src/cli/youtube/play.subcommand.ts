@@ -83,10 +83,7 @@ export class YoutubePlaySubCommand extends CommandRunner {
   }
 
   /** Whichever of the three input modes was used, reduced to a list of queueable tracks. */
-  private async resolveTracks(
-    inputs: string[],
-    options: PlayOptions,
-  ): Promise<Array<{ videoId: string; title: string; artist: string }>> {
+  private async resolveTracks(inputs: string[], options: PlayOptions): Promise<Array<{ videoId: string; title: string; artist: string }>> {
     if (options.playlist) {
       const items = await this.youtubeService.getPlaylistItems(options.playlist);
       return items.map((item) => ({ videoId: item.videoId, title: item.title, artist: item.artist }));

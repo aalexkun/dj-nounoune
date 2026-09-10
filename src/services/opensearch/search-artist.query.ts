@@ -1,9 +1,9 @@
-import { SearchQuery } from './query.interface';
+import { SearchQuery, SearchRequestBody } from './query.interface';
 
 export class ArtistSearchQuery implements SearchQuery {
   constructor(private artist: string) {}
 
-  getQuery(): Record<string, any> {
+  getQuery(): SearchRequestBody {
     return {
       size: 10,
       query: {

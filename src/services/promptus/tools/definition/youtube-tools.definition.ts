@@ -23,7 +23,7 @@ export class YoutubeToolsDefinition {
   public static readonly searchMusicCommand: ToolDeclaration = {
     name: 'youtube_search_music',
     description:
-      'Search YouTube for a recording or an album. This is the FALLBACK, and only to be used after a Qobuz lookup has already come back empty for the same music — never as the first place you look, and never when Qobuz already answered. ' +
+      'Search YouTube for a recording or an album. This is the LAST resort, and only to be used after both a Qobuz lookup and a Spotify lookup have already come back empty for the same music — never as the first place you look, and never when Qobuz or Spotify already answered. ' +
       'Give track_title for a song, album_title for a record (which is looked up as a release playlist and answers with the tracklist in running order), and artist_name alongside either so the hits can be ranked against the right performer. ' +
       'YouTube has no artist entity, so unlike qobuz_find_artist_track this cannot promise the result is really theirs: hits that do not look like the named artist are dropped, but what survives is a judgement, not a guarantee. Say it is from YouTube when you report it. ' +
       'If this comes back empty then the music could not be found anywhere: tell the user so and STOP. There is no third place to look, and no spelling to retry.',

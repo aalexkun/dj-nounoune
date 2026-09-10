@@ -94,20 +94,8 @@ export class SessionService implements OnModuleInit {
 
     const deviceConnectionId = sessionInfo.connectionId;
 
-    const logoutSubscription = timer(FIVE_MIN_IN_MS).subscribe(async () => {
-      try {
-        this.logger.log(`[Session Disconnected for ${FIVE_MIN_IN_MS}ms] Logout session: ${deviceConnectionId}`);
-        const lastDevice = await this.logoutDevice(sessionInfo);
-
-        if (lastDevice) {
-          sessionCleanupCallback(sessionInfo.id);
-        }
-      } catch (err) {
-        this.logger.error(`Failed to logout user ${clientId}: ${getErrorMessage(err)}`);
-      } finally {
-        this.pendingLogouts.get(deviceConnectionId)?.unsubscribe();
-        this.pendingLogouts.delete(deviceConnectionId);
-      }
+    const logoutSubscription = timer(FIVE_MIN_IN_MS).subscribe(() => {
+      void this.logoutAfterGrace(sessionInfo, clientId, deviceConnectionId, sessionCleanupCallback);
     });
 
     this.pendingLogouts.set(deviceConnectionId, logoutSubscription);
@@ -115,6 +103,28 @@ export class SessionService implements OnModuleInit {
     this.sessions.get(clientId)?.status?.next('disconnected');
 
     this.logger.log(`[Session logout scheduled in ${FIVE_MIN_IN_MS}ms]: Session id ${sessionInfo.id} `);
+  }
+
+  /** The grace timer's body, kept out of the subscriber so that callback stays synchronous. */
+  private async logoutAfterGrace(
+    sessionInfo: NounouneSession,
+    clientId: string,
+    deviceConnectionId: string,
+    sessionCleanupCallback: (sessionId: string) => void,
+  ): Promise<void> {
+    try {
+      this.logger.log(`[Session Disconnected for ${FIVE_MIN_IN_MS}ms] Logout session: ${deviceConnectionId}`);
+      const lastDevice = await this.logoutDevice(sessionInfo);
+
+      if (lastDevice) {
+        sessionCleanupCallback(sessionInfo.id);
+      }
+    } catch (err) {
+      this.logger.error(`Failed to logout user ${clientId}: ${getErrorMessage(err)}`);
+    } finally {
+      this.pendingLogouts.get(deviceConnectionId)?.unsubscribe();
+      this.pendingLogouts.delete(deviceConnectionId);
+    }
   }
 
   private async logoutDevice(nounouneSession: NounouneSession): Promise<boolean> {

@@ -1,0 +1,96 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000006",
+  "rev": 0,
+  "seq": 6,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "assistant",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "1 - [Portishead] Dummy - Roads\n2 - [Massive Attack] Mezzanine - Angel",
+  "actions": [
+    {
+      "kind": "copy"
+    }
+  ],
+  "payload": {
+    "type": "playlist",
+    "title": "Something moody",
+    "live": true,
+    "mpdVersion": 812,
+    "items": [
+      {
+        "elementId": "row-1",
+        "position": 0,
+        "songId": "65f1a2b3c4d5e6f7a8b9c0d1",
+        "title": "Roads",
+        "artist": "Portishead",
+        "album": "Dummy",
+        "durationMs": 302000,
+        "source": "qobuz",
+        "artworkUrl": "https://static.qobuz.com/images/covers/dummy600.jpg",
+        "state": "playing",
+        "actions": [
+          {
+            "kind": "copy"
+          },
+          {
+            "kind": "share",
+            "target": {
+              "title": "Roads",
+              "text": "Portishead — Roads",
+              "url": "https://open.qobuz.com/track/1234567",
+              "mimeType": "text/plain"
+            }
+          },
+          {
+            "kind": "song_info",
+            "songId": "65f1a2b3c4d5e6f7a8b9c0d1"
+          },
+          {
+            "kind": "queue_next",
+            "songId": "65f1a2b3c4d5e6f7a8b9c0d1"
+          },
+          {
+            "kind": "remove_from_playlist",
+            "songId": "65f1a2b3c4d5e6f7a8b9c0d1"
+          }
+        ]
+      },
+      {
+        "elementId": "row-2",
+        "position": 1,
+        "songId": "65f1a2b3c4d5e6f7a8b9c0d2",
+        "title": "Angel",
+        "artist": "Massive Attack",
+        "album": "Mezzanine",
+        "durationMs": 379000,
+        "source": "file",
+        "state": "queued",
+        "actions": [
+          {
+            "kind": "copy"
+          },
+          {
+            "kind": "share",
+            "target": {
+              "title": "Angel",
+              "text": "Massive Attack — Angel",
+              "mimeType": "text/plain"
+            }
+          },
+          {
+            "kind": "play_now",
+            "songId": "65f1a2b3c4d5e6f7a8b9c0d2",
+            "source": "file"
+          }
+        ]
+      }
+    ]
+  }
+}

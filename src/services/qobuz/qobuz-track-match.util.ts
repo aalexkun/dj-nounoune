@@ -12,9 +12,7 @@ export function describeParseFailure(item: unknown, error: z.ZodError): string {
   const id = typeof record.id === 'number' || typeof record.id === 'string' ? record.id : 'unknown id';
   const title = typeof record.title === 'string' ? `"${record.title}"` : '(untitled)';
 
-  const fields = error.issues
-    .map((issue) => `${issue.path.join('.') || 'root'} (${issue.message})`)
-    .join(', ');
+  const fields = error.issues.map((issue) => `${issue.path.join('.') || 'root'} (${issue.message})`).join(', ');
 
   return `id ${id} ${title} — ${fields}`;
 }
@@ -120,15 +118,10 @@ export function getTrackDisplayTitle(track: QobuzTrack): string {
 export function scoreTrack(track: QobuzTrack, criteria: QobuzTrackSearchCriteria): QobuzTrackMatchScore {
   // Compare against both the bare title and the version-qualified one: the
   // caller may have typed either.
-  const title = Math.max(
-    similarity(criteria.title, track.title),
-    similarity(criteria.title, getTrackDisplayTitle(track)),
-  );
+  const title = Math.max(similarity(criteria.title, track.title), similarity(criteria.title, getTrackDisplayTitle(track)));
   // Artist and album name an entity, so they use the stricter comparison — and the artist is
   // scored against every performing credit, not just the lead, so a feature still matches.
-  const artist = criteria.artist
-    ? Math.max(0, ...getTrackArtistCandidates(track).map((name) => identitySimilarity(criteria.artist, name)))
-    : 0;
+  const artist = criteria.artist ? Math.max(0, ...getTrackArtistCandidates(track).map((name) => identitySimilarity(criteria.artist, name))) : 0;
   const album = criteria.album ? identitySimilarity(criteria.album, track.album?.title) : 0;
 
   let weightSum = WEIGHTS.title;
@@ -166,15 +159,15 @@ export function buildSearchQueries(criteria: QobuzTrackSearchCriteria): string[]
   const artist = criteria.artist?.trim();
   const album = criteria.album?.trim();
 
-  const combinations = [
-    [title, artist, album],
-    [title, artist],
-    [title, album],
-    [title],
-  ];
+  const combinations = [[title, artist, album], [title, artist], [title, album], [title]];
 
   const queries = combinations
-    .map((parts) => parts.filter((part) => !!part).join(' ').trim())
+    .map((parts) =>
+      parts
+        .filter((part) => !!part)
+        .join(' ')
+        .trim(),
+    )
     .filter((query) => query.length > 0);
 
   return [...new Set(queries)];

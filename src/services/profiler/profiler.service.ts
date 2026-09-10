@@ -1,20 +1,60 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Schema, SchemaType } from 'mongoose';
+import { z } from 'zod';
 import { MusicDbService } from '../music-db/music-db.service';
 import { OpensearchService } from '../opensearch/opensearch.service';
 import { Client } from '@opensearch-project/opensearch';
-import {
-  ProfilerOptions,
-  SchemaInferenceResult,
-  InferredField,
-  CardinalityResult,
-  CompletenessResult,
-  DistributionResult,
-} from './profiler.types';
+import type { AggregationContainer } from '@opensearch-project/opensearch/api/_types/_common.aggregations.js';
+import { ProfilerOptions, SchemaInferenceResult, InferredField, CardinalityResult, CompletenessResult, DistributionResult } from './profiler.types';
 import { SONGS_EMOTIONS_DESCRIPTION, SONGS_GENRE_DESCRIPTION, SONGS_PACE_DESCRIPTION } from '../../lexic/songs.description';
 import { getActiveSourceTypes } from '../../config/active-source.util';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /** The one profiled field that `ACTIVE_SOURCE_TYPES` gates. */
 const SOURCE_NAME_FIELD = 'source.name';
+
+/** What the schema walk needs; mongoose's own `Schema` type is generic over `any` on every slot. */
+type PathWalker = { eachPath(fn: (path: string, schemaType: SchemaType) => void): unknown };
+
+const isPathWalker = (value: unknown): value is PathWalker => value instanceof Schema;
+
+/*
+ * The aggregation shapes this profiler reads back. The client types `aggregations` as a union of
+ * every aggregate OpenSearch can return, so each response is narrowed here to the few keys asked
+ * for, with a failed parse reading as "no data" rather than a crash.
+ */
+const TermsBucketSchema = z.object({
+  key: z.union([z.string(), z.number()]),
+  doc_count: z.number(),
+});
+
+const CardinalityAggregationsSchema = z.object({
+  field_cardinality: z.object({ value: z.number() }).optional(),
+  top_terms: z.object({ buckets: z.array(TermsBucketSchema) }).optional(),
+});
+
+const DocCountAggregateSchema = z.object({ doc_count: z.number() });
+
+const StatsAggregateSchema = z.object({
+  min: z.number().nullable().optional(),
+  max: z.number().nullable().optional(),
+  avg: z.number().nullable().optional(),
+});
+
+const PercentilesAggregateSchema = z.object({
+  values: z.record(z.string(), z.number().nullable()),
+});
+
+/** The part of an OpenSearch error `resolveAggField` reads: the first root cause's reason. */
+const OpenSearchErrorSchema = z.object({
+  meta: z.object({
+    body: z.object({
+      error: z.object({
+        root_cause: z.array(z.object({ reason: z.string().optional() })),
+      }),
+    }),
+  }),
+});
 
 @Injectable()
 export class ProfilerService {
@@ -27,8 +67,7 @@ export class ProfilerService {
 
   // todo replace for dynamic fields
   private getFieldsToAnalyze(collection: 'songs' | 'artists' | 'albums'): string[] {
-
-    if(collection === 'songs'){
+    if (collection === 'songs') {
       return [
         'genre',
         'emotion',
@@ -43,31 +82,27 @@ export class ProfilerService {
       ];
     }
 
-    if(collection === 'artists'){
-      return [
-        'artist'
-      ]
-    } if(collection === 'albums'){
-      return [
-        'title'
-      ];
+    if (collection === 'artists') {
+      return ['artist'];
+    }
+    if (collection === 'albums') {
+      return ['title'];
     }
 
-    return []
-
+    return [];
   }
 
   async getDatabaseProfileForPrompt(): Promise<string> {
     let output = '';
     const appendLine = (str: string) => (output += str + '\n');
-    const appendJson = (obj: any) => (output += '```JSON\n' + JSON.stringify(obj, null, 2) + '\n```\n\n');
+    const appendJson = (obj: unknown) => (output += '```JSON\n' + JSON.stringify(obj, null, 2) + '\n```\n\n');
     const collections: Array<'songs' | 'artists' | 'albums'> = ['songs', 'artists', 'albums']; //
 
     for (const collection of collections) {
       appendLine(`# Analysis for ${collection} collection.\n`);
 
       appendLine(`## ${collection} Schema`);
-      const schema = await this.inferSchema({ collection });
+      const schema = this.inferSchema({ collection });
       appendJson(schema);
 
       if (collection === 'songs') {
@@ -93,29 +128,29 @@ export class ProfilerService {
     appendLine(`## Emotion List`);
     appendLine(`${SONGS_EMOTIONS_DESCRIPTION}`);
 
-
     return output;
-    }
-
+  }
 
   // A. Schema Inference
-  async inferSchema(options: ProfilerOptions): Promise<SchemaInferenceResult> {
+  inferSchema(options: ProfilerOptions): SchemaInferenceResult {
     const schema = this.musicDbService.getSchema(options.collection);
     const fields: InferredField[] = [];
 
-    const extractPaths = (currentSchema: any, prefix: string = '') => {
-      currentSchema.eachPath((path: string, schemaType: any) => {
+    const extractPaths = (currentSchema: PathWalker, prefix: string = '') => {
+      currentSchema.eachPath((path: string, schemaType: SchemaType) => {
         const fullPath = prefix ? `${prefix}.${path}` : path;
+        // `options` is mongoose's loose bag of schema-type options; read it as unknown values.
+        const options: Record<string, unknown> = schemaType.options;
         let typeStr = 'unknown';
 
         if (schemaType.instance && schemaType.instance.toLowerCase() !== 'mixed') {
           typeStr = schemaType.instance.toLowerCase();
-        } else if (schemaType.options && schemaType.options.type) {
-          if (typeof schemaType.options.type === 'function') {
-            typeStr = schemaType.options.type.name.toLowerCase();
-          } else if (Array.isArray(schemaType.options.type)) {
+        } else if (options.type) {
+          if (typeof options.type === 'function') {
+            typeStr = options.type.name.toLowerCase();
+          } else if (Array.isArray(options.type)) {
             typeStr = 'array';
-          } else if (schemaType.options.type instanceof Object) {
+          } else if (options.type instanceof Object) {
             typeStr = 'mongoose.Schema.Types.ObjectId';
           }
         }
@@ -123,20 +158,21 @@ export class ProfilerService {
         // `@Prop({ description })` survives as a plain schema-type option. Passing it through is
         // what lets the query generator read a field's purpose off the profile instead of needing
         // a hand-written rule per field in its prompt.
-        const description = typeof schemaType.options?.description === 'string' ? schemaType.options.description : undefined;
+        const description = typeof options.description === 'string' ? options.description : undefined;
 
         if (typeStr === 'mongoose.Schema.Types.ObjectId') {
-          fields.push({ name: fullPath, type: 'mongoose.Schema.Types.ObjectId', ref: schemaType.options.ref, description });
+          const ref = typeof options.ref === 'string' ? options.ref : undefined;
+          fields.push({ name: fullPath, type: 'mongoose.Schema.Types.ObjectId', ref, description });
         } else {
           fields.push({ name: fullPath, type: typeStr, description });
         }
 
-        // Recursively extract embedded sub-schemas
-        if (schemaType.schema) {
-          extractPaths(schemaType.schema, fullPath);
-        } else if (schemaType.$embeddedSchemaType && schemaType.$embeddedSchemaType.schema) {
-          // For Arrays of subdocuments
-          extractPaths(schemaType.$embeddedSchemaType.schema, fullPath);
+        // Recursively extract embedded sub-schemas: a subdocument carries its schema directly, an
+        // array of subdocuments carries it on the embedded schema type.
+        const nested: unknown =
+          (schemaType as { schema?: unknown }).schema ?? (schemaType as { $embeddedSchemaType?: { schema?: unknown } }).$embeddedSchemaType?.schema;
+        if (isPathWalker(nested)) {
+          extractPaths(nested, fullPath);
         }
       });
     };
@@ -157,11 +193,10 @@ export class ProfilerService {
         index,
         body: { size: 0, aggs: { test: { terms: { field: aggField } } } },
       });
-    } catch (err: any) {
-      if (
-        err.meta?.body?.error?.root_cause?.[0]?.reason?.includes('Text fields are not optimised') ||
-        err.meta?.body?.error?.root_cause?.[0]?.reason?.includes('Fielddata is disabled')
-      ) {
+    } catch (err) {
+      const parsed = OpenSearchErrorSchema.safeParse(err);
+      const reason = parsed.success ? (parsed.data.meta.body.error.root_cause[0]?.reason ?? '') : '';
+      if (reason.includes('Text fields are not optimised') || reason.includes('Fielddata is disabled')) {
         aggField = `${field}.keyword`;
       }
     }
@@ -189,16 +224,17 @@ export class ProfilerService {
 
       try {
         const response = await client.search({ index, body: query });
-        const aggs = response.body.aggregations as any;
-        let uniqueCount = aggs?.field_cardinality?.value || 0;
-        let buckets = aggs?.top_terms?.buckets || [];
+        const parsed = CardinalityAggregationsSchema.safeParse(response.body.aggregations);
+        const aggs = parsed.success ? parsed.data : {};
+        let uniqueCount = aggs.field_cardinality?.value ?? 0;
+        let buckets = aggs.top_terms?.buckets ?? [];
 
         // This document grounds the LLM. Advertising a source whose subscription is inactive would
         // invite the model to generate filters for songs it can never play.
         if (field === SOURCE_NAME_FIELD) {
           const activeSources = getActiveSourceTypes();
           if (activeSources) {
-            const kept = buckets.filter((b: any) => (activeSources as readonly string[]).includes(String(b.key)));
+            const kept = buckets.filter((b) => (activeSources as readonly string[]).includes(String(b.key)));
             uniqueCount = Math.min(uniqueCount, kept.length);
             buckets = kept;
           }
@@ -208,10 +244,10 @@ export class ProfilerService {
           field,
           uniqueCount,
           recommendedUsage: uniqueCount <= threshold ? 'dropdown' : 'free-text',
-          topValues: uniqueCount <= threshold ? buckets.map((b: any) => ({ value: b.key, count: b.doc_count })) : undefined,
+          topValues: uniqueCount <= threshold ? buckets.map((b) => ({ value: b.key, count: b.doc_count })) : undefined,
         });
       } catch (err) {
-        this.logger.warn(`Failed to get cardinality for ${field}: ${(err as Error).message}`);
+        this.logger.warn(`Failed to get cardinality for ${field}: ${getErrorMessage(err)}`);
       }
     }
     return result;
@@ -234,7 +270,7 @@ export class ProfilerService {
       }
 
       const activeSources = getActiveSourceTypes();
-      const aggs: any = {};
+      const aggs: Record<string, AggregationContainer> = {};
       for (const field of fields) {
         const aggField = await this.resolveAggField(client, index, field);
         if (field === SOURCE_NAME_FIELD && activeSources) {
@@ -250,10 +286,11 @@ export class ProfilerService {
         index,
         body: { size: 0, aggs },
       });
-      const resAggs = response.body.aggregations as any;
+      const resAggs = response.body.aggregations ?? {};
 
       for (const field of fields) {
-        const missingCount = resAggs?.[`missing_${field}`]?.doc_count || 0;
+        const missing = DocCountAggregateSchema.safeParse(resAggs[`missing_${field}`]);
+        const missingCount = missing.success ? missing.data.doc_count : 0;
         const fillRatePercentage = ((totalCount - missingCount) / totalCount) * 100;
 
         result.fields.push({
@@ -264,7 +301,7 @@ export class ProfilerService {
         });
       }
     } catch (err) {
-      this.logger.error(`Error calculating completeness: ${(err as Error).message}`);
+      this.logger.error(`Error calculating completeness: ${getErrorMessage(err)}`);
     }
 
     return result;
@@ -278,7 +315,7 @@ export class ProfilerService {
     const index = options.index || options.collection;
     const result: DistributionResult = { index, fields: [] };
 
-    const aggs: any = {};
+    const aggs: Record<string, AggregationContainer> = {};
     for (const field of fields) {
       aggs[`stats_${field}`] = { extended_stats: { field } };
       aggs[`percentiles_${field}`] = { percentiles: { field, percents: [1, 25, 50, 75, 99] } };
@@ -289,28 +326,29 @@ export class ProfilerService {
         index,
         body: { size: 0, aggs },
       });
-      const resAggs = response.body.aggregations as any;
+      const resAggs = response.body.aggregations ?? {};
 
       for (const field of fields) {
-        const stats = resAggs?.[`stats_${field}`];
-        const percentiles = resAggs?.[`percentiles_${field}`]?.values || {};
+        const stats = StatsAggregateSchema.safeParse(resAggs[`stats_${field}`]);
+        const percentiles = PercentilesAggregateSchema.safeParse(resAggs[`percentiles_${field}`]);
+        const values = percentiles.success ? percentiles.data.values : {};
 
         result.fields.push({
           field,
-          min: stats?.min ?? null,
-          max: stats?.max ?? null,
-          avg: stats?.avg ?? null,
+          min: stats.success ? (stats.data.min ?? null) : null,
+          max: stats.success ? (stats.data.max ?? null) : null,
+          avg: stats.success ? (stats.data.avg ?? null) : null,
           percentiles: {
-            p1: percentiles['1.0'] ?? null,
-            p25: percentiles['25.0'] ?? null,
-            p50: percentiles['50.0'] ?? null,
-            p75: percentiles['75.0'] ?? null,
-            p99: percentiles['99.0'] ?? null,
+            p1: values['1.0'] ?? null,
+            p25: values['25.0'] ?? null,
+            p50: values['50.0'] ?? null,
+            p75: values['75.0'] ?? null,
+            p99: values['99.0'] ?? null,
           },
         });
       }
     } catch (err) {
-      this.logger.error(`Error calculating numeric distribution: ${(err as Error).message}`);
+      this.logger.error(`Error calculating numeric distribution: ${getErrorMessage(err)}`);
     }
 
     return result;

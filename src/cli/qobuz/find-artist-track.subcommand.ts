@@ -76,9 +76,7 @@ export class QobuzFindArtistTrackSubCommand extends CommandRunner {
           return;
         }
 
-        this.logger.log(
-          `Album — ${result.matchedAlbum.title} (id ${result.matchedAlbum.id}, match ${result.albumScore?.toFixed(2)})`,
-        );
+        this.logger.log(`Album — ${result.matchedAlbum.title} (id ${result.matchedAlbum.id}, match ${result.albumScore?.toFixed(2)})`);
       }
 
       if (result.tracks.length === 0) {

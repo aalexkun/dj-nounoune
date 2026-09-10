@@ -1,6 +1,5 @@
 import { LogLevel } from '@nestjs/common';
 
-
 export function getLogLevels(): LogLevel[] {
   const level = (process.env.LOG_LEVEL || 'info').toLowerCase();
   if (level === 'verbose') return ['fatal', 'error', 'warn', 'log', 'debug', 'verbose'];

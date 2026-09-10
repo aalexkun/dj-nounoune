@@ -1,6 +1,18 @@
-import { Schema } from 'mongoose';
+/** One node of an OpenSearch `mappings.properties` tree: a leaf field type, or an object with children. */
+type MappingNode = {
+  properties?: Record<string, MappingNode>;
+  [key: string]: unknown;
+};
 
-function mapMongooseTypeToOpenSearch(mongooseType: string): any {
+/**
+ * The one thing this module needs from a schema. Structural rather than mongoose's `Schema` so
+ * the generically typed `SongSchema` / `ArtistSchema` / `AlbumSchema` fit without a cast.
+ */
+export interface PathSource {
+  eachPath(fn: (path: string, schemaType: { instance?: string }) => void): unknown;
+}
+
+function mapMongooseTypeToOpenSearch(mongooseType: string): MappingNode | null {
   switch (mongooseType.toLowerCase()) {
     case 'string':
       return {
@@ -25,18 +37,15 @@ function mapMongooseTypeToOpenSearch(mongooseType: string): any {
   }
 }
 
-function setNestedMapping(properties: Record<string, any>, path: string, mapping: any) {
+function setNestedMapping(properties: Record<string, MappingNode>, path: string, mapping: MappingNode) {
   const parts = path.split('.');
   let current = properties;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (!current[part]) {
-      current[part] = { properties: {} };
-    } else if (!current[part].properties) {
-      current[part].properties = {};
-    }
-    current = current[part].properties;
+    const node = current[part] ?? (current[part] = { properties: {} });
+    node.properties ??= {};
+    current = node.properties;
   }
 
   const last = parts[parts.length - 1];
@@ -47,12 +56,10 @@ function setNestedMapping(properties: Record<string, any>, path: string, mapping
 
 export function generateDynamicMappings(
   baseMappings: { properties?: Record<string, unknown>; [key: string]: unknown },
-  schemas: { prefix: string; schema: Schema }[],
+  schemas: { prefix: string; schema: PathSource }[],
 ) {
   // Deep clone properties to avoid mutating the original readonly mappings
-  const dynamicProperties: Record<string, any> = JSON.parse(
-    JSON.stringify(baseMappings.properties || {}),
-  );
+  const dynamicProperties = JSON.parse(JSON.stringify(baseMappings.properties || {})) as Record<string, MappingNode>;
 
   for (const { prefix, schema } of schemas) {
     schema.eachPath((path, schemaType) => {

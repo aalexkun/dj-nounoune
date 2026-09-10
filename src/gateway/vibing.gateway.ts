@@ -23,10 +23,11 @@ import {
 } from '../services/playlog/now-playing.event';
 import { getErrorMessage } from '../utils/error.utils';
 import { MpdClientService } from '../services/mpd-client/mpd-client.service';
-import { NextMpdRequest } from '../services/mpd-client/requests/NextMpdRequest';
-import { PreviousMpdRequest } from '../services/mpd-client/requests/PreviousMpdRequest';
-import { PlayMpdRequest } from '../services/mpd-client/requests/PlayMpdRequest';
-import { StopMpdRequest } from '../services/mpd-client/requests/StopMpdRequest';
+
+/** socket.io hands transport details as either a string or an object; render both for a log line. */
+function describeDetail(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
 import {
   VibingControlAction,
   VibingControlMessage,
@@ -38,23 +39,14 @@ import {
   VibingReactionMessage,
   VibingReactionSchema,
 } from './vibing.gateway.types';
-import { ChatService } from '../services/chat/chat.service';
-import { ChatFeedbackEvent } from '../services/chat/chat.event';
+import { FeedbackService } from '../services/feedback/feedback.service';
+import { PlaybackControlService } from '../services/playback/playback-control.service';
 
 /** How long a client has to acknowledge a push before it is reported as undelivered. */
 const DELIVERY_ACK_TIMEOUT_MS = 5000;
 
 /** Engine level packet tracing is one line per second per client, so it is opt-in. */
 const TRACE_PACKETS = process.env.VIBING_TRACE_PACKETS === 'true';
-
-/**
- * `ChatService` keys its feedback pipeline by session, and this namespace has no sessions. One
- * standing pseudo-session stands in for every viewer, which is what lets the page reuse the app's
- * counting — 5 second buffer, grouped counts, `PlaylogService.handleFeedbackEvent` — untouched.
- * The counts land on the playlog rather than on anyone's session, so nothing downstream cares that
- * several viewers share the id.
- */
-const VIBING_FEEDBACK_SESSION = 'vibing-public';
 
 /** Not an access check — anyone on the LAN may vote — just a ceiling on how fast one socket can. */
 const REACTION_COOLDOWN_MS = 250;
@@ -113,7 +105,8 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   constructor(
     private readonly playlogService: PlaylogService,
     private readonly mpdClientService: MpdClientService,
-    private readonly chatService: ChatService,
+    private readonly feedbackService: FeedbackService,
+    private readonly playbackControl: PlaybackControlService,
   ) {}
 
   /**
@@ -122,10 +115,6 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    * actually in force are on the record next to the disconnects they cause.
    */
   afterInit(server: Server) {
-    // Opened once for the lifetime of the process, and never unsubscribed: unlike a chat session
-    // there is no point at which the last viewer leaving should tear the counting down.
-    this.chatService.subscribeToFeedback(VIBING_FEEDBACK_SESSION);
-
     const engine = (
       server as unknown as {
         server?: { engine?: { opts?: { pingInterval?: number; pingTimeout?: number; transports?: string[] } } };
@@ -164,7 +153,8 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     }
 
     // The transport buttons start disabled, so the page needs the player state before it can be used.
-    this.readPlayback()
+    this.playbackControl
+      .read()
       .then((playback) => this.deliverTo(client, VibingPlaybackMessage, playback, `catch-up ${playback.state}`))
       .catch((error: unknown) => {
         this.logger.error(`Error reading the playback state for a joining viewer: ${getErrorMessage(error)}`);
@@ -215,8 +205,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const sentAt = typeof payload === 'number' ? payload : undefined;
 
     this.logger.debug(
-      `vibing-ping from ${client.id} (transport=${client.conn.transport.name}` +
-        `${sentAt ? `, ${Date.now() - sentAt}ms out` : ''})`,
+      `vibing-ping from ${client.id} (transport=${client.conn.transport.name}` + `${sentAt ? `, ${Date.now() - sentAt}ms out` : ''})`,
     );
 
     // Answered with an event rather than an ack: an explicit round trip on the wire, in both logs.
@@ -273,9 +262,9 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   /**
-   * A viewer reacting to the track. Handed straight to `ChatService`, which buffers five seconds of
-   * them, groups them by type and increments the counters on the current play — the same path the
-   * Android app's `chat-feedback` takes, so there is one implementation of the counting.
+   * A viewer reacting to the track. Handed to `FeedbackService`, which buffers five seconds of
+   * them, groups them by type and increments the counters on the current play — the same stream the
+   * Android app's reactions go through, so there is one implementation of the counting.
    *
    * Broadcast to the other viewers as well: react from a phone, watch the giraffe float up the
    * television. That broadcast is deliberately unacknowledged, unlike every other push here — a
@@ -303,36 +292,20 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const { reaction } = parsed.data;
     this.logger.log(`vibing-reaction "${reaction}" from ${client.id}`);
 
-    this.chatService.processFeedbackMessage(
-      VIBING_FEEDBACK_SESSION,
-      new ChatFeedbackEvent(VIBING_FEEDBACK_SESSION, reaction, reaction),
-    );
+    this.feedbackService.record(reaction);
 
     client.broadcast.emit(VibingReactionBroadcastMessage, { reaction, at: now });
 
     return { ok: true };
   }
 
+  /**
+   * Delegates to {@link PlaybackControlService}, which the chat's transport bar drives too — so a
+   * pause from the phone and a pause from the television are the same call, and each surface sees
+   * the other's effect through MPD rather than through a second copy of this logic.
+   */
   private async applyControl(action: VibingControlAction): Promise<VibingPlaybackState> {
-    switch (action) {
-      case 'next':
-        await this.mpdClientService.send(new NextMpdRequest());
-        break;
-      case 'previous':
-        await this.mpdClientService.send(new PreviousMpdRequest());
-        break;
-      case 'play':
-        await this.mpdClientService.send(new PlayMpdRequest());
-        break;
-      case 'stop':
-        await this.mpdClientService.send(new StopMpdRequest());
-        break;
-      case 'toggle':
-        await this.toggle();
-        break;
-      case 'status':
-        break;
-    }
+    const playback = await this.playbackControl.apply(action);
 
     if (action !== 'status') {
       // The poller runs on a ten second interval, which is a long time to look at the track the
@@ -342,36 +315,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       });
     }
 
-    return this.readPlayback();
-  }
-
-  /** Resolved server side so the decision is made on the player's state rather than the page's copy. */
-  private async toggle(): Promise<void> {
-    const status = await this.mpdClientService.status();
-
-    if (status.state === 'play') {
-      await this.mpdClientService.send(new StopMpdRequest());
-      return;
-    }
-
-    await this.mpdClientService.send(new PlayMpdRequest());
-  }
-
-  /** A player that cannot be reached reports `unknown`, which is what greys the page's buttons out. */
-  private async readPlayback(): Promise<VibingPlaybackState> {
-    try {
-      const status = await this.mpdClientService.status();
-
-      return {
-        state: status.state ?? 'unknown',
-        songId: status.songId ?? undefined,
-        queueLength: status.playlistLength ?? undefined,
-        at: Date.now(),
-      };
-    } catch (error: unknown) {
-      this.logger.warn(`Could not read the MPD status: ${getErrorMessage(error)}`);
-      return { state: 'unknown', at: Date.now() };
-    }
+    return playback;
   }
 
   /** Push to every viewer individually, so an undelivered payload names the socket that lost it. */
@@ -449,7 +393,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const connection = client.conn;
 
     client.on('disconnect', (reason: string, description?: unknown) => {
-      this.logger.warn(`[${client.id}] socket.io disconnect: ${reason}${description ? ` — ${String(description)}` : ''}`);
+      this.logger.warn(`[${client.id}] socket.io disconnect: ${reason}${description ? ` — ${describeDetail(description)}` : ''}`);
     });
 
     connection.on('upgrade', () => {
@@ -457,7 +401,7 @@ export class VibingGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     });
 
     connection.on('close', (reason: string, description?: unknown) => {
-      this.logger.warn(`[${client.id}] engine.io closed: ${reason}${description ? ` — ${String(description)}` : ''}`);
+      this.logger.warn(`[${client.id}] engine.io closed: ${reason}${description ? ` — ${describeDetail(description)}` : ''}`);
     });
 
     connection.on('error', (error: unknown) => {

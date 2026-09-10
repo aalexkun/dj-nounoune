@@ -1,4 +1,5 @@
 import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
+import { ChatContext } from '../../../../chat/chat-context';
 import { DiscJockeyAgent } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { AgentToolsDefinition } from '../../definition/agent-tools.definition';
 import { getErrorMessage } from '../../../../../utils/error.utils';
@@ -8,7 +9,7 @@ export class DiscJockeyWhatIsPlayingHandler implements ToolHandler {
 
   constructor(private readonly djAgent: DiscJockeyAgent) {}
 
-  async execute(args: unknown, sessionId?: string): Promise<FunctionCallResult> {
+  async execute(args: unknown, ctx?: ChatContext): Promise<FunctionCallResult> {
     if (!isNaturalLanguageRequest(args)) {
       return {
         message: `Invalid arguments provided to ${this.name}. Expected parameter natural_language_request to be a string.`,
@@ -18,7 +19,7 @@ export class DiscJockeyWhatIsPlayingHandler implements ToolHandler {
     }
 
     try {
-      const djResult = await this.djAgent.whatIsPlaying(args.natural_language_request, sessionId);
+      const djResult = await this.djAgent.whatIsPlaying(args.natural_language_request, ctx);
 
       return {
         message: djResult.text || '',

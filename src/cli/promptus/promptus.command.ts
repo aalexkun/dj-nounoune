@@ -12,7 +12,8 @@ import { PromptusClearCacheSubcommand } from './clear-cache.subcommand';
 })
 @Injectable()
 export class PromptusCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
-    console.log('Use subcommands:  play');
+  run(): Promise<void> {
+    console.log('Use subcommands: play, search, chat, clear-cache');
+    return Promise.resolve();
   }
 }

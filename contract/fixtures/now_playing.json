@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000007",
+  "rev": 0,
+  "seq": 7,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "assistant",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Portishead — Roads (Dummy)",
+  "actions": [
+    {
+      "kind": "copy"
+    }
+  ],
+  "payload": {
+    "type": "now_playing",
+    "song": {
+      "songId": "65f1a2b3c4d5e6f7a8b9c0d1",
+      "title": "Roads",
+      "artist": "Portishead",
+      "album": "Dummy",
+      "year": "1994",
+      "genre": "Trip Hop",
+      "durationMs": 302000,
+      "coverUrl": "https://static.qobuz.com/images/covers/dummy600.jpg",
+      "source": "qobuz",
+      "sourceId": "1234567",
+      "bitrate": 1411,
+      "sampleRate": 44100,
+      "isHighRes": false,
+      "isCdQuality": true
+    }
+  }
+}

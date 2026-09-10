@@ -20,6 +20,8 @@ import { SpotifyCommand } from './spotify/spotify.command';
 import { SpotifyAuthSubCommand } from './spotify/auth.subcommand';
 import { SpotifyListUserLibrarySubCommand } from './spotify/list-user-library.subcommand';
 import { SpotifyImportLikedSongsSubCommand } from './spotify/import-liked-songs.subcommand';
+import { SpotifySearchTrackSubCommand } from './spotify/search-track.subcommand';
+import { SpotifySearchArtistSubCommand } from './spotify/search-artist.subcommand';
 import { QobuzCommand } from './qobuz/qobuz.command';
 import { QobuzFavoritesSubCommand } from './qobuz/favorites.subcommand';
 import { QobuzFavoriteAlbumsSubCommand } from './qobuz/favorite-albums.subcommand';
@@ -48,14 +50,20 @@ import { OpensearchSemanticSearchSubCommand } from './opensearch/semantic-search
 import { DedupCommand } from './music/dedup.command';
 import { DedupSearchCommand } from './music/dedup-search.subcommand';
 import { DedupProcessCommand } from './music/dedup-process.subcommand';
+import { DedupReviewCommand } from './music/dedup-review.subcommand';
 import { ProfilerCommand } from './profiler/profiler.command';
 import { ProfilerRunSubCommand } from './profiler/run.subcommand';
 import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
 import { LyricSemanticCommand } from './music/lyric-semantic.subcommand';
 import { NegentropyCommand } from './negentropy/negentropy.command';
 import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
+import { ChatCommand } from './chat/chat.command';
+import { ChatFixturesSubCommand } from './chat/fixtures.subcommand';
 
 export const CommandProviders = [
+  ChatCommand,
+  ChatFixturesSubCommand,
+
   MusicCommand,
   ImportCommand,
   ClearCommand,
@@ -65,6 +73,7 @@ export const CommandProviders = [
   DedupCommand,
   DedupSearchCommand,
   DedupProcessCommand,
+  DedupReviewCommand,
   WhatsPlayingCommand,
   LyricSemanticCommand,
 
@@ -86,6 +95,8 @@ export const CommandProviders = [
   SpotifyAuthSubCommand,
   SpotifyListUserLibrarySubCommand,
   SpotifyImportLikedSongsSubCommand,
+  SpotifySearchTrackSubCommand,
+  SpotifySearchArtistSubCommand,
 
   QobuzCommand,
   QobuzFavoritesSubCommand,
@@ -122,4 +133,3 @@ export const CommandProviders = [
   NegentropyCommand,
   NegentropyRunSubCommand,
 ];
-

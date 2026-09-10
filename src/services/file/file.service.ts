@@ -1,7 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { writeFile, mkdir, readFile } from 'fs/promises';
 import * as path from 'path';
-import * as fs from 'fs'; // Used only for checking directory existence synchronously if needed
 
 @Injectable()
 export class FileService {

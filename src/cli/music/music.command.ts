@@ -25,8 +25,8 @@ import { LyricSemanticCommand } from './lyric-semantic.subcommand';
 })
 @Injectable()
 export class MusicCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: clear, import, enrich, lyric-semantic, migrate-technical-info, migrate-song-source, dedup, whats-playing');
+    return Promise.resolve();
   }
 }
-

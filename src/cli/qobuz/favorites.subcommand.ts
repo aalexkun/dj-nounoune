@@ -15,7 +15,7 @@ export class QobuzFavoritesSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  async run(): Promise<void> {
     this.logger.log('Retrieving Qobuz favorites...');
     try {
       const limit = 50;
@@ -25,7 +25,7 @@ export class QobuzFavoritesSubCommand extends CommandRunner {
 
       do {
         const response = await this.qobuzService.getFavorites(limit, offset);
-        
+
         if (!response || !response.tracks) {
           throw new Error('Invalid response from Qobuz API');
         }
@@ -33,7 +33,6 @@ export class QobuzFavoritesSubCommand extends CommandRunner {
         allFavorites.push(...response.tracks.items);
         total = response.tracks.total;
         offset += limit;
-
       } while (offset < total);
 
       console.log(JSON.stringify(allFavorites, null, 2));

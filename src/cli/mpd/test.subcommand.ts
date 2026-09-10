@@ -1,8 +1,7 @@
 import { SubCommand, CommandRunner } from 'nest-commander';
 import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
-import { ConnectMpdRequest } from '../../services/mpd-client/requests/ConnectMpdRequest';
-import { FindMpdRequest } from '../../services/mpd-client/requests/FindMpdRequest';
 import { Injectable, Logger } from '@nestjs/common';
+import * as net from 'net';
 
 @SubCommand({
   name: 'test',
@@ -17,26 +16,25 @@ export class TestMpdSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     this.logger.log('Starting MPD Test via Subcommand...');
 
-    const net = require('net');
     const socket = new net.Socket();
 
     this.logger.log('Attempting raw connection...');
-    socket.connect(6600, '192.168.2.18', () => {
-      this.logger.log('RAW SOCKET CONNECTED!');
-      socket.write('close\n');
-      socket.end();
-      socket.destroy();
-      process.exit(0);
-    });
+    return new Promise<void>((resolve, reject) => {
+      socket.connect(6600, '192.168.2.18', () => {
+        this.logger.log('RAW SOCKET CONNECTED!');
+        socket.write('close\n');
+        socket.end();
+        socket.destroy();
+        resolve();
+      });
 
-    socket.on('error', (err) => {
-      this.logger.error('Raw socket error: ' + err.message);
-      process.exit(1);
+      socket.on('error', (err: Error) => {
+        this.logger.error('Raw socket error: ' + err.message);
+        reject(err);
+      });
     });
-
-    // await new Promise(resolve => setTimeout(resolve, 5000));
   }
 }

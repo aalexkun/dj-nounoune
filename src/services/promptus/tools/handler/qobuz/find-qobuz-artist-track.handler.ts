@@ -38,8 +38,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     }
 
     const record = args as Record<string, unknown>;
-    const optionalString = (value: unknown): boolean =>
-      value === undefined || value === null || typeof value === 'string';
+    const optionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string';
 
     return (
       typeof record.artist_name === 'string' &&
@@ -70,7 +69,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         // trying spellings of a name the catalog does not have.
         return this.reply(
           `No artist named "${artistName}" exists in the Qobuz catalog. Do not search Qobuz again with another spelling. ` +
-            'The one thing left to try is youtube_search_music, once, with the same name — and if that is empty too, tell the user the artist is on neither and stop.',
+            'The next thing to try is spotify_search_music, once, with the same artist, album and song; youtube_search_music comes only after Spotify is empty too — and if all three are, tell the user and stop.',
         );
       }
 
@@ -82,12 +81,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     }
   }
 
-  private render(
-    result: QobuzArtistCatalogResult,
-    artistName: string,
-    albumTitle: string | undefined,
-    trackTitle: string | undefined,
-  ): string {
+  private render(result: QobuzArtistCatalogResult, artistName: string, albumTitle: string | undefined, trackTitle: string | undefined): string {
     const artist = result.artist!;
     const sections: string[] = [this.renderArtist(artist, result.candidates, artistName)];
 
@@ -95,7 +89,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
       sections.push(
         `# ALBUM ("${albumTitle}")\n` +
           `${artist.name} has no album by that name in the Qobuz catalog. Their releases are listed below; if one of them is what the user meant, ask before playing it. ` +
-          'Otherwise the record may still be on YouTube: youtube_search_music, once, is the only search left.',
+          'Otherwise the record may still be on Spotify: spotify_search_music, once, with the same artist and album, is the next search, and youtube_search_music the one after that.',
       );
       sections.push(this.renderAlbums(artist, result));
 
@@ -105,7 +99,9 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     if (result.matchedAlbum) {
       const matched = result.matchedAlbum;
       const title = matched.version ? `${matched.title} (${matched.version})` : matched.title;
-      sections.push(`# ALBUM\nqobuzAlbumId|title|year|tracks\n${matched.id}|${title}|${matched.release_date_original?.slice(0, 4) ?? ''}|${matched.tracks_count ?? ''}`);
+      sections.push(
+        `# ALBUM\nqobuzAlbumId|title|year|tracks\n${matched.id}|${title}|${matched.release_date_original?.slice(0, 4) ?? ''}|${matched.tracks_count ?? ''}`,
+      );
     }
 
     sections.push(this.renderTracks(result, albumTitle, trackTitle));
@@ -147,11 +143,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
     return `# DISCOGRAPHY (${artist.name})\nqobuzAlbumId|title|year|tracks|quality\n${rows}`;
   }
 
-  private renderTracks(
-    result: QobuzArtistCatalogResult,
-    albumTitle: string | undefined,
-    trackTitle: string | undefined,
-  ): string {
+  private renderTracks(result: QobuzArtistCatalogResult, albumTitle: string | undefined, trackTitle: string | undefined): string {
     const artist = result.artist!;
     const asked = [trackTitle && `"${trackTitle}"`, albumTitle && `on "${albumTitle}"`].filter(Boolean).join(' ');
 
@@ -164,7 +156,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         `# TRACKS (${asked} by ${artist.name})\n` +
         `${artist.name} has no such recording in the Qobuz catalog. ` +
         'Do not fall back to a plain Qobuz catalog search: any hit it produced would be a different performer. ' +
-        'youtube_search_music, once, is the only search left — and if that is empty too, say it is on neither and stop.'
+        'spotify_search_music, once, with the same artist, album and song, is the next search; youtube_search_music only after that — and if both are empty, say it is on none of the three and stop.'
       );
     }
 
@@ -180,8 +172,7 @@ export class FindQobuzArtistTrackHandler implements ToolHandler {
         ? `# TRACKS (${artist.name} — read from the album itself, in running order)\nqobuzTrackId|no|title|duration|quality`
         : `# TRACKS (${asked} by ${artist.name}, best match first)\nqobuzTrackId|title|album|duration|titleMatch`;
 
-    const more =
-      result.tracks.length > MAX_TRACKS_REPORTED ? `\n… and ${result.tracks.length - MAX_TRACKS_REPORTED} more` : '';
+    const more = result.tracks.length > MAX_TRACKS_REPORTED ? `\n… and ${result.tracks.length - MAX_TRACKS_REPORTED} more` : '';
 
     return `${header}\n${rows}${more}`;
   }

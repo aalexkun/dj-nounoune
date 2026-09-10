@@ -52,8 +52,8 @@ export class SearchQobuzArtistHandler implements ToolHandler {
       // of retrying the catalog with a different spelling until the thinking loop runs out.
       if (artists.length === 0) {
         return this.reply(
-          `No artist named "${artistName}" exists in the Qobuz catalog. This is final — the search stops here. ` +
-            'Do not search again with another spelling and do not try another tool: tell the user this artist is not available on Qobuz.',
+          `No artist named "${artistName}" exists in the Qobuz catalog. This is final for Qobuz — do not search it again with another spelling. ` +
+            'The next rung is spotify_search_artist, once, with the same name; youtube_search_music comes only after Spotify has no such artist either.',
         );
       }
 
@@ -67,8 +67,8 @@ export class SearchQobuzArtistHandler implements ToolHandler {
         // Ranked, not restricted: these hits were scored against the artist, never verified to be
         // theirs. Anything that does not actually look like their recording is dropped rather than
         // listed under their name — `qobuz_find_artist_track` is the lookup that can promise more.
-        const tracks = (await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name })).filter(
-          (track) => trackBelongsToArtist(track.track, best),
+        const tracks = (await this.qobuzService.searchTracks({ title: trackTitle, artist: best.name })).filter((track) =>
+          trackBelongsToArtist(track.track, best),
         );
 
         sections.push(this.renderTracks(trackTitle, best, tracks));
@@ -83,9 +83,7 @@ export class SearchQobuzArtistHandler implements ToolHandler {
   }
 
   private renderArtists(artists: QobuzArtistMatch[]): string {
-    const rows = artists
-      .map((artist) => `${artist.id}|${artist.name}|${artist.albumsCount ?? ''}`)
-      .join('\n');
+    const rows = artists.map((artist) => `${artist.id}|${artist.name}|${artist.albumsCount ?? ''}`).join('\n');
 
     return `# ARTISTS (best match first)\nqobuzArtistId|name|albums\n${rows}`;
   }
@@ -111,7 +109,7 @@ export class SearchQobuzArtistHandler implements ToolHandler {
         `# TRACKS ("${trackTitle}" by ${artist.name})\n` +
         `${artist.name} has no recording of that title in the Qobuz catalog. Do not search Qobuz again: ` +
         'any hit a broader search turned up would be a different performer covering the same song. ' +
-        'youtube_search_music, once, is the only search left — and if that is empty too, say it is on neither and stop.'
+        'spotify_search_music, once, with the same artist and song, is the next search; youtube_search_music only after that — and if both are empty, say it is on none of the three and stop.'
       );
     }
 

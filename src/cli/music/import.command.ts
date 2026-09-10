@@ -1,4 +1,5 @@
 import { CommandRunner, Option, SubCommand } from 'nest-commander';
+import { PopulatedSong } from '../../services/music-db/music-db.service';
 import { ParsedPsvRow, PsvService } from '../../services/transformation/psv.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -88,7 +89,7 @@ export class ImportCommand extends CommandRunner {
         const songId = this.generateId(songAvailableInfo);
 
         if (!dryRun) {
-          this.logger.log(`Upserting Artist: ${artistName} (${artistId})`);
+          this.logger.log(`Upserting Artist: ${artistName} (${artistId.toString()})`);
 
           // 1. Upsert Artist
           await this.artistModel.updateOne(
@@ -105,7 +106,7 @@ export class ImportCommand extends CommandRunner {
             { upsert: true },
           );
 
-          this.logger.log(`Upserting Album: ${albumTitle} (${albumId})`);
+          this.logger.log(`Upserting Album: ${albumTitle} (${albumId.toString()})`);
           // 2. Upsert Album
           await this.albumModel.updateOne(
             { _id: albumId },
@@ -127,7 +128,7 @@ export class ImportCommand extends CommandRunner {
             { upsert: true },
           );
 
-          this.logger.log(`Upserting Song: ${userDoc.title} (${songId})`);
+          this.logger.log(`Upserting Song: ${userDoc.title} (${songId.toString()})`);
           // 3. Upsert Song
           await this.songModel.updateOne(
             { _id: songId },
@@ -173,7 +174,7 @@ export class ImportCommand extends CommandRunner {
                 _id: albumId,
                 title: albumTitle,
               },
-            } as any;
+            } as PopulatedSong;
             await this.opensearchService.indexSongs([songForIndex]);
             this.logger.debug(`Indexed song ${userDoc.title} in OpenSearch.`);
           } catch (error) {
@@ -182,9 +183,9 @@ export class ImportCommand extends CommandRunner {
           }
         } else {
           // In dry-run, maybe just log a sampling or just the ID generation
-          this.logger.log(`[DryRun] Would upsert Artist: ${artistName} (${artistId})`);
-          this.logger.log(`[DryRun] Would upsert Album: ${albumTitle} (${albumId})`);
-          this.logger.log(`[DryRun] Would upsert Song: ${userDoc.title} (${songId})`);
+          this.logger.log(`[DryRun] Would upsert Artist: ${artistName} (${artistId.toString()})`);
+          this.logger.log(`[DryRun] Would upsert Album: ${albumTitle} (${albumId.toString()})`);
+          this.logger.log(`[DryRun] Would upsert Song: ${userDoc.title} (${songId.toString()})`);
         }
 
         count++;

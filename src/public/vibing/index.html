@@ -1,131 +1,131 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="robots" content="noindex" />
-  <title>vibing on</title>
-  <link rel="stylesheet" href="/vibing-on/assets/vibing.css" />
-</head>
-<body>
-<main class="board">
-  <header class="rail">
-    <div class="rail-left">
-      <span id="live-dot" class="dot offline"></span>
-      <span class="rail-label">vibing on</span>
-    </div>
-    <!-- Conditions, then the outlook, then the time. Everything here is filled in by vibing.js and
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>vibing on</title>
+    <link rel="stylesheet" href="/vibing-on/assets/vibing.css" />
+  </head>
+  <body>
+    <main class="board">
+      <header class="rail">
+        <div class="rail-left">
+          <span id="live-dot" class="dot offline"></span>
+          <span class="rail-label">vibing on</span>
+        </div>
+        <!-- Conditions, then the outlook, then the time. Everything here is filled in by vibing.js and
          stays hidden until it has something true to say, so a display with no weather upstream shows
          the clock alone rather than a row of dashes. -->
-    <div class="rail-right">
-      <div id="weather" class="weather" hidden>
-        <div class="weather-now">
-          <span id="weather-icon" class="weather-icon" aria-hidden="true"></span>
-          <span id="weather-temp" class="weather-temp"></span>
-          <span id="weather-word" class="weather-word"></span>
+        <div class="rail-right">
+          <div id="weather" class="weather" hidden>
+            <div class="weather-now">
+              <span id="weather-icon" class="weather-icon" aria-hidden="true"></span>
+              <span id="weather-temp" class="weather-temp"></span>
+              <span id="weather-word" class="weather-word"></span>
+            </div>
+            <div id="weather-forecast" class="weather-forecast"></div>
+          </div>
+          <div id="clock" class="clock">--:--</div>
+          <div id="rail-status" class="rail-status">connecting</div>
         </div>
-        <div id="weather-forecast" class="weather-forecast"></div>
-      </div>
-      <div id="clock" class="clock">--:--</div>
-      <div id="rail-status" class="rail-status">connecting</div>
-    </div>
-  </header>
+      </header>
 
-  <section class="hero">
-    <div class="cover-panel">
-      <div class="cover-bg cover-bg-1"></div>
-      <div class="cover-bg cover-bg-2"></div>
-      <div class="cover-bg cover-bg-3"></div>
+      <section class="hero">
+        <div class="cover-panel">
+          <div class="cover-bg cover-bg-1"></div>
+          <div class="cover-bg cover-bg-2"></div>
+          <div class="cover-bg cover-bg-3"></div>
 
-      <!-- Sleeve and record, the shape a vinyl is photographed in: the disc sits behind the sleeve and
+          <!-- Sleeve and record, the shape a vinyl is photographed in: the disc sits behind the sleeve and
            clears its right edge, turning. Real artwork drops into the sleeve as a plain square; with
            nothing playing the sleeve dresses itself up and the cat is the artist on the front. -->
-      <div id="vinyl" class="vinyl framed">
-        <div class="vinyl-disc" aria-hidden="true"></div>
-        <div class="vinyl-sleeve">
-          <img id="cover" class="cover cover-default" alt="" referrerpolicy="no-referrer" src="/vibing-on/assets/vibe-cat.gif" />
-          <div id="cover-placeholder" class="cover cover-placeholder" hidden></div>
-          <!-- Sleeve credits, decoration rather than information — the heading beside it already says
+          <div id="vinyl" class="vinyl framed">
+            <div class="vinyl-disc" aria-hidden="true"></div>
+            <div class="vinyl-sleeve">
+              <img id="cover" class="cover cover-default" alt="" referrerpolicy="no-referrer" src="/vibing-on/assets/vibe-cat.gif" />
+              <div id="cover-placeholder" class="cover cover-placeholder" hidden></div>
+              <!-- Sleeve credits, decoration rather than information — the heading beside it already says
                what is playing, so nothing here is worth reading out loud. -->
-          <div class="sleeve-type" aria-hidden="true">
-            <div class="sleeve-artist">vibe cat</div>
-            <div class="sleeve-album">
-              <div class="sleeve-album-title">vibing on</div>
-              <div class="sleeve-album-edition">the nounoune edition</div>
+              <div class="sleeve-type" aria-hidden="true">
+                <div class="sleeve-artist">vibe cat</div>
+                <div class="sleeve-album">
+                  <div class="sleeve-album-title">vibing on</div>
+                  <div class="sleeve-album-edition">the nounoune edition</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="hero-text">
-      <div id="eyebrow" class="eyebrow"></div>
-      <h1 id="title" class="title">nothing playing</h1>
-      <div id="artist" class="artist"></div>
-      <div id="badges" class="badges"></div>
+        <div class="hero-text">
+          <div id="eyebrow" class="eyebrow"></div>
+          <h1 id="title" class="title">nothing playing</h1>
+          <div id="artist" class="artist"></div>
+          <div id="badges" class="badges"></div>
 
-      <!-- Disabled until the socket reports the player state, so nothing can be clicked into the void. -->
-      <div class="transport">
-        <button id="control-previous" class="control" type="button" aria-label="previous song" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M18 5 8.5 12 18 19z" />
-            <rect x="5" y="5" width="2.2" height="14" rx="0.6" />
-          </svg>
-        </button>
-        <button id="control-toggle" class="control control-primary" type="button" aria-label="start" disabled>
-          <svg id="control-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M7 4.5 19 12 7 19.5z" />
-          </svg>
-        </button>
-        <button id="control-next" class="control" type="button" aria-label="next song" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M6 5 15.5 12 6 19z" />
-            <rect x="16.8" y="5" width="2.2" height="14" rx="0.6" />
-          </svg>
-        </button>
-        <span id="control-note" class="control-note"></span>
-      </div>
+          <!-- Disabled until the socket reports the player state, so nothing can be clicked into the void. -->
+          <div class="transport">
+            <button id="control-previous" class="control" type="button" aria-label="previous song" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M18 5 8.5 12 18 19z" />
+                <rect x="5" y="5" width="2.2" height="14" rx="0.6" />
+              </svg>
+            </button>
+            <button id="control-toggle" class="control control-primary" type="button" aria-label="start" disabled>
+              <svg id="control-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M7 4.5 19 12 7 19.5z" />
+              </svg>
+            </button>
+            <button id="control-next" class="control" type="button" aria-label="next song" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 5 15.5 12 6 19z" />
+                <rect x="16.8" y="5" width="2.2" height="14" rx="0.6" />
+              </svg>
+            </button>
+            <span id="control-note" class="control-note"></span>
+          </div>
 
-      <!-- Same four reactions, same artwork and the same server-side counting as the Android app.
+          <!-- Same four reactions, same artwork and the same server-side counting as the Android app.
            Under the transport here, which is where they stay on every layout but the letterbox one:
            `placeReactions` in vibing.js moves them into the details column for that display. -->
-      <div class="reactions" id="reactions">
-        <button class="reaction" type="button" data-reaction="awesome" aria-label="awesome">
-          <img src="/vibing-on/assets/reactions/love-giraffe.png" alt="" decoding="async" />
-        </button>
-        <button class="reaction" type="button" data-reaction="great" aria-label="great">
-          <img src="/vibing-on/assets/reactions/girrafe-sparkle.png" alt="" decoding="async" />
-        </button>
-        <button class="reaction" type="button" data-reaction="duh" aria-label="duh">
-          <img src="/vibing-on/assets/reactions/arf-giraffe.png" alt="" decoding="async" />
-        </button>
-        <button class="reaction" type="button" data-reaction="wtf" aria-label="wtf">
-          <img src="/vibing-on/assets/reactions/wtf-giraffe.png" alt="" decoding="async" />
-        </button>
-      </div>
-    </div>
-  </section>
+          <div class="reactions" id="reactions">
+            <button class="reaction" type="button" data-reaction="awesome" aria-label="awesome">
+              <img src="/vibing-on/assets/reactions/love-giraffe.png" alt="" decoding="async" />
+            </button>
+            <button class="reaction" type="button" data-reaction="great" aria-label="great">
+              <img src="/vibing-on/assets/reactions/girrafe-sparkle.png" alt="" decoding="async" />
+            </button>
+            <button class="reaction" type="button" data-reaction="duh" aria-label="duh">
+              <img src="/vibing-on/assets/reactions/arf-giraffe.png" alt="" decoding="async" />
+            </button>
+            <button class="reaction" type="button" data-reaction="wtf" aria-label="wtf">
+              <img src="/vibing-on/assets/reactions/wtf-giraffe.png" alt="" decoding="async" />
+            </button>
+          </div>
+        </div>
+      </section>
 
-  <section class="band">
-    <div class="narration">
-      <div class="section-label">nounoune says</div>
-      <div id="description" class="prose"><p class="waiting">waiting for the disc jockey…</p></div>
-    </div>
-    <aside class="details">
-      <div class="section-label">details</div>
-      <dl id="details-grid" class="details-grid"></dl>
-    </aside>
-  </section>
+      <section class="band">
+        <div class="narration">
+          <div class="section-label">nounoune says</div>
+          <div id="description" class="prose"><p class="waiting">waiting for the disc jockey…</p></div>
+        </div>
+        <aside class="details">
+          <div class="section-label">details</div>
+          <dl id="details-grid" class="details-grid"></dl>
+        </aside>
+      </section>
 
-  <section id="recent-section" class="recent" hidden>
-    <div class="section-label">just played</div>
-    <div id="recent" class="recent-grid"></div>
-  </section>
-</main>
+      <section id="recent-section" class="recent" hidden>
+        <div class="section-label">just played</div>
+        <div id="recent" class="recent-grid"></div>
+      </section>
+    </main>
 
-<!-- Where reactions float up, over everything and clickable through. -->
-<div id="reaction-stage" class="reaction-stage" aria-hidden="true"></div>
+    <!-- Where reactions float up, over everything and clickable through. -->
+    <div id="reaction-stage" class="reaction-stage" aria-hidden="true"></div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script src="/vibing-on/assets/vibing.js"></script>
-</body>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/vibing-on/assets/vibing.js"></script>
+  </body>
 </html>

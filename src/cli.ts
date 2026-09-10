@@ -8,4 +8,4 @@ async function bootstrap() {
     logger: getLogLevels(),
   });
 }
-bootstrap();
+void bootstrap();

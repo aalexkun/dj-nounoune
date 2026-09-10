@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000011",
+  "rev": 0,
+  "seq": 11,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "assistant",
+  "state": "failed",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Nothing in the library matched that. Try naming an artist?",
+  "actions": [
+    {
+      "kind": "retry"
+    }
+  ],
+  "payload": {
+    "type": "error",
+    "code": "no_songs_found",
+    "message": "Nothing in the library matched that. Try naming an artist?",
+    "retryable": true
+  }
+}

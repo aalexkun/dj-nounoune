@@ -236,7 +236,7 @@ export const QobuzAlbumSchema: z.ZodType<QobuzAlbum> = z.lazy(() =>
     is_official: qobuzOptional(z.boolean()),
     copyright: qobuzOptional(z.string()),
     tracks: qobuzOptional(QobuzAlbumTracksSchema),
-  })
+  }),
 );
 
 export const QobuzTrackSchema: z.ZodType<QobuzTrack> = z.lazy(() =>
@@ -271,7 +271,7 @@ export const QobuzTrackSchema: z.ZodType<QobuzTrack> = z.lazy(() =>
     hires: qobuzOptional(z.boolean()),
     hires_streamable: qobuzOptional(z.boolean()),
     album: qobuzOptional(QobuzAlbumSchema),
-  })
+  }),
 );
 
 export const QobuzAlbumTracksSchema: z.ZodType<QobuzAlbumTracks> = z.lazy(() =>
@@ -280,7 +280,7 @@ export const QobuzAlbumTracksSchema: z.ZodType<QobuzAlbumTracks> = z.lazy(() =>
     limit: qobuzOptional(z.number()),
     total: qobuzOptional(z.number()),
     items: z.array(QobuzTrackSchema),
-  })
+  }),
 );
 
 export const QobuzUserFavoritesResponseSchema = z.object({

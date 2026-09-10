@@ -7,7 +7,6 @@ jest.mock('spotify-web-api-node');
 
 describe('SpotifyService', () => {
   let service: SpotifyService;
-  let configService: ConfigService;
   let mockSpotifyApi: jest.Mocked<SpotifyWebApi>;
 
   beforeEach(async () => {
@@ -33,8 +32,7 @@ describe('SpotifyService', () => {
     }).compile();
 
     service = module.get<SpotifyService>(SpotifyService);
-    configService = module.get<ConfigService>(ConfigService);
-    
+
     // Get the instance created in onModuleInit
     service.onModuleInit();
     mockSpotifyApi = service['spotifyApi'] as jest.Mocked<SpotifyWebApi>;

@@ -9,6 +9,7 @@ import { MpdToolsDefinition } from '../tools/definition/mpd-tools.definition';
 import { ChatMessage } from '../../../schemas/chat.schema';
 import { AgentToolsDefinition } from '../tools/definition/agent-tools.definition';
 import { QobuzToolsDefinition } from '../tools/definition/qobuz-tools.definition';
+import { SpotifyToolsDefinition } from '../tools/definition/spotify-tools.definition';
 import { YoutubeToolsDefinition } from '../tools/definition/youtube-tools.definition';
 
 export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
@@ -28,6 +29,9 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     QobuzToolsDefinition.findArtistTrackCommand,
     QobuzToolsDefinition.playCommand,
     QobuzToolsDefinition.favoriteCommand,
+    SpotifyToolsDefinition.searchArtistCommand,
+    SpotifyToolsDefinition.searchMusicCommand,
+    SpotifyToolsDefinition.playCommand,
     YoutubeToolsDefinition.searchMusicCommand,
     YoutubeToolsDefinition.playCommand,
     YoutubeToolsDefinition.importCommand,

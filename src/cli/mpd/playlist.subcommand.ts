@@ -2,6 +2,7 @@ import { SubCommand, CommandRunner } from 'nest-commander';
 import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
 import { PlaylistMpdRequest } from '../../services/mpd-client/requests/PlaylistMpdRequest';
 import { Injectable, Logger } from '@nestjs/common';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @SubCommand({
   name: 'playlist',
@@ -15,7 +16,7 @@ export class PlaylistMpdSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(): Promise<void> {
     try {
       this.logger.log('Fetching playlist...');
       const response = await this.mpdClient.send(new PlaylistMpdRequest());
@@ -24,8 +25,8 @@ export class PlaylistMpdSubCommand extends CommandRunner {
       response.tracks.forEach((track, index) => {
         this.logger.log(`${index + 1}: ${track.Title || track.file}`);
       });
-    } catch (error: any) {
-      this.logger.error(`Failed to get playlist: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Failed to get playlist: ${getErrorMessage(error)}`);
     }
   }
 }

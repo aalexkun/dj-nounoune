@@ -11,11 +11,20 @@ import { QobuzFindArtistTrackSubCommand } from './find-artist-track.subcommand';
 @Command({
   name: 'qobuz',
   description: 'Qobuz Client commands',
-  subCommands: [QobuzFavoritesSubCommand, QobuzFavoriteAlbumsSubCommand, QobuzAuthSubCommand, QobuzImportFavoriteAlbumsSubCommand, QobuzSearchTrackSubCommand, QobuzFindArtistTrackSubCommand, QobuzSearchCurrentTrackSubCommand],
+  subCommands: [
+    QobuzFavoritesSubCommand,
+    QobuzFavoriteAlbumsSubCommand,
+    QobuzAuthSubCommand,
+    QobuzImportFavoriteAlbumsSubCommand,
+    QobuzSearchTrackSubCommand,
+    QobuzFindArtistTrackSubCommand,
+    QobuzSearchCurrentTrackSubCommand,
+  ],
 })
 @Injectable()
 export class QobuzCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: favorites, favorite-albums, import-favorite-albums, search-track, find-artist-track, search-current-track, auth');
+    return Promise.resolve();
   }
 }

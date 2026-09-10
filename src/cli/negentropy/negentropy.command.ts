@@ -9,7 +9,8 @@ import { NegentropyRunSubCommand } from './run.subcommand';
 })
 @Injectable()
 export class NegentropyCommand extends CommandRunner {
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: run');
+    return Promise.resolve();
   }
 }

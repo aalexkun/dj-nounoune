@@ -105,9 +105,7 @@
   }
 
   function inline(text) {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|\W)\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|\W)\*([^*\n]+)\*/g, '$1<em>$2</em>');
   }
 
   // Just enough markdown for what the disc jockey emits: headings, rules, bullets, bold and italics.
@@ -317,8 +315,12 @@
           '<div class="recent-item">' +
           cover +
           '<div class="recent-meta">' +
-          '<div class="recent-title">' + escapeHtml(item.title) + '</div>' +
-          '<div class="recent-artist">' + escapeHtml(item.artist) + '</div>' +
+          '<div class="recent-title">' +
+          escapeHtml(item.title) +
+          '</div>' +
+          '<div class="recent-artist">' +
+          escapeHtml(item.artist) +
+          '</div>' +
           '</div></div>'
         );
       })
@@ -768,11 +770,7 @@
     var eased = t * t * (3 - 2 * t);
     var turn = ((((to[0] - from[0]) % 360) + 540) % 360) - 180;
 
-    return [
-      (from[0] + turn * eased + 360) % 360,
-      from[1] + (to[1] - from[1]) * eased,
-      from[2] + (to[2] - from[2]) * eased,
-    ];
+    return [(from[0] + turn * eased + 360) % 360, from[1] + (to[1] - from[1]) * eased, from[2] + (to[2] - from[2]) * eased];
   }
 
   function sampleSky(now) {
@@ -1151,30 +1149,46 @@
 
   socket.on(
     'now-playing',
-    received('now-playing', function (song) {
-      return song && song.songId ? song.songId + ' "' + song.title + '"' : 'empty payload';
-    }, apply),
+    received(
+      'now-playing',
+      function (song) {
+        return song && song.songId ? song.songId + ' "' + song.title + '"' : 'empty payload';
+      },
+      apply,
+    ),
   );
 
   socket.on(
     'now-playing-commentary',
-    received('now-playing-commentary', function (payload) {
-      return (payload && payload.songId) + ' (' + ((payload && payload.description) || '').length + ' chars)';
-    }, applyCommentary),
+    received(
+      'now-playing-commentary',
+      function (payload) {
+        return (payload && payload.songId) + ' (' + ((payload && payload.description) || '').length + ' chars)';
+      },
+      applyCommentary,
+    ),
   );
 
   socket.on(
     'now-playing-cover',
-    received('now-playing-cover', function (payload) {
-      return (payload && payload.songId) + ' ' + (payload && payload.coverUrl);
-    }, applyCover),
+    received(
+      'now-playing-cover',
+      function (payload) {
+        return (payload && payload.songId) + ' ' + (payload && payload.coverUrl);
+      },
+      applyCover,
+    ),
   );
 
   socket.on(
     'vibing-playback',
-    received('vibing-playback', function (state) {
-      return state ? state.state + ' queue=' + state.queueLength : 'empty payload';
-    }, applyPlayback),
+    received(
+      'vibing-playback',
+      function (state) {
+        return state ? state.state + ' queue=' + state.queueLength : 'empty payload';
+      },
+      applyPlayback,
+    ),
   );
 
   // Somebody else reacted. Sent without an ack on purpose, and logged locally only: a busy room

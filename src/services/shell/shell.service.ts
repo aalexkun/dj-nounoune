@@ -1,26 +1,30 @@
 import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
 
 import { spawn } from 'child_process';
 
-export interface FFProbeOutput {
-  streams: Array<{
-    codec_type: string;
-    codec_name: string;
-    sample_rate?: string;
-    bit_rate?: string;
-    duration?: string;
-    bits_per_raw_sample?: string; // Often present for PCM/Lossless
-    bits_per_sample?: number; // Fallback
-    [key: string]: any;
-  }>;
-  format: {
-    filename: string;
-    size?: string;
-    duration?: string;
-    bit_rate?: string;
-    [key: string]: any;
-  };
-}
+/** The parts of `ffprobe -show_format -show_streams` this app reads; the rest passes through untyped. */
+const FFProbeOutputSchema = z.object({
+  streams: z.array(
+    z.looseObject({
+      codec_type: z.string(),
+      codec_name: z.string(),
+      sample_rate: z.string().optional(),
+      bit_rate: z.string().optional(),
+      duration: z.string().optional(),
+      bits_per_raw_sample: z.string().optional(), // Often present for PCM/Lossless
+      bits_per_sample: z.number().optional(), // Fallback
+    }),
+  ),
+  format: z.looseObject({
+    filename: z.string(),
+    size: z.string().optional(),
+    duration: z.string().optional(),
+    bit_rate: z.string().optional(),
+  }),
+});
+
+export type FFProbeOutput = z.infer<typeof FFProbeOutputSchema>;
 
 @Injectable()
 export class ShellService {
@@ -40,12 +44,12 @@ export class ShellService {
       const stderrChunks: Buffer[] = [];
 
       // 2. Collect stdout data
-      process.stdout.on('data', (chunk) => {
+      process.stdout.on('data', (chunk: Buffer) => {
         stdoutChunks.push(chunk);
       });
 
       // 3. Collect stderr data
-      process.stderr.on('data', (chunk) => {
+      process.stderr.on('data', (chunk: Buffer) => {
         stderrChunks.push(chunk);
       });
 
@@ -65,8 +69,8 @@ export class ShellService {
         const output = Buffer.concat(stdoutChunks).toString('utf-8');
 
         try {
-          const parsedOutput = JSON.parse(output);
-          resolve(parsedOutput);
+          const parsedOutput: unknown = JSON.parse(output);
+          resolve(FFProbeOutputSchema.parse(parsedOutput));
         } catch (e) {
           reject(new Error(`Failed to parse ffprobe output: ${e instanceof Error ? e.message : String(e)}`));
         }
@@ -87,8 +91,8 @@ export class ShellService {
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
 
-      process.stdout.on('data', (chunk) => stdoutChunks.push(chunk));
-      process.stderr.on('data', (chunk) => stderrChunks.push(chunk));
+      process.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+      process.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
 
       process.on('error', (err) => {
         reject(new Error(`Failed to start bpm-tag process: ${err.message}`));

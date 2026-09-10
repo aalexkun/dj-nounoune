@@ -1,17 +1,16 @@
 import { CommandRunner, SubCommand } from 'nest-commander';
-import { Logger } from '@nestjs/common';
 import { DedupSearchCommand } from './dedup-search.subcommand';
+import { DedupReviewCommand } from './dedup-review.subcommand';
 import { DedupProcessCommand } from './dedup-process.subcommand';
 
 @SubCommand({
   name: 'dedup',
-  description: 'Song deduplication commands',
-  subCommands: [DedupSearchCommand, DedupProcessCommand],
+  description: 'Song deduplication: search for duplicates, review the doubtful ones, then process the merges',
+  subCommands: [DedupSearchCommand, DedupReviewCommand, DedupProcessCommand],
 })
 export class DedupCommand extends CommandRunner {
-  private readonly logger = new Logger(DedupCommand.name);
-
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
-    console.log('Use subcommands: search, process');
+  run(): Promise<void> {
+    console.log('Use subcommands: search, review, process');
+    return Promise.resolve();
   }
 }

@@ -1,6 +1,6 @@
 export interface ProfilerOptions {
   collection: string; // e.g., 'songs', 'artists'
-  index?: string;     // OpenSearch index (defaults to collection name)
+  index?: string; // OpenSearch index (defaults to collection name)
 }
 
 // A. Schema Inference

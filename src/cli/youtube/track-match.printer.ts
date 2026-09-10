@@ -84,8 +84,6 @@ export function printPlaylistTracks(logger: Logger, tracks: YoutubePlaylistTrack
 
   for (const track of tracks) {
     const raw = track.videoTitle !== track.title ? ` (raw: "${track.videoTitle}")` : '';
-    console.log(
-      `  ${String(track.trackNumber).padStart(2, ' ')}. id=${track.videoId} "${track.title}" — ${track.artist || 'unknown artist'}${raw}`,
-    );
+    console.log(`  ${String(track.trackNumber).padStart(2, ' ')}. id=${track.videoId} "${track.title}" — ${track.artist || 'unknown artist'}${raw}`);
   }
 }

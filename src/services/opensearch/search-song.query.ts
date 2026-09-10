@@ -1,4 +1,4 @@
-import { SearchQuery } from './query.interface';
+import { QueryClause, SearchQuery, SearchRequestBody } from './query.interface';
 
 export class SearchSongQuery implements SearchQuery {
   constructor(
@@ -9,8 +9,8 @@ export class SearchSongQuery implements SearchQuery {
     private artist_id?: string | null,
   ) {}
 
-  getQuery(): Record<string, any> {
-    const mustClauses: any[] = [
+  getQuery(): SearchRequestBody {
+    const mustClauses: QueryClause[] = [
       {
         multi_match: {
           query: this.title,

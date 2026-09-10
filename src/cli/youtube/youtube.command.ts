@@ -23,9 +23,8 @@ import { YoutubePlaylistsSubCommand } from './playlists.subcommand';
 })
 @Injectable()
 export class YoutubeCommand extends CommandRunner {
-  async run(): Promise<void> {
-    console.log(
-      'Use subcommands: auth, search-track, search-playlist, import-playlist, play, liked, playlists',
-    );
+  run(): Promise<void> {
+    console.log('Use subcommands: auth, search-track, search-playlist, import-playlist, play, liked, playlists');
+    return Promise.resolve();
   }
 }

@@ -2,6 +2,7 @@ import { SubCommand, CommandRunner } from 'nest-commander';
 import { MpdClientService } from '../../services/mpd-client/mpd-client.service';
 import { AddMpdRequest } from '../../services/mpd-client/requests/AddMpdRequest';
 import { Injectable, Logger } from '@nestjs/common';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @SubCommand({
   name: 'add',
@@ -18,7 +19,7 @@ export class AddMpdSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  async run(inputs: string[]): Promise<void> {
     const uri = inputs[0];
     if (!uri) {
       this.logger.error('URI argument is required');
@@ -32,8 +33,8 @@ export class AddMpdSubCommand extends CommandRunner {
     try {
       await this.mpdClient.send(new AddMpdRequest(uri));
       this.logger.log('Successfully added to playlist.');
-    } catch (error: any) {
-      this.logger.error(`Failed to add: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Failed to add: ${getErrorMessage(error)}`);
     }
   }
 }

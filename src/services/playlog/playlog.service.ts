@@ -96,6 +96,17 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
    * stops, and nothing clears it — so it is only handed out once MPD confirms that same song is
    * still loaded. Null here means "ask MPD", not "silence".
    */
+  /**
+   * The last published snapshot, without asking MPD whether it is still loaded.
+   *
+   * {@link getNowPlayingSnapshot} is the careful read for a tool answering a user; this is for the
+   * transport bar, which is rebuilt from the queue projection every couple of seconds anyway and
+   * would only pay a round trip to learn what it is about to be told.
+   */
+  getLastSnapshot(): NowPlaying | null {
+    return this.currentNowPlaying;
+  }
+
   async getNowPlayingSnapshot(): Promise<NowPlaying | null> {
     if (!this.currentNowPlaying) {
       await this.checkCurrentSong();
@@ -138,7 +149,6 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
     if (process.env.IS_CLI === 'true') return;
 
     try {
-
       const { song, mpdResponse, sourceName } = await this.getMpdSong();
 
       if (!song) {
@@ -149,9 +159,7 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
       const previousPlaylog = await this.fetchPreviousSong();
       const previousSongId = previousPlaylog?.songId?.toString();
 
-
       if (song._id.toString() != previousSongId) {
-
         const newPlaylog = new this.playlogModel({
           playedAt: new Date(),
           raw: mpdResponse?.rawResponse,
@@ -162,7 +170,7 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
         });
 
         const savedPlaylog = await newPlaylog.save();
-        this.logger.log(`Created new playlog entry: ${savedPlaylog._id}`);
+        this.logger.log(`Created new playlog entry: ${savedPlaylog._id.toString()}`);
 
         await this.publishNowPlaying(savedPlaylog, sourceName, mpdResponse?.song?.file);
       } else if (!this.currentNowPlaying && previousPlaylog) {
@@ -170,13 +178,10 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
         // from that entry rather than leaving the page blank until the next song change.
         await this.publishNowPlaying(previousPlaylog, sourceName, mpdResponse?.song?.file);
       }
-
-    } catch (error: any) {
-      this.logger.error(`Error checking current song: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Error checking current song: ${getErrorMessage(error)}`);
     }
-
   }
-
 
   /**
    * Which song MPD is on, whatever service it is streaming from.
@@ -188,7 +193,6 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
    * through as a local path, which is what MPD's own music directory looks like.
    */
   private async getMpdSong(): Promise<MpdSongLookup> {
-
     const mpdResponse = await this.mpdClientService.currentsong();
     if (!mpdResponse || !mpdResponse.song || !mpdResponse.song.file) {
       return {};
@@ -209,8 +213,8 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
   private async fetchPreviousSong(): Promise<PlaylogDocument | null> {
     try {
       return await this.playlogModel.findOne().sort({ playedAt: -1 }).exec();
-    } catch (error: any) {
-      this.logger.error(`Error initializing last played file from DB: ${error.message}`);
+    } catch (error) {
+      this.logger.error(`Error initializing last played file from DB: ${getErrorMessage(error)}`);
       return null;
     }
   }
@@ -314,12 +318,7 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
     }
   }
 
-  private async resolveCommentary(
-    discJockey: DiscJockeyAgent,
-    playlog: PlaylogDocument,
-    snapshot: NowPlaying,
-    cached?: string,
-  ): Promise<void> {
+  private async resolveCommentary(discJockey: DiscJockeyAgent, playlog: PlaylogDocument, snapshot: NowPlaying, cached?: string): Promise<void> {
     if (snapshot.description) return;
 
     try {
@@ -463,10 +462,7 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
   }
 
   private async fetchArtwork(mpdUri: string): Promise<MpdPicture | null> {
-    return (
-      (await this.mpdClientService.fetchEmbeddedPicture(mpdUri)) ??
-      (await this.mpdClientService.fetchDirectoryArtwork(mpdUri))
-    );
+    return (await this.mpdClientService.fetchEmbeddedPicture(mpdUri)) ?? (await this.mpdClientService.fetchDirectoryArtwork(mpdUri));
   }
 
   /** Insertion order is eviction order, so re-caching a hit moves it back to the young end. */
@@ -475,9 +471,9 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
     this.artworkCache.set(songId, picture);
 
     while (this.artworkCache.size > ARTWORK_CACHE_SIZE) {
-      const oldest = this.artworkCache.keys().next().value;
-      if (oldest === undefined) break;
-      this.artworkCache.delete(oldest);
+      const oldest = this.artworkCache.keys().next();
+      if (oldest.done) break;
+      this.artworkCache.delete(oldest.value);
     }
   }
 
@@ -517,7 +513,6 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
   }
 
   async handleFeedbackEvent(groupedCounts: Record<string, number>) {
-
     const { song } = await this.getMpdSong();
 
     if (!song) {
@@ -543,9 +538,9 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
 
     try {
       await this.playlogModel.findOneAndUpdate({ songId: song.id }, { $inc: updateQuery }, { sort: { playedAt: -1 } });
-        this.logger.log(`Incremented feedback counts for playlog ${song.id}`);
-    } catch (error: any) {
-      this.logger.error(`Error updating playlog feedback: ${error.message}`);
+      this.logger.log(`Incremented feedback counts for playlog ${song.id}`);
+    } catch (error) {
+      this.logger.error(`Error updating playlog feedback: ${getErrorMessage(error)}`);
     }
   }
 }

@@ -26,6 +26,7 @@ import { FileService } from '../file/file.service';
 import { OpensearchService } from '../opensearch/opensearch.service';
 import { RedisCacheService } from '../redis-cache/redis-cache.service';
 import { QobuzService } from '../qobuz/qobuz.service';
+import { SpotifyService } from '../spotify/spotify.service';
 import { YoutubeService } from '../youtube/youtube.service';
 import { NowPlayingSource } from '../playlog/now-playing.event';
 import { DiscJockeyArtistPerformanceHandler } from './tools/handler/agent/disc-jockey-artist-performance.handler';
@@ -34,9 +35,15 @@ import { SearchQobuzArtistHandler } from './tools/handler/qobuz/search-qobuz-art
 import { FindQobuzArtistTrackHandler } from './tools/handler/qobuz/find-qobuz-artist-track.handler';
 import { PlayQobuzHandler } from './tools/handler/qobuz/play-qobuz.handler';
 import { FavoriteQobuzHandler } from './tools/handler/qobuz/favorite-qobuz.handler';
+import { SearchSpotifyArtistHandler } from './tools/handler/spotify/search-spotify-artist.handler';
+import { SearchSpotifyMusicHandler } from './tools/handler/spotify/search-spotify-music.handler';
+import { PlaySpotifyHandler } from './tools/handler/spotify/play-spotify.handler';
 import { SearchYoutubeMusicHandler } from './tools/handler/youtube/search-youtube-music.handler';
 import { PlayYoutubeHandler } from './tools/handler/youtube/play-youtube.handler';
 import { ImportYoutubeHandler } from './tools/handler/youtube/import-youtube.handler';
+import { ChatContext } from '../chat/chat-context';
+import { ChatStreamService } from '../chat/chat-stream.service';
+import { PlaylistReconcilerService } from '../queue-state/playlist-reconciler.service';
 
 @Injectable()
 export class ToolsService {
@@ -56,10 +63,12 @@ export class ToolsService {
     private opensearchService: OpensearchService,
     private redisCacheService: RedisCacheService,
     private qobuzService: QobuzService,
+    private spotifyService: SpotifyService,
     private youtubeService: YoutubeService,
+    private playlistReconciler: PlaylistReconcilerService,
   ) {
     // Generic and global accessible Tool and function
-    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService,this.redisCacheService));
+    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService, this.redisCacheService, this.playlistReconciler));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
     this.registerTool(new NextSongHandler(this.mpdClientService));
     this.registerTool(new PreviousSongHandler(this.mpdClientService));
@@ -75,8 +84,14 @@ export class ToolsService {
     this.registerTool(new PlayQobuzHandler(this.qobuzService, this.mpdClientService, this.configService));
     this.registerTool(new FavoriteQobuzHandler(this.qobuzService));
 
-    // The fallback, for what Qobuz does not carry. Separate tools rather than a mode on the Qobuz
-    // ones: the model has to be able to tell the user which catalog it ended up playing from.
+    // The second rung, for what Qobuz does not carry: a licensed catalog like Qobuz, lossy unlike
+    // it. Separate tools rather than a mode on the Qobuz ones: the model has to be able to tell
+    // the user which catalog it ended up playing from.
+    this.registerTool(new SearchSpotifyArtistHandler(this.spotifyService));
+    this.registerTool(new SearchSpotifyMusicHandler(this.spotifyService));
+    this.registerTool(new PlaySpotifyHandler(this.spotifyService, this.mpdClientService, this.configService));
+
+    // The last rung, for what neither licensed catalog carries.
     this.registerTool(new SearchYoutubeMusicHandler(this.youtubeService));
     this.registerTool(new PlayYoutubeHandler(this.youtubeService, this.mpdClientService, this.configService));
     // The one YouTube tool that writes: "keep this" over a YouTube stream, imported as its album.
@@ -91,7 +106,7 @@ export class ToolsService {
     this.nowPlayingSource = source;
   }
 
-  initialiseAgent(apiKey: string, eventEmitter: EventEmitter2) {
+  initialiseAgent(apiKey: string, eventEmitter: EventEmitter2, chatStream?: ChatStreamService) {
     const discJokeyAgent = new DiscJockeyAgent(
       apiKey,
       this,
@@ -101,6 +116,7 @@ export class ToolsService {
       this.opensearchService,
       this.redisCacheService,
       eventEmitter,
+      chatStream,
     );
     this.discJockeyAgent = discJokeyAgent;
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
@@ -109,7 +125,7 @@ export class ToolsService {
     this.registerTool(new DiscJockeyArtistPerformanceHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyTalkAboutMusicHandler(discJokeyAgent));
 
-    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService);
+    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService, chatStream);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));
   }
 
@@ -126,9 +142,9 @@ export class ToolsService {
     this.toolRegistry.set(handler.name, handler);
   }
 
-  public async proceedFunctionCall(fc: FunctionCall, sessionId?: string): Promise<FunctionCallResult> {
+  public async proceedFunctionCall(fc: FunctionCall, ctx?: ChatContext): Promise<FunctionCallResult> {
     if (!fc.name) {
-      throw new Error(`Unsupported function call: ${fc}`);
+      throw new Error(`Unsupported function call: ${JSON.stringify(fc)}`);
     }
 
     const handler = this.toolRegistry.get(fc.name);
@@ -141,6 +157,6 @@ export class ToolsService {
     // half that explains a wrong answer is what it passed. `promptus chat` is read at this level.
     this.logger.debug(`Tool ${fc.name}(${JSON.stringify(fc.args ?? {})})`);
 
-    return await handler.execute(fc.args, sessionId);
+    return await handler.execute(fc.args, ctx);
   }
 }

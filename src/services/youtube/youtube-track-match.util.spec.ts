@@ -102,10 +102,7 @@ describe('parseIsoDuration', () => {
 
 describe('buildSearchQueries', () => {
   it('goes from most to least specific and de-duplicates', () => {
-    expect(buildSearchQueries({ title: 'Get Lucky', artist: 'Daft Punk' })).toEqual([
-      'Daft Punk Get Lucky',
-      'Get Lucky',
-    ]);
+    expect(buildSearchQueries({ title: 'Get Lucky', artist: 'Daft Punk' })).toEqual(['Daft Punk Get Lucky', 'Get Lucky']);
   });
 
   it('collapses to a single query when only a title is given', () => {

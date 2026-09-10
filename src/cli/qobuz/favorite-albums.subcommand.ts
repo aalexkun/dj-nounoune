@@ -15,7 +15,7 @@ export class QobuzFavoriteAlbumsSubCommand extends CommandRunner {
     super();
   }
 
-  async run(inputs: string[], options: Record<string, unknown>): Promise<void> {
+  async run(): Promise<void> {
     this.logger.log('Retrieving Qobuz favorite albums...');
     try {
       const limit = 50;
@@ -25,7 +25,7 @@ export class QobuzFavoriteAlbumsSubCommand extends CommandRunner {
 
       do {
         const response = await this.qobuzService.getFavoriteAlbums(limit, offset);
-        
+
         if (!response || !response.albums) {
           throw new Error('Invalid response from Qobuz API: Missing albums property');
         }
@@ -43,7 +43,6 @@ export class QobuzFavoriteAlbumsSubCommand extends CommandRunner {
 
         total = response.albums.total;
         offset += limit;
-
       } while (offset < total);
 
       console.log(JSON.stringify(allAlbums, null, 2));

@@ -4,6 +4,7 @@ import { FunctionCallResult, ToolHandler } from '../../tool.type';
 import { MongoToolsDefinition } from '../../definition/mongo-tools.definition';
 import { MusicDbService } from '../../../../music-db/music-db.service';
 import { generatePsv } from '../../../../../utils/psv.utils';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 export class ArtistDistributionHandler implements ToolHandler {
   readonly name = MongoToolsDefinition.artistDistribution.name;
@@ -19,8 +20,8 @@ export class ArtistDistributionHandler implements ToolHandler {
         name: this.name,
         type: 'string',
       };
-    } catch (e: any) {
-      const msg = 'Function call failed with error: ' + e.message;
+    } catch (e) {
+      const msg = 'Function call failed with error: ' + getErrorMessage(e);
       this.logger.error(msg);
       return {
         message: msg,

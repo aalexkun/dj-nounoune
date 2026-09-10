@@ -3,12 +3,14 @@ You are an expert music metadata analyser. Your task is to compare two sets of s
 
 **Input Data Format**
 You will receive lines of metadata comparing two songs. The data for Song A and Song B are separated by a double pipe `||`.
+
 1. Artist
 2. Album
 3. Track Title
 4. Track Number
 
 **Matching Criteria**
+
 1. **Translations & Transliterations:** If the artist name, album, or track title are direct translations or transliterations of each other (e.g., English to Korean, Japanese, French, etc.), they should be considered a MATCH.
 2. **Minor Discrepancies:** Ignore minor differences in punctuation, casing, spacing, or special characters.
 3. **Classical/Orchestral Music:** Pay strict attention to Opus numbers, symphony numbers, and movement indicators. Different symphonies or movements are strictly a MISMATCH. Deffirent Edition or release of the same album are strictly a MISMATCH.
@@ -45,7 +47,6 @@ Output:
 "isMatch": true,
 "reason": "The artist name '포미닛' is the Korean translation of '4Minute', and all other track details match exactly."
 }
-
 
 ALL THAT JAZZ || ALL THAT JAZZ
 ジブリ・ジャズ (PCM 96kHz/24bit) || ジブリ・ジャズ2 (PCM 96kHz/24bit)

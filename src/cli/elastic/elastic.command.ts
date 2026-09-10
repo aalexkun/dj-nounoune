@@ -13,7 +13,8 @@ import { ElasticPruneIndexSubCommand } from './prune-index.subcommand';
 export class ElasticCommand extends CommandRunner {
   private readonly logger = new Logger(ElasticCommand.name);
 
-  async run(inputs: string[], options: Record<string, any>): Promise<void> {
+  run(): Promise<void> {
     console.log('Use subcommands: create-index, prune-index, index-songs');
+    return Promise.resolve();
   }
 }
