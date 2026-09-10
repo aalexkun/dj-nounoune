@@ -57,8 +57,13 @@ import { WhatsPlayingCommand } from './music/whats-playing.subcommand';
 import { LyricSemanticCommand } from './music/lyric-semantic.subcommand';
 import { NegentropyCommand } from './negentropy/negentropy.command';
 import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
+import { ChatCommand } from './chat/chat.command';
+import { ChatFixturesSubCommand } from './chat/fixtures.subcommand';
 
 export const CommandProviders = [
+  ChatCommand,
+  ChatFixturesSubCommand,
+
   MusicCommand,
   ImportCommand,
   ClearCommand,

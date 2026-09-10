@@ -3,7 +3,8 @@ import { CommandRunner, Option, SubCommand } from 'nest-commander';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PromptusService } from '../../services/promptus/promptus.service';
 import { ChatPromptusRequest } from '../../services/promptus/request/chat.promptus.request';
-import { ChatEvent, ChatMessageResponseEventName, ChatStatusResponseEventName } from '../../services/chat/chat.event';
+import { ChatEnvelopeEvent, ChatEnvelopeEventName } from '../../services/chat/chat-stream.event';
+import { ChatContext, newId } from '../../services/chat/chat-context';
 import { getErrorMessage } from '../../utils/error.utils';
 
 interface ChatOptions {
@@ -23,9 +24,10 @@ interface ChatOptions {
  * them. It is how you find out whether a prompt change actually moves the model onto the tool you
  * meant it to use.
  *
- * A session id is passed even though nothing is listening on a socket: that is what makes the agent
- * loop emit its progress events, and the id is threaded down into the nested agents, so the trace
- * printed here covers the sub-agents too rather than only the top-level calls.
+ * A `ChatContext` is passed even though nothing is listening on a socket: that is what makes the
+ * agent loop emit its envelopes, and the context is threaded down into the nested agents, so the
+ * trace printed here covers the sub-agents too rather than only the top-level calls. Because the
+ * context carries no `chatId`, nothing it produces is persisted — a CLI run leaves no timeline.
  */
 @SubCommand({
   name: 'chat',
@@ -64,12 +66,13 @@ export class PromptusChatSubcommand extends CommandRunner {
     }
 
     const sessionId = options.session ?? `cli-${Date.now()}`;
+    const ctx: ChatContext = { sessionId, chatId: null, turnId: newId() };
     const stopTrace = options.quiet ? () => undefined : this.traceProgress(sessionId);
 
     this.logger.log(`> ${message}`);
 
     try {
-      const response = await this.promptusService.generate(request, sessionId);
+      const response = await this.promptusService.generate(request, ctx);
 
       if (options.json) {
         console.log(JSON.stringify(response.raw, null, 2));
@@ -88,29 +91,24 @@ export class PromptusChatSubcommand extends CommandRunner {
   }
 
   /**
-   * Mirrors the agent's progress events to the terminal, the way the gateway relays them to the
-   * browser. Returns the unsubscribe, so a second invocation in the same process does not print
-   * every turn twice.
+   * Mirrors the agent's envelopes to the terminal, the way the gateway relays them to the app.
+   *
+   * One listener on one event name, because that is all the funnel is now. Returns the
+   * unsubscribe, so a second invocation in the same process does not print every turn twice.
    */
   private traceProgress(sessionId: string): () => void {
-    const onStatus = (event: ChatEvent): void => {
-      if (event.sessionId === sessionId) {
-        console.log(`  [status] ${event.message}`);
-      }
+    const onEnvelope = (event: ChatEnvelopeEvent): void => {
+      if (event.sessionId !== sessionId) return;
+
+      const { payload } = event.envelope;
+      const label = payload.type === 'tool_call' ? 'tool' : payload.type === 'thread' ? 'agent' : payload.type;
+      console.log(`  [${label.padEnd(11)}] ${event.envelope.copyText}`);
     };
 
-    const onMessage = (event: ChatEvent): void => {
-      if (event.sessionId === sessionId) {
-        console.log(`  [tool]   ${event.message}`);
-      }
-    };
-
-    this.eventEmitter.on(ChatStatusResponseEventName, onStatus);
-    this.eventEmitter.on(ChatMessageResponseEventName, onMessage);
+    this.eventEmitter.on(ChatEnvelopeEventName, onEnvelope);
 
     return () => {
-      this.eventEmitter.off(ChatStatusResponseEventName, onStatus);
-      this.eventEmitter.off(ChatMessageResponseEventName, onMessage);
+      this.eventEmitter.off(ChatEnvelopeEventName, onEnvelope);
     };
   }
 

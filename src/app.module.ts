@@ -18,6 +18,14 @@ import { Chat, ChatSchema } from './schemas/chat.schema';
 import { Deduplication, DeduplicationSchema } from './schemas/deduplication.schema';
 import { Enrich, EnrichSchema } from './schemas/enrich.schema';
 import { ChatService } from './services/chat/chat.service';
+import { ChatStreamService } from './services/chat/chat-stream.service';
+import { ChatActionService } from './services/chat/chat-action.service';
+import { FeedbackService } from './services/feedback/feedback.service';
+import { PlaybackControlService } from './services/playback/playback-control.service';
+import { QueueStateService } from './services/queue-state/queue-state.service';
+import { MpcStateService } from './services/queue-state/mpc-state.service';
+import { PlaylistReconcilerService } from './services/queue-state/playlist-reconciler.service';
+import { ChatEnvelopeDoc, ChatEnvelopeSchemaDefinition } from './schemas/chat-envelope.schema';
 import { ChatController } from './controller/chat.controller';
 import { AuthController } from './controller/auth.controller';
 import { VibingController } from './controller/vibing.controller';
@@ -67,6 +75,7 @@ const imports: NonNullable<ModuleMetadata['imports']> = [
     { name: Song.name, schema: SongSchema },
     { name: Connection.name, schema: ConnectionSchema },
     { name: Chat.name, schema: ChatSchema },
+    { name: ChatEnvelopeDoc.name, schema: ChatEnvelopeSchemaDefinition },
     { name: Deduplication.name, schema: DeduplicationSchema },
     { name: Enrich.name, schema: EnrichSchema },
     { name: Playlog.name, schema: PlaylogSchema },
@@ -89,6 +98,15 @@ const providers: Provider[] = [
   PsvService,
   ...CommandProviders,
   ChatService,
+  ChatStreamService,
+  ChatActionService,
+  FeedbackService,
+  PlaybackControlService,
+  // The @Interval on QueueStateService is inert under IS_CLI, where ScheduleModule is never
+  // imported — so the two consumers below simply never see a snapshot and do nothing.
+  QueueStateService,
+  MpcStateService,
+  PlaylistReconcilerService,
   ShellService,
   MusicDbService,
   MpdClientService,

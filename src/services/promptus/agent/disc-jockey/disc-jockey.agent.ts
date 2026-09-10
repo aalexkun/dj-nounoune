@@ -25,7 +25,9 @@ import { ArtistPerformanceResponse } from './response/artist-performance.respons
 import { MusicTalkRequest } from './request/music-talk.request';
 import { MusicTalkResponse } from './response/music-talk.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ChatStatusResponseEvent, ChatStatusResponseEventName } from '../../../chat/chat.event';
+import { ChatContext } from '../../../chat/chat-context';
+import { playlistItems } from '../../../chat/playlist-payload.util';
+import { ChatStreamService } from '../../../chat/chat-stream.service';
 import { ProfilerService } from '../../../profiler/profiler.service';
 import { FileService } from '../../../file/file.service';
 import { GenerateQueryWithCacheRequest } from './request/generate-query-with-cache.request';
@@ -35,6 +37,7 @@ import { MusicDbService, PopulatedSong } from '../../../music-db/music-db.servic
 import { OpensearchService } from '../../../opensearch/opensearch.service';
 import { RedisCacheKey, RedisCacheService } from '../../../redis-cache/redis-cache.service';
 import { filterActiveSources } from '../../../../config/active-source.util';
+import { playlistMessageKey } from '../../../queue-state/queue-state.schema';
 
 /**
  * Label shared by every candidate the lyric-semantic branch surfaces. The intent string is the
@@ -74,6 +77,18 @@ export type MusicSearchResult = {
   title: string;
   artist: string;
   album: string;
+};
+
+/**
+ * What `createPlaylist` hands back.
+ *
+ * The cache key is what `play_music` reads to queue the songs; the message id is the `playlist`
+ * envelope that was published on the way, so the queue watcher knows which message to keep in step
+ * with MPD once those songs are actually in the queue.
+ */
+export type CreatedPlaylist = {
+  cacheKey: RedisCacheKey;
+  messageId?: string;
 };
 
 const TechnicalInfoSchema = z.object({
@@ -204,9 +219,10 @@ export class DiscJockeyAgent extends Agent {
     protected opensearchService: OpensearchService,
     protected redisCacheService: RedisCacheService,
     protected eventEmitter: EventEmitter2,
+    chatStream?: ChatStreamService,
   ) {
     super();
-    this.initialiseAgent(apiKey, toolService, eventEmitter);
+    this.initialiseAgent(apiKey, toolService, eventEmitter, chatStream);
   }
 
   /**
@@ -214,7 +230,7 @@ export class DiscJockeyAgent extends Agent {
    * into its three branches. `createPlaylist` builds on this; `opensearch semantic` calls it directly
    * to show what the model produced before anything is searched.
    */
-  async generateQuery(naturalLanguageRequest: string, sessionId?: string): Promise<GenerateQueryWithCacheResponse> {
+  async generateQuery(naturalLanguageRequest: string, ctx?: ChatContext): Promise<GenerateQueryWithCacheResponse> {
     if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
       const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
       await this.fileService.saveFile(this.cache.name, dbProfile);
@@ -222,8 +238,8 @@ export class DiscJockeyAgent extends Agent {
       const cacheContent = await this.cacheHandler.cache(this.cache);
       if (!cacheContent || !cacheContent.expireTime) {
         const error = 'Cache Creation failed. Please check cache content and cache name.';
-        if (sessionId) {
-          this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(error, sessionId));
+        if (ctx) {
+          await this.chatStream?.emit(ctx, { type: 'error', code: 'cache_unavailable', message: error, retryable: false }, { state: 'failed' });
         }
         throw new Error(error);
       }
@@ -231,7 +247,7 @@ export class DiscJockeyAgent extends Agent {
     }
 
     const request = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
-    return await this.generate(request, sessionId);
+    return await this.generate(request, ctx);
   }
 
   /**
@@ -239,14 +255,14 @@ export class DiscJockeyAgent extends Agent {
    *     at throwErrorIfNotOK (C:\Users\Alexandre\WebstormProjects\dj-nounoune\node_modules\@google\genai\dist\node\index.cjs:12224:30)
    *     at processTicksAndRejections (node:internal/process/task_queues:105:5)
    * @param naturalLanguageRequest
-   * @param sessionId
+   * @param ctx
    */
-  async createPlaylist(naturalLanguageRequest: string, sessionId?: string): Promise<RedisCacheKey> {
-    if (!sessionId) {
-      throw new Error('sessionId is required to createPlaylist');
+  async createPlaylist(naturalLanguageRequest: string, ctx?: ChatContext): Promise<CreatedPlaylist> {
+    if (!ctx) {
+      throw new Error('a ChatContext is required to createPlaylist');
     }
 
-    const generateQueryWithCacheResponse = await this.generateQuery(naturalLanguageRequest, sessionId);
+    const generateQueryWithCacheResponse = await this.generateQuery(naturalLanguageRequest, ctx);
 
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2));
@@ -305,23 +321,48 @@ export class DiscJockeyAgent extends Agent {
     }
 
     if (musicResult.size == 0) {
-      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent('No Songs Found', sessionId));
+      await this.chatStream?.emit(
+        ctx,
+        { type: 'error', code: 'no_songs_found', message: 'Nothing in the library matched that. Try naming an artist?', retryable: true },
+        { state: 'failed', actions: [{ kind: 'retry' }] },
+      );
       throw new Error('No songs found');
     }
 
     const postFiltering = await this.postFilteringSong(naturalLanguageRequest, musicResult, generateQueryWithCacheResponse.semantic);
     const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering);
 
-    const playlistItemMsg = arrangePopulatedSongs
-      .map((item, index) => `${index + 1} - [${item.artist.artist}] ${item.album.title} - ${item.title}`)
-      .join('\n');
-    this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(playlistItemMsg, sessionId));
+    // The structured playlist, not a newline-joined string of it. Every row keeps its song id, its
+    // source and its own action set, which is what makes a long press on one title do something.
+    const items = playlistItems(
+      arrangePopulatedSongs.map((song) => ({
+        songId: song.id.toString(),
+        title: song.title,
+        artist: song.artist.artist,
+        album: song.album.title,
+        artworkUrl: song.album.image?.large ?? song.album.image?.small,
+        sources: song.source,
+      })),
+    );
+
+    const message = await this.chatStream?.emit(
+      ctx,
+      { type: 'playlist', title: naturalLanguageRequest, live: false, items },
+      { actions: [{ kind: 'copy' }] },
+    );
 
     // todo remove the extra cast since it is not required after the use of cache.
     const cachedResult = z.array(PopulatedSongToMusicSearchResultSchema).parse(arrangePopulatedSongs);
-    const cacheKey = sessionId + ':playlist' + new Date().getTime();
+    const cacheKey = ctx.sessionId + ':playlist' + new Date().getTime();
     await this.redisCacheService.set(cacheKey, cachedResult);
-    return cacheKey;
+
+    // Beside the cached playlist rather than through the model: `play_music` is a separate tool
+    // call and the only thing the model carries between them is the cache key.
+    if (message && ctx.chatId) {
+      await this.redisCacheService.set(playlistMessageKey(cacheKey), { messageId: message.id, chatId: ctx.chatId, sessionId: ctx.sessionId });
+    }
+
+    return { cacheKey, messageId: message?.id };
   }
 
   private async findBestArrangement(naturalLanguageRequest: string, populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
@@ -459,9 +500,9 @@ ${categorySection}${semanticSection}${reactionSection}`;
     return `\n# Reactions\n${header}\n${lines.join('\n')}\n`;
   }
 
-  async whatIsPlaying(request: string, sessionId?: string, options?: { withoutCurrentSongTool?: boolean }) {
+  async whatIsPlaying(request: string, ctx?: ChatContext, options?: { withoutCurrentSongTool?: boolean }) {
     const wip = new WhatIsPlayingRequest(request, options);
-    return await this.generate(wip, sessionId);
+    return await this.generate(wip, ctx);
   }
 
   /**
@@ -469,9 +510,9 @@ ${categorySection}${semanticSection}${reactionSection}`;
    * search. Nothing in the library can answer this: the dates only exist on the open web, and they
    * change week to week.
    */
-  async findUpcomingPerformances(request: string, sessionId?: string) {
+  async findUpcomingPerformances(request: string, ctx?: ChatContext) {
     const performanceRequest = new ArtistPerformanceRequest(request);
-    return await this.generate(performanceRequest, sessionId);
+    return await this.generate(performanceRequest, ctx);
   }
 
   /**
@@ -479,49 +520,46 @@ ${categorySection}${semanticSection}${reactionSection}`;
    * Grounded, so anything recent is checked rather than recalled, and deliberately kept away from the
    * database tools — this one talks, it does not queue.
    */
-  async talkAboutMusic(request: string, sessionId?: string) {
+  async talkAboutMusic(request: string, ctx?: ChatContext) {
     const talkRequest = new MusicTalkRequest(request);
-    return await this.generate(talkRequest, sessionId);
+    return await this.generate(talkRequest, ctx);
   }
 
   /**
    * Resolve the artwork for a release through a grounded web search. Called directly on a song change,
    * so it is not exposed as a tool. Returns null rather than throwing when nothing is found.
    */
-  async findAlbumCover(artist: string, album: string, sessionId?: string): Promise<string | null> {
+  async findAlbumCover(artist: string, album: string, ctx?: ChatContext): Promise<string | null> {
     const coverRequest = new AlbumCoverRequest(artist, album);
-    const response = await this.generate(coverRequest, sessionId);
+    const response = await this.generate(coverRequest, ctx);
     return response.imageUrl;
   }
 
-  async categorisePlaylist(request: string, sessionId?: string) {
+  async categorisePlaylist(request: string, ctx?: ChatContext) {
     const djRequest = new CategorisePlaylistRequest(request);
-    return await this.generate(djRequest, sessionId);
+    return await this.generate(djRequest, ctx);
   }
 
-  async postFiltering(request: string, sessionId?: string) {
+  async postFiltering(request: string, ctx?: ChatContext) {
     const djRequest = new PostFilteringRequest(request);
-    return await this.generate(djRequest, sessionId);
+    return await this.generate(djRequest, ctx);
   }
 
-  async browseDatabase(request: string, sessionId?: string) {
+  async browseDatabase(request: string, ctx?: ChatContext) {
     const djRequest = new BrowseDatabaseRequest(request);
-    const response = await this.generate(djRequest, sessionId);
+    const response = await this.generate(djRequest, ctx);
 
-    if (sessionId && response.description) {
-      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(response.description, sessionId));
+    if (ctx && response.description) {
+      await this.chatStream?.emit(ctx, { type: 'text', format: 'markdown', text: response.description }, { actions: [{ kind: 'copy' }] });
     }
 
-    if (sessionId && response.items.length > 0) {
-      const itemsMsg = response.items
-        .map((item, index) => {
-          let line = `${index + 1} - [${item.artist}]`;
-          if (item.title) line += ` ${item.title}`;
-          if (item.album) line += ` (${item.album})`;
-          return line;
-        })
-        .join('\n');
-      this.eventEmitter.emit(ChatStatusResponseEventName, new ChatStatusResponseEvent(itemsMsg, sessionId));
+    if (ctx && response.items.length > 0) {
+      // A browse result is a list of recordings the model named, not a queue: they have no song
+      // documents and nothing has been added to MPD, so the rows carry a share target and nothing
+      // that would address a library entry.
+      const items = playlistItems(response.items.map((item) => ({ title: item.title ?? '', artist: item.artist, album: item.album })));
+
+      await this.chatStream?.emit(ctx, { type: 'playlist', title: request, live: false, items }, { actions: [{ kind: 'copy' }] });
     }
 
     return response;

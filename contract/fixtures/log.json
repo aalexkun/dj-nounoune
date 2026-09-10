@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000010",
+  "rev": 0,
+  "seq": 10,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "system",
+  "state": "complete",
+  "level": "debug",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "MPD queue version 811 → 812, 24 entries resolved",
+  "actions": [],
+  "payload": {
+    "type": "log",
+    "scope": "QueueStateService",
+    "text": "MPD queue version 811 → 812, 24 entries resolved",
+    "data": {
+      "version": 812
+    }
+  }
+}

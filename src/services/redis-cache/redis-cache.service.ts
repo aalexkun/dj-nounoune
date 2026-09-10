@@ -100,7 +100,17 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   public async onModuleInit(): Promise<void> {
     if (process.env.IS_CLI === 'true') return;
 
+    // The queue projection and the chat/playlist bindings are no longer optional state that a
+    // caller can recompute — a running server without Redis would serve playlists it can never
+    // reconcile. So absence at boot is fatal, while a blip during a command stays swallowed
+    // below: losing a cache read mid-run should not take the process down.
+    const required = this.configService.get<string>('REDIS_REQUIRED') !== 'false';
+
     if (!this.url) {
+      if (required) {
+        throw new Error('REDIS_URL (or REDIS_HOST) is not set and Redis is required. Set one, or REDIS_REQUIRED=false to run degraded.');
+      }
+
       this.logger.warn('Redis cache DISABLED — REDIS_URL (or REDIS_HOST) is not set, all cache calls will no-op');
       return;
     }
@@ -114,6 +124,10 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
           `(key prefix "${this.keyPrefix}", default TTL ${this.defaultTtlSeconds}s)`,
       );
       return;
+    }
+
+    if (required) {
+      throw new Error(`Redis is required but unreachable at ${this.safeUrl()}: ${error}`);
     }
 
     this.logger.warn(`Redis cache UNAVAILABLE at ${this.safeUrl()} — reads will miss and writes will be dropped: ${error}`);

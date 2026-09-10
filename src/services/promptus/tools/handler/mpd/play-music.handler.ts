@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { FunctionCallResult, ToolHandler } from '../../tool.type';
 import { MpdToolsDefinition } from '../../definition/mpd-tools.definition';
-import { MusicSearchResultsSchema, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
+import { MusicSearchResultsSchema } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { ClearMpdRequest } from '../../../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../../../mpd-client/requests/AddMpdRequest';
@@ -10,6 +10,10 @@ import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdR
 import { ConfigService } from '@nestjs/config';
 import { RedisCacheService } from '../../../../redis-cache/redis-cache.service';
 import { qobuzStreamUri, spotifyStreamUri, youtubeStreamUri } from '../../../../../config/source-uri.util';
+import { getBestSource } from '../../../../../config/best-source.util';
+import { PlaylistReconcilerService } from '../../../../queue-state/playlist-reconciler.service';
+import { PlaylistMessageRefSchema, playlistMessageKey } from '../../../../queue-state/queue-state.schema';
+import { getErrorMessage } from '../../../../../utils/error.utils';
 
 interface PlayMusicArgs {
   cacheKey: string;
@@ -24,6 +28,7 @@ export class PlayMusicHandler implements ToolHandler {
     private mpdClientService: MpdClientService,
     private configService: ConfigService,
     private redisCacheService: RedisCacheService,
+    private playlistReconciler: PlaylistReconcilerService,
   ) {}
 
   isPlayMusicArgs(args: unknown): args is PlayMusicArgs {
@@ -33,34 +38,6 @@ export class PlayMusicHandler implements ToolHandler {
 
     const record = args as Record<string, unknown>;
     return typeof record.cacheKey === 'string' && typeof record.clearQueue === 'boolean';
-  }
-
-  private getBestSource(sources: PlaySource[]): PlaySource | undefined {
-    if (!sources || sources.length === 0) {
-      return undefined;
-    }
-
-    const getScore = (source: PlaySource) => {
-      let score = 0;
-      if (source.technical_info) {
-        if (source.technical_info.is_high_res) score += 1000000;
-        if (source.technical_info.is_cd_quality) score += 500000;
-        if (source.technical_info.sample_rate) score += source.technical_info.sample_rate;
-        if (source.technical_info.bitrate) score += source.technical_info.bitrate / 1000;
-      }
-      // Default source if there is no technical info is qobuz
-      if (source.name === 'qobuz') score += 10;
-      if (source.name === 'spotify') score += 3;
-      // YouTube Premium delivers 256kbps AAC — under Spotify's 320kbps Ogg, over the library's
-      // 128/192kbps mp3s. That ordering already falls out of the bitrate term above; this +1 only
-      // settles a tie against a local file of the same nominal bitrate, where AAC is the better
-      // encoder and the stream is the safer pick.
-      if (source.name === 'youtube') score += 1;
-      return score;
-    };
-
-    const sortedSources = [...sources].sort((a, b) => getScore(b) - getScore(a));
-    return sortedSources[0];
   }
 
   async execute(args: unknown): Promise<FunctionCallResult> {
@@ -85,14 +62,19 @@ export class PlayMusicHandler implements ToolHandler {
       throw new Error(`No songs found for cacheKey: ${args.cacheKey}`);
     }
 
+    // What actually reached the queue, so the playlist message can be bound to it afterwards.
+    const queuedSongIds: string[] = [];
+    const queuedUris: string[] = [];
+
     for (const song of songs) {
       if (song.source === undefined) {
         this.logger.error(`SourceId is undefined for song: ${JSON.stringify(song)}`);
         continue;
       }
 
-      // Get best source
-      const bestSource = this.getBestSource(song.source);
+      // Whichever source scores highest — the same function the playlist payload and the queue
+      // watcher use, so the row the user is looking at names the source playback really picked.
+      const bestSource = getBestSource(song.source);
 
       if (!bestSource) {
         this.logger.error(`No source found for song: ${JSON.stringify(song)}`);
@@ -127,10 +109,14 @@ export class PlayMusicHandler implements ToolHandler {
           }
         }
         songsQueued.push(`${song.artist} - ${song.album} - ${song.title}`);
+        queuedSongIds.push(song.id);
+        queuedUris.push(uri);
       } catch {
         this.logger.debug(`Could not added to playlist: ${song.title} - ${song.artist} - ${song.album}`);
       }
     }
+
+    await this.bindPlaylistMessage(args.cacheKey, queuedSongIds, queuedUris);
 
     try {
       await this.mpdClientService.send(new PlayMpdRequest());
@@ -147,5 +133,25 @@ export class PlayMusicHandler implements ToolHandler {
       name: 'play_music',
       type: 'string',
     };
+  }
+
+  /**
+   * Hands the queue watcher the message it should keep in step with MPD.
+   *
+   * This is the moment the disc jockey's chosen songs stopped being a cached list and became queue
+   * entries, so it is the only point at which the binding is true. Best effort: a playlist that
+   * cannot be bound still played, it simply will not update itself afterwards.
+   */
+  private async bindPlaylistMessage(cacheKey: string, songIds: string[], uris: string[]): Promise<void> {
+    if (songIds.length === 0) return;
+
+    const ref = await this.redisCacheService.get(playlistMessageKey(cacheKey), PlaylistMessageRefSchema);
+    if (!ref) return;
+
+    try {
+      await this.playlistReconciler.bind({ messageId: ref.messageId, chatId: ref.chatId, sessionId: ref.sessionId, songIds, uris });
+    } catch (e) {
+      this.logger.warn(`Could not bind the playlist message ${ref.messageId}: ${getErrorMessage(e)}`);
+    }
   }
 }

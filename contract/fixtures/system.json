@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000009",
+  "rev": 0,
+  "seq": 9,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "system",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Upgraded \"Angel\" from the local file to Qobuz.",
+  "actions": [],
+  "payload": {
+    "type": "system",
+    "event": "source_upgraded",
+    "text": "Upgraded \"Angel\" from the local file to Qobuz.",
+    "data": {
+      "songId": "65f1a2b3c4d5e6f7a8b9c0d2",
+      "provider": "qobuz"
+    }
+  }
+}

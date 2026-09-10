@@ -172,6 +172,40 @@ export class MusicDbService {
    *   `ACTIVE_SOURCE_TYPES` are dropped. The agentic path passes `true`; the CLI keeps the default
    *   so enrichment and maintenance still see the whole library.
    */
+  /**
+   * Maps the `sourceId`s of a set of MPD queue entries back to the songs behind them, in one query.
+   *
+   * Source-agnostic on purpose: the match is on `source.sourceId` alone, so a queue holding a local
+   * file, a Qobuz stream and a YouTube stream side by side resolves in a single round trip rather
+   * than a branch per provider. That branching is exactly what used to make readers of the queue
+   * silently stop recognising half of what plays.
+   *
+   * @returns `sourceId` → song id, missing an entry for anything the library does not hold
+   */
+  async findSongIdsBySourceIds(sourceIds: readonly string[]): Promise<Map<string, string>> {
+    const wanted = [...new Set(sourceIds.filter((id) => id.length > 0))];
+    if (wanted.length === 0) return new Map();
+
+    const songs = await this.songModel
+      .find({ 'source.sourceId': { $in: wanted } }, { _id: 1, 'source.sourceId': 1 })
+      .lean()
+      .exec();
+
+    const bySourceId = new Map<string, string>();
+
+    for (const song of songs) {
+      const id = song._id.toString();
+
+      for (const source of song.source ?? []) {
+        if (source.sourceId && wanted.includes(source.sourceId)) {
+          bySourceId.set(source.sourceId, id);
+        }
+      }
+    }
+
+    return bySourceId;
+  }
+
   async getPopulatedSongsByIds(ids: string[], activeSourcesOnly = false): Promise<PopulatedSong[]> {
     const filter: Record<string, unknown> = { _id: { $in: ids } };
     if (activeSourcesOnly) {

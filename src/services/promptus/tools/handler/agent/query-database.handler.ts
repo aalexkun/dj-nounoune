@@ -1,4 +1,5 @@
 import { FunctionCallResult, isNaturalLanguageRequest, ToolHandler } from '../../tool.type';
+import { ChatContext } from '../../../../chat/chat-context';
 import { QueryDatabaseAgent } from '../../../agent/query-database/query-database.agent';
 import { MusicSearchResult, PlaySource } from '../../../agent/disc-jockey/disc-jockey.agent';
 import { JSONPath } from 'jsonpath-plus';
@@ -143,7 +144,7 @@ export class QueryDatabaseHandler implements ToolHandler {
     return (validMusicSearchResultKeys as string[]).includes(key);
   }
 
-  async execute(args: unknown, sessionId?: string): Promise<FunctionCallResult> {
+  async execute(args: unknown, ctx?: ChatContext): Promise<FunctionCallResult> {
     if (!isNaturalLanguageRequest(args)) {
       return {
         message: `Invalid arguments provided to ${this.name}. Expected parameter natural_language_request to be a string.`,
@@ -153,7 +154,7 @@ export class QueryDatabaseHandler implements ToolHandler {
     }
 
     try {
-      const dbResult = await this.queryDatabaseAgent.generateQuery(args.natural_language_request, sessionId);
+      const dbResult = await this.queryDatabaseAgent.generateQuery(args.natural_language_request, ctx);
       let musicSearchResults: MusicSearchResult[] = [];
       try {
         musicSearchResults = this.castWithProbableStructure(dbResult);

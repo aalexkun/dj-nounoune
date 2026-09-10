@@ -10,6 +10,8 @@ import { MusicDbAggregateResult, MusicDbService } from '../../../music-db/music-
 import { MusicSearchResult } from '../disc-jockey/disc-jockey.agent';
 import { GetJsonpathResponse } from './response/get-jsonpath.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ChatContext } from '../../../chat/chat-context';
+import { ChatStreamService } from '../../../chat/chat-stream.service';
 
 export interface GetJsonPathArgs {
   sourceObject: MusicDbAggregateResult;
@@ -25,14 +27,15 @@ export class QueryDatabaseAgent extends Agent {
     protected toolService: ToolsService,
     protected eventEmitter: EventEmitter2,
     private musicDBService: MusicDbService,
+    chatStream?: ChatStreamService,
   ) {
     super();
-    this.initialiseAgent(apiKey, toolService, eventEmitter);
+    this.initialiseAgent(apiKey, toolService, eventEmitter, chatStream);
   }
 
-  async generateQuery(prompt: string, sessionId?: string): Promise<MusicDbAggregateResult[]> {
+  async generateQuery(prompt: string, ctx?: ChatContext): Promise<MusicDbAggregateResult[]> {
     const generateRequest = new GenerateQueryRequest(prompt);
-    const response = await this.generate(generateRequest, sessionId);
+    const response = await this.generate(generateRequest, ctx);
 
     if (!response.collection || !response.function || !response.params) {
       this.logger.log(generateRequest);

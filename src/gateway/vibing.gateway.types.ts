@@ -12,7 +12,7 @@ export const VibingPlaybackMessage = 'vibing-playback';
  * start or stop, rather than the page acting on a state it may have watched go stale.
  */
 export const VibingControlSchema = z.object({
-  action: z.enum(['next', 'previous', 'play', 'stop', 'toggle', 'status']),
+  action: z.enum(['next', 'previous', 'play', 'pause', 'stop', 'toggle', 'status']),
 });
 
 export type VibingControl = z.infer<typeof VibingControlSchema>;

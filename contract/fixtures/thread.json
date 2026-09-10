@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000002",
+  "rev": 0,
+  "seq": 2,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "supersededBy": null,
+  "role": "agent",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Disc Jockey · building a playlist — 24 songs, 1h 47m",
+  "actions": [],
+  "payload": {
+    "type": "thread",
+    "label": "Disc Jockey · building a playlist",
+    "agent": "DiscJockey",
+    "summary": "24 songs, 1h 47m",
+    "childCount": 3,
+    "collapsedByDefault": true
+  }
+}

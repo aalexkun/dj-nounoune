@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000005",
+  "rev": 0,
+  "seq": 5,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": "01JD0000000000000000000002",
+  "supersededBy": null,
+  "role": "tool",
+  "state": "complete",
+  "level": "debug",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "24 songs matched across 3 branches",
+  "actions": [],
+  "payload": {
+    "type": "tool_result",
+    "callId": "call-0091",
+    "tool": "search_music_database",
+    "ok": true,
+    "summary": "24 songs matched across 3 branches"
+  }
+}

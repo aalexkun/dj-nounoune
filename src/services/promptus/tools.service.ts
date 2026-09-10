@@ -41,6 +41,9 @@ import { PlaySpotifyHandler } from './tools/handler/spotify/play-spotify.handler
 import { SearchYoutubeMusicHandler } from './tools/handler/youtube/search-youtube-music.handler';
 import { PlayYoutubeHandler } from './tools/handler/youtube/play-youtube.handler';
 import { ImportYoutubeHandler } from './tools/handler/youtube/import-youtube.handler';
+import { ChatContext } from '../chat/chat-context';
+import { ChatStreamService } from '../chat/chat-stream.service';
+import { PlaylistReconcilerService } from '../queue-state/playlist-reconciler.service';
 
 @Injectable()
 export class ToolsService {
@@ -62,9 +65,10 @@ export class ToolsService {
     private qobuzService: QobuzService,
     private spotifyService: SpotifyService,
     private youtubeService: YoutubeService,
+    private playlistReconciler: PlaylistReconcilerService,
   ) {
     // Generic and global accessible Tool and function
-    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService, this.redisCacheService));
+    this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService, this.redisCacheService, this.playlistReconciler));
     this.registerTool(new StopPlaybackHandler(this.mpdClientService));
     this.registerTool(new NextSongHandler(this.mpdClientService));
     this.registerTool(new PreviousSongHandler(this.mpdClientService));
@@ -102,7 +106,7 @@ export class ToolsService {
     this.nowPlayingSource = source;
   }
 
-  initialiseAgent(apiKey: string, eventEmitter: EventEmitter2) {
+  initialiseAgent(apiKey: string, eventEmitter: EventEmitter2, chatStream?: ChatStreamService) {
     const discJokeyAgent = new DiscJockeyAgent(
       apiKey,
       this,
@@ -112,6 +116,7 @@ export class ToolsService {
       this.opensearchService,
       this.redisCacheService,
       eventEmitter,
+      chatStream,
     );
     this.discJockeyAgent = discJokeyAgent;
     this.registerTool(new DiscJockeyCreatePlaylistHandler(discJokeyAgent));
@@ -120,7 +125,7 @@ export class ToolsService {
     this.registerTool(new DiscJockeyArtistPerformanceHandler(discJokeyAgent));
     this.registerTool(new DiscJockeyTalkAboutMusicHandler(discJokeyAgent));
 
-    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService);
+    const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService, chatStream);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));
   }
 
@@ -137,7 +142,7 @@ export class ToolsService {
     this.toolRegistry.set(handler.name, handler);
   }
 
-  public async proceedFunctionCall(fc: FunctionCall, sessionId?: string): Promise<FunctionCallResult> {
+  public async proceedFunctionCall(fc: FunctionCall, ctx?: ChatContext): Promise<FunctionCallResult> {
     if (!fc.name) {
       throw new Error(`Unsupported function call: ${JSON.stringify(fc)}`);
     }
@@ -152,6 +157,6 @@ export class ToolsService {
     // half that explains a wrong answer is what it passed. `promptus chat` is read at this level.
     this.logger.debug(`Tool ${fc.name}(${JSON.stringify(fc.args ?? {})})`);
 
-    return await handler.execute(fc.args, sessionId);
+    return await handler.execute(fc.args, ctx);
   }
 }

@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000001",
+  "rev": 0,
+  "seq": 1,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": null,
+  "clientId": "client-7f3a",
+  "supersededBy": null,
+  "role": "user",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Queued up something moody for you — Portishead, then a slow drift outward.",
+  "actions": [
+    {
+      "kind": "copy"
+    }
+  ],
+  "payload": {
+    "type": "text",
+    "format": "markdown",
+    "text": "Queued up something moody for you — **Portishead**, then a slow drift outward."
+  }
+}

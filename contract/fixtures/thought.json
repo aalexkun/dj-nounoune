@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000003",
+  "rev": 0,
+  "seq": 3,
+  "chatId": "65e0000000000000000000aa",
+  "turnId": "01JDTURN0000000000000001",
+  "parentId": "01JD0000000000000000000002",
+  "supersededBy": null,
+  "role": "agent",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Reading the library profile",
+  "actions": [],
+  "payload": {
+    "type": "thought",
+    "agent": "QueryDatabase",
+    "label": "Reading the library profile",
+    "detail": "Matching \"moody\" against the emotion vocabulary."
+  }
+}

@@ -96,6 +96,17 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
    * stops, and nothing clears it — so it is only handed out once MPD confirms that same song is
    * still loaded. Null here means "ask MPD", not "silence".
    */
+  /**
+   * The last published snapshot, without asking MPD whether it is still loaded.
+   *
+   * {@link getNowPlayingSnapshot} is the careful read for a tool answering a user; this is for the
+   * transport bar, which is rebuilt from the queue projection every couple of seconds anyway and
+   * would only pay a round trip to learn what it is about to be told.
+   */
+  getLastSnapshot(): NowPlaying | null {
+    return this.currentNowPlaying;
+  }
+
   async getNowPlayingSnapshot(): Promise<NowPlaying | null> {
     if (!this.currentNowPlaying) {
       await this.checkCurrentSong();

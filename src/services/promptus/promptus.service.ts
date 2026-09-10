@@ -10,6 +10,7 @@ import { ChatPromptusResponse } from './response/chat.promptus.response';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RedisCacheService } from '../redis-cache/redis-cache.service';
 import { ThrottleHandler } from './handler/throttle.handler';
+import { ChatStreamService } from '../chat/chat-stream.service';
 
 @Injectable()
 export class PromptusService extends Agent {
@@ -21,6 +22,7 @@ export class PromptusService extends Agent {
     protected toolService: ToolsService,
     protected eventEmitter: EventEmitter2,
     redisCacheService: RedisCacheService,
+    chatStream: ChatStreamService,
   ) {
     super();
 
@@ -28,8 +30,8 @@ export class PromptusService extends Agent {
     // process on this API key. Wired here because this is the first agent to come up.
     ThrottleHandler.useDailyCounter(redisCacheService);
 
-    this.initialiseAgent(appService.getGenAiApiKey(), this.toolService, this.eventEmitter);
-    this.toolService.initialiseAgent(appService.getGenAiApiKey(), this.eventEmitter);
+    this.initialiseAgent(appService.getGenAiApiKey(), this.toolService, this.eventEmitter, chatStream);
+    this.toolService.initialiseAgent(appService.getGenAiApiKey(), this.eventEmitter, chatStream);
   }
 
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
