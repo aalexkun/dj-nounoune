@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Agent } from './agent';
 
 import { ChatPromptusRequest } from './request/chat.promptus.request';
+import { ChatTitleRequest } from './request/chat-title.request';
+import { ChatTitleResponse } from './response/chat-title.response';
 import { AppService } from '../../app.service';
 import { ToolsService } from './tools.service';
 import { GenerateContentResponse } from '@google/genai';
@@ -37,6 +39,12 @@ export class PromptusService extends Agent {
   protected wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType {
     if (request instanceof ChatPromptusRequest) {
       return new ChatPromptusResponse(response) as ReqType;
+    }
+
+    // Hosted here rather than on an agent of its own because it has no tools to run and no loop to
+    // drive: it is one structured call about a conversation this service is already holding.
+    if (request instanceof ChatTitleRequest) {
+      return new ChatTitleResponse(response) as ReqType;
     }
 
     throw new Error('Method not implemented. PromptusService::wrapResponse ');

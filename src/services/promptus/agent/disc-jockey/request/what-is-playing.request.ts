@@ -18,8 +18,12 @@ export interface WhatIsPlayingOptions {
    * alone cannot. Absent for the bulk of the library, and the scene degrades to the clock alone.
    */
   lyricSemantic?: string;
-  /** Injectable clock, so a caller (or a test) can pin the scene instead of reading the wall time. */
-  now?: Date;
+  /** Controlled vocabulary from `src/lexic/songs.description.ts`, written by the enrichment pass. */
+  emotion?: string;
+  /** The BPM-band pace name, same vocabulary. It sets the rhythm of the prose, not just the subject. */
+  pace?: string;
+  country?: string;
+  language?: string;
 }
 
 export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse> {
@@ -74,7 +78,7 @@ export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse>
    */
   constructor(query: string, options?: WhatIsPlayingOptions) {
     super();
-    this._query = `${WhatIsPlayingRequest.scene(options?.now ?? new Date(), options?.lyricSemantic)}
+    this._query = `${WhatIsPlayingRequest.scene(options)}
 
 ${query}`;
 
@@ -84,32 +88,36 @@ ${query}`;
   }
 
   /**
-   * The one thing that differs between two plays of the same record, and therefore the only lever
-   * that varies the answer by itself — the sampling knobs above only shuffle the wording.
+   * What makes this song's entry read differently from the last one. Every field here is a property
+   * of the recording, so the same song always produces the same scene — which is the point.
+   *
+   * Deliberately carries no clock, no date and no season. `PlaylogService.resolveCommentary` writes
+   * the commentary once and serves it to every later play, so a line about a Friday evening would
+   * still be on screen on a Tuesday morning. Variety has to come from what differs between songs,
+   * not between plays.
    *
    * It travels in the query rather than the system instruction: the instruction explains how to read
-   * a scene and stays constant, the scene is per-call. Same split as `ArtistPerformanceRequest`,
-   * which is handed the current date the same way and for a related reason.
+   * a scene and stays constant, the scene is per-song. Same split as `ArtistPerformanceRequest`.
    *
-   * Local time on purpose. The display this feeds sits in one room, and "a wet Tuesday morning" only
-   * means anything in the listener's own hours.
+   * Most of the library carries only some of these fields, so each line is omitted when empty rather
+   * than sent blank — a bare label reads as "this song has no mood".
    */
-  private static scene(now: Date, lyricSemantic?: string): string {
-    const stamp = now.toLocaleString('en-CA', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+  private static scene(options?: WhatIsPlayingOptions): string {
+    const lines = ['Scene:'];
+    const add = (label: string, value?: string) => {
+      if (value?.trim()) lines.push(`${label}: ${value.trim()}`);
+    };
 
-    const lines = [`Scene: it is ${stamp}.`];
+    add('What the song is about', options?.lyricSemantic);
+    add('Emotional register', options?.emotion);
+    add('Pace', options?.pace);
+    add('Country of origin', options?.country);
+    add('Sung in', options?.language);
 
-    // Omitted rather than sent empty: a blank label reads as "this song is about nothing".
-    if (lyricSemantic?.trim()) {
-      lines.push(`What the song is about: ${lyricSemantic.trim()}`);
+    // Nothing known beyond the title. Say so, rather than leaving a bare `Scene:` label behind,
+    // which reads as an empty form and invites the model to invent something to fill it.
+    if (lines.length === 1) {
+      return 'Scene: the library knows nothing about this recording beyond what the request names.';
     }
 
     return lines.join('\n');

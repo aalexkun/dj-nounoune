@@ -15,6 +15,7 @@ import {
   ChatAction,
   ChatEnvelope,
   ChatPayload,
+  ChatPayloadType,
   ChatRole,
   ChatState,
   PROTOCOL_VERSION,
@@ -422,7 +423,11 @@ export class ChatStreamService implements OnModuleInit, OnModuleDestroy {
     // regenerated from Redis on every reconnect, and a debugging session should not permanently
     // fatten a chat.
     if (!isPersistable(envelope)) {
-      this.ephemeral.set(envelope.id, { sessionId, envelope });
+      // The ephemeral map exists for one purpose — so `update` can read back an envelope that was
+      // never written to Mongo — so only the types something actually revises belong in it. An
+      // announcement is emitted once and never seen again, and keeping one would mean a session
+      // that renames a few conversations an hour accumulating dead envelopes until it ends.
+      if (REVISABLE_EPHEMERAL.has(envelope.payload.type)) this.ephemeral.set(envelope.id, { sessionId, envelope });
       return;
     }
 
@@ -464,6 +469,15 @@ export class ChatStreamService implements OnModuleInit, OnModuleDestroy {
     return Date.now();
   }
 }
+
+/**
+ * The session-scoped payload types that are revised in place rather than re-announced.
+ *
+ * Both are mirrors of MPD — one bar and one queue per session, republished at a higher `rev` on the
+ * same id whenever the daemon moves. Everything else session-scoped (a connection event, a rename,
+ * an error) is said once.
+ */
+const REVISABLE_EPHEMERAL = new Set<ChatPayloadType>(['mpc', 'playlist']);
 
 /** Mongo document → wire envelope. */
 function toEnvelope(doc: ChatEnvelopeDocument): ChatEnvelope {

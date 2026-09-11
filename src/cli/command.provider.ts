@@ -59,10 +59,12 @@ import { NegentropyCommand } from './negentropy/negentropy.command';
 import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
 import { ChatCommand } from './chat/chat.command';
 import { ChatFixturesSubCommand } from './chat/fixtures.subcommand';
+import { ChatPruneSubCommand } from './chat/prune.subcommand';
 
 export const CommandProviders = [
   ChatCommand,
   ChatFixturesSubCommand,
+  ChatPruneSubCommand,
 
   MusicCommand,
   ImportCommand,

@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "id": "01JD0000000000000000000012",
+  "rev": 0,
+  "seq": 12,
+  "chatId": null,
+  "turnId": null,
+  "parentId": null,
+  "supersededBy": null,
+  "role": "system",
+  "state": "complete",
+  "level": "info",
+  "createdAt": 1714500000000,
+  "updatedAt": 1714500000000,
+  "copyText": "Moody trip hop",
+  "actions": [
+    {
+      "kind": "copy"
+    }
+  ],
+  "payload": {
+    "type": "chat_title",
+    "chatId": "65e0000000000000000000aa",
+    "title": "Moody trip hop"
+  }
+}

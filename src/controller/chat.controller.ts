@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiAuthGuard } from '../services/auth/api-auth.guard';
-import { ChatService } from '../services/chat/chat.service';
+import { ChatService, summaryOf } from '../services/chat/chat.service';
 import { ChatStreamService } from '../services/chat/chat-stream.service';
 
 @Controller('chatroom')
@@ -11,14 +11,34 @@ export class ChatController {
     private readonly chatStream: ChatStreamService,
   ) {}
 
+  /**
+   * The chatroom listing: one summary row per conversation, newest first.
+   *
+   * It used to answer with the `Chat` documents themselves, `history` and all — every Gemini
+   * transcript on the server, in the model API's own shape, on every app start. The client decoded
+   * that with a second mapping of `Content` maintained beside the protocol one, and it threw:
+   * `functionResponse.response.output` is a string when a tool returned text and an object when it
+   * returned anything else, and the client had declared it a string. So the list stopped carrying
+   * transcripts, and the preview it does carry comes from the envelope log instead — the same
+   * `copyText` the app would have rendered, one aggregate rather than a megabyte of parts.
+   *
+   * `x-user-id` scopes it when the caller sends one, which every client does; without it this is
+   * still the whole server, which is what the CLI and a curl from a laptop want.
+   */
   @Get('') // Handles /chatroom
-  async getChatrooms() {
-    return this.chatService.findAll();
+  async getChatrooms(@Headers('x-user-id') userId?: string) {
+    return this.chatService.summaries(userId);
   }
 
+  /**
+   * Answers in the same shape as the listing, so a client has one row type rather than two.
+   *
+   * `lastMessage` is empty because a chat one millisecond old has no messages — not because the
+   * field is unavailable here.
+   */
   @Post() // Handles POST /chatroom
   async createChatroom(@Body() body: { topic: string; userId: string }) {
-    return this.chatService.create(body.topic, body.userId);
+    return summaryOf(await this.chatService.create(body.topic, body.userId));
   }
 
   @Get(':id') // Handles GET /chatroom/{id}

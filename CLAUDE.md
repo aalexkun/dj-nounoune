@@ -25,7 +25,7 @@ Requires a `.env` file — copy `.env.template` and fill it. Without `MONGODB_UR
 
 ### CLI command tree
 
-`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,review,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import, search-track, search-artist), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, find-artist-track, search-current-track), `youtube` (auth, search-track, search-playlist, import-playlist, play, liked, playlists), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run).
+`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,review,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import, search-track, search-artist), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, find-artist-track, search-current-track), `youtube` (auth, search-track, search-playlist, import-playlist, play, liked, playlists), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run), `chat` (fixtures, prune).
 
 Most mutating commands accept `--dry-run`. Long-running ones accept `--limit` and `--created-after yyyy-mm-dd`.
 
@@ -158,7 +158,25 @@ never swapped for its Qobuz equivalent. YouTube *is* the last rung of that pass,
 
 Socket.io client → `ChatGateway` (validates `x-api-key` + `x-user-id`, joins a session room) → `SessionService` (in-memory sessions over the `Connection` collection) → `ChatService` per-session RxJS channels → `PromptusService.generate(ChatPromptusRequest)` → tool loop → results emitted back as `EventEmitter2` events (`chat.message.response`, `chat.status.response`) that the gateway relays. Chat history persists as Gemini `Content` objects directly in the `Chat` document.
 
-REST (`ChatController`, `/chatroom`) is CRUD-only and guarded by `ApiAuthGuard` (`AUTHX_API_KEY` via `x-api-key`). No real auth — shared key only.
+REST (`ChatController`, `/chatroom`) is guarded by `ApiAuthGuard` (`AUTHX_API_KEY` via `x-api-key`). No real auth — shared key only. Two of its routes matter to the app and the split between them is deliberate: **`GET /chatroom` carries no transcripts**. It answers with `ChatSummary` rows (id, title, last message, timestamps), scoped to `x-user-id` when the caller sends one and sorted newest-first on `updatedAt`. It used to return the `Chat` documents whole, `history` and all — every Gemini transcript on the server on every app start, which the client decoded with a second mapping of `Content` maintained beside the protocol one, and which threw: `functionResponse.response.output` is a string when a handler returned text and an object when it returned anything else. The timeline is `GET /chatroom/:id/messages`, in the socket's own envelope shape, through the one decoder. `/history` still returns the Gemini transcript and is the CLI's, not the app's.
+
+### Chat titles: named by a model, beside every turn
+
+A conversation is created as "New chat" and renamed as it goes. `ChatTitleService` is started by `ChatService.chat` and **not awaited** — it runs beside the agent loop, not before or after it, so naming never costs the user a moment and a failure costs them nothing but the old title.
+
+- **Cheapest request in the project, and the most frequent.** `ChatTitleRequest` is `GEMINI_FLASH_LITE` at `ThinkingLevel.LOW` with a two-field structured response — `rename` and `title` — because the question is recall, not reasoning. It declares no tools and is never registered as one: nothing a user types should be able to rename their own conversation on demand.
+- **It answers two things at once**, which is what keeps it cheap to run on every message: whether the title still fits, and what it should be otherwise. The prompt is written to prefer keeping — these labels are read in a list by somebody looking for a chat they remember, and a title that moves every few messages is worse than one that is merely approximate. The exception is a placeholder ("New chat" and friends), which is always renamed.
+- **The current turn is passed in, not read back.** At the moment this starts, the agent loop has not written the turn to `history`, and on the first message of a chat that one sentence is the whole evidence.
+- **The transcript is reduced before it is sent**: text parts only (a tool result is several hundred tokens of pipe-separated rows saying nothing about the subject), each turn capped, and only the first two plus the last eight turns. Otherwise the cheapest request in the project grows without bound over the life of a conversation.
+- **One in flight per chat.** Two messages sent inside one model call would produce two renames racing the same document, and the one that lands second is the one that saw less.
+- **The rename reaches the app twice**, and needs both halves: `Chat.topic` is the durable one the listing returns on the next connect, and a session-scoped `chat_title` envelope is what moves the header while the user is looking at it.
+- **`chat_title` is session-scoped with the chat named inside the payload** (`chatId: null` on the envelope). A title is not a thing that was said; carried chat-scoped it would enter the timeline, and an app build that had never heard of the type would render it as a bubble — protocol rule 1 working exactly as designed against a message never meant to be seen. The client must read the payload's `chatId`, never the open chat: a rename can land for a conversation in the background.
+
+### Chat retention: twenty conversations, hourly
+
+`ChatRetentionService` keeps the newest `CHAT_HISTORY_LIMIT` (default 20) chats **per user** and deletes the rest, hourly, behind the same `IS_CLI` gate as the playlog poller. Per user rather than per server, because a global ceiling lets one account evict another's history — a bug that only appears on the second account. Ordered by `updatedAt`, the same order the listing sorts in, so what falls off the bottom of the history sheet is what gets deleted.
+
+The envelopes go with the chat, and so must `ChatService.remove`: `chat_message` is keyed on `chatId` and reachable no other way, so a chat deleted without its timeline strands that timeline permanently. Deletion is envelopes first — interrupted the other way round leaves messages nothing can ever find. `npm run cli -- chat prune --dry-run` counts without deleting.
 
 ### Negentropy: the queue quality upgrade
 

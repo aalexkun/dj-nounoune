@@ -234,6 +234,27 @@ export const FIXTURES: Record<ChatPayloadType, ChatEnvelope> = {
     { type: 'error', code: 'no_songs_found', message: 'Nothing in the library matched that. Try naming an artist?', retryable: true },
     { state: 'failed', copyText: 'Nothing in the library matched that. Try naming an artist?', actions: [{ kind: 'retry' }] },
   ),
+
+  /**
+   * The rename, carrying the routing fact that makes it safe: a **null `chatId` on the envelope**
+   * and the conversation named inside the payload.
+   *
+   * A client that reads the envelope's `chatId`, finds null and concludes "no conversation" is
+   * broken in one of two ways depending on which side it gets wrong — a title rendered as a bubble
+   * in the timeline, or a rename applied to whichever chat happens to be open. Neither is something
+   * a per-type fixture would catch without this override, which is why it carries one.
+   */
+  chat_title: envelope(
+    12,
+    { type: 'chat_title', chatId: '65e0000000000000000000aa', title: 'Moody trip hop' },
+    {
+      chatId: null,
+      turnId: null,
+      role: 'system',
+      copyText: 'Moody trip hop',
+      actions: [{ kind: 'copy' }],
+    },
+  ),
 };
 
 /**
@@ -247,7 +268,7 @@ export const FIXTURES: Record<ChatPayloadType, ChatEnvelope> = {
  */
 export const EXTRA_FIXTURES: Record<string, ChatEnvelope> = {
   queue: envelope(
-    12,
+    13,
     {
       type: 'playlist',
       // No title: the live queue is not a playlist anybody named.

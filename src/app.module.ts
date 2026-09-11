@@ -19,6 +19,8 @@ import { Deduplication, DeduplicationSchema } from './schemas/deduplication.sche
 import { Enrich, EnrichSchema } from './schemas/enrich.schema';
 import { ChatService } from './services/chat/chat.service';
 import { ChatStreamService } from './services/chat/chat-stream.service';
+import { ChatTitleService } from './services/chat/chat-title.service';
+import { ChatRetentionService } from './services/chat/chat-retention.service';
 import { ChatActionService } from './services/chat/chat-action.service';
 import { FeedbackService } from './services/feedback/feedback.service';
 import { PlaybackControlService } from './services/playback/playback-control.service';
@@ -45,6 +47,7 @@ import { MergeModule } from './services/merge/merge.module';
 import { OpensearchModule } from './services/opensearch/opensearch.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulersModule } from './schedulers/schedulers.module';
+import { ChatRetentionScheduler } from './schedulers/chat-retention.scheduler';
 import { PlaylogService } from './services/playlog/playlog.service';
 import { RedisCacheModule } from './services/redis-cache/redis-cache.module';
 import { ProfilerService } from './services/profiler/profiler.service';
@@ -100,6 +103,8 @@ const providers: Provider[] = [
   ...CommandProviders,
   ChatService,
   ChatStreamService,
+  ChatTitleService,
+  ChatRetentionService,
   ChatActionService,
   FeedbackService,
   PlaybackControlService,
@@ -129,9 +134,9 @@ const providers: Provider[] = [
 
 if (process.env.IS_CLI !== 'true') {
   imports.push(ScheduleModule.forRoot(), SchedulersModule);
-  // EnrichScheduler is declared here rather than in SchedulersModule because
-  // EnrichService is a root provider: a child module cannot see it.
-  providers.push(EnrichScheduler);
+  // Declared here rather than in SchedulersModule because the services they drive are root
+  // providers: a child module cannot see them.
+  providers.push(EnrichScheduler, ChatRetentionScheduler);
 }
 
 @Module({
