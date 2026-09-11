@@ -38,6 +38,16 @@ export abstract class PromptusRequest<TResponse> {
    */
   public grounded: boolean = false;
 
+  /**
+   * Sampling spread, both unset by default so the GenAI library's own defaults apply. A request
+   * with no opinion about variety must not be silently re-tuned just because the knob exists here.
+   *
+   * Raise them on a request whose answers read the same every time: `topP` is the one that actually
+   * bites, since nucleus sampling truncates the candidate set before `topK` is ever reached.
+   */
+  public topK?: number;
+  public topP?: number;
+
   public get contextContent(): string {
     return this.context;
   }
@@ -68,10 +78,21 @@ export abstract class PromptusRequest<TResponse> {
 
     this.genaiRequest = {
       model: this.model,
-      config: {},
+      // The request's own config is the base layer rather than an afterthought: `thinkingConfig`
+      // and the sampling knobs live there, and every key computed below (systemInstruction, tools,
+      // cachedContent, the structured response) is disjoint from it, so nothing is overwritten.
+      // Until this spread existed the field was declared, assigned by four requests and read by
+      // nobody, which is why their `thinkingLevel` never reached Gemini.
+      config: { ...this.config },
       // Get the histo or the query if no history is provided
       contents: this.history,
     };
+
+    // Applied only when set: an unset knob must leave the library default in place.
+    if (this.genaiRequest.config) {
+      if (this.topK !== undefined) this.genaiRequest.config.topK = this.topK;
+      if (this.topP !== undefined) this.genaiRequest.config.topP = this.topP;
+    }
 
     if (this.history)
       if (this.genaiRequest.config) {
