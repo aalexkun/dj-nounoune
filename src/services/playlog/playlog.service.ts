@@ -78,6 +78,21 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
   /** Song currently being enriched, so a second viewer joining does not start the work again. */
   private enrichingSongId: string | null = null;
 
+  /**
+   * One `checkCurrentSong` at a time.
+   *
+   * `@Interval` fires on a timer, not on completion, so a tick that outlives its second overlaps
+   * the next one — and the read-then-insert in that method is not atomic. Both ticks read the same
+   * newest playlog, both see a song that differs from it, and both insert. That is where duplicate
+   * entries come from: the pairs in the collection sit 0.00s apart, which is two ticks reaching
+   * `save()` in the same millisecond, and a slow enough tick produces four or five rather than two.
+   *
+   * Checked and set synchronously, with no await in between, so no second tick can pass the gate.
+   * This guards one process; two processes polling the same MPD and database still duplicate each
+   * other, so rule that out separately if entries keep arriving in pairs.
+   */
+  private checkingCurrentSong = false;
+
   constructor(
     @InjectModel(Playlog.name) private playlogModel: Model<PlaylogDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
@@ -161,6 +176,14 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
   async checkCurrentSong() {
     if (process.env.IS_CLI === 'true') return;
 
+    // Skipping a tick costs nothing: the next one is a second away and MPD is still the truth.
+    if (this.checkingCurrentSong) {
+      this.logger.debug('Previous current-song check is still running, skipping this tick');
+      return;
+    }
+
+    this.checkingCurrentSong = true;
+
     try {
       const { song, mpdResponse, sourceName } = await this.getMpdSong();
 
@@ -193,6 +216,8 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
       }
     } catch (error) {
       this.logger.error(`Error checking current song: ${getErrorMessage(error)}`);
+    } finally {
+      this.checkingCurrentSong = false;
     }
   }
 
