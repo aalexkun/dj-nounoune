@@ -32,6 +32,25 @@ FROM base AS production
 ENV NODE_ENV=production
 ARG APP_VERSION=unknown
 ENV npm_package_version=${APP_VERSION}
+
+# The container clock has to match the room the display stands in. The disc jockey's commentary is
+# written against the local hour and season (`WhatIsPlayingRequest.scene`), so a container left on
+# UTC greets a Montreal evening as the following morning and writes the wrong mood all night.
+#
+# Alpine carries no zone database at all, so `TZ` on its own resolves to nothing and the process
+# stays silently on UTC. tzdata is what gives the name meaning, and it stays installed rather than
+# being deleted after the copy: libc resolves a named TZ through /usr/share/zoneinfo at runtime,
+# so removing it would put the clock back on UTC despite /etc/localtime being correct.
+#
+# Defaulted to UTC rather than a hardcoded zone — `npm run docker:build` passes the build host's
+# own. A zone that does not exist fails the build here, instead of surfacing later as a quietly
+# wrong clock in production. A runtime `-e TZ=...` still overrides all of this.
+ARG TZ=UTC
+ENV TZ=${TZ}
+RUN apk add --no-cache tzdata \
+    && cp "/usr/share/zoneinfo/${TZ}" /etc/localtime \
+    && echo "${TZ}" > /etc/timezone
+
 # Copy only the package files
 COPY package*.json ./
 

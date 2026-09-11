@@ -25,7 +25,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./test/jest-e2e.json test/integration",
     "release": "npm version minor && npm run docker:build && npm run docker:tag && npm run docker:push",
-    "docker:build": "docker build --network=host --build-arg APP_VERSION=$npm_package_version -t dj-nounoune:latest .",
+    "docker:build": "docker build --network=host --build-arg APP_VERSION=$npm_package_version --build-arg TZ=$(node -p \"Intl.DateTimeFormat().resolvedOptions().timeZone\") -t dj-nounoune:latest .",
     "docker:tag": "docker tag dj-nounoune:latest dockerhub.supa-smart.lan/dj-nounoune:latest",
     "docker:push": "docker push dockerhub.supa-smart.lan/dj-nounoune:latest",
     "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.build.json --noEmit",
