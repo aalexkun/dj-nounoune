@@ -278,6 +278,7 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
         bpm: technical?.bpm,
         coverUrl: image?.large || image?.thumbnail || image?.small,
         artistIntro: populated.artist?.short_intro,
+        lyricSemantic: populated.lyric_semantic,
         playedAt: playlog.playedAt.toISOString(),
         recent: await this.fetchRecentlyPlayed(playlog),
       };
@@ -314,14 +315,16 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
         return;
       }
 
-      // One cheap lookup up front: an earlier play of the same song spares both model calls.
+      // One cheap lookup up front: an earlier play of the same song spares the cover search. It no
+      // longer spares the commentary — see `resolveCommentary` — so it keys on the cover it feeds,
+      // which also picks up plays that resolved artwork without ever producing a description.
       const previous = await this.playlogModel
-        .findOne({ _id: { $ne: playlog._id }, songId: playlog.songId, description: { $exists: true, $ne: null } })
+        .findOne({ _id: { $ne: playlog._id }, songId: playlog.songId, coverUrl: { $exists: true, $ne: null } })
         .sort({ playedAt: -1 })
         .exec();
 
       await Promise.allSettled([
-        this.resolveCommentary(discJockey, playlog, snapshot, previous?.description),
+        this.resolveCommentary(discJockey, playlog, snapshot),
         this.resolveCover(discJockey, playlog, snapshot, previous?.coverUrl, this.currentMpdUri ?? undefined),
       ]);
     } catch (error: unknown) {
@@ -331,13 +334,29 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
     }
   }
 
-  private async resolveCommentary(discJockey: DiscJockeyAgent, playlog: PlaylogDocument, snapshot: NowPlaying, cached?: string): Promise<void> {
+  /**
+   * Written fresh on every play, never reused from an earlier one.
+   *
+   * Reusing it was the cheaper choice and it made the disc jockey repeat himself word for word: the
+   * first play of a track fixed its commentary forever, so the scene handed to `WhatIsPlayingRequest`
+   * — the hour, the season, the song's own lyric sentence — could never change a syllable of it. The
+   * cost is bounded by the viewer gate in `publish`: with nobody watching, no call is made at all.
+   *
+   * The `snapshot.description` guard below is a different thing and stays. It stops a second viewer
+   * opening the page mid-track from regenerating commentary this play has already produced.
+   */
+  private async resolveCommentary(discJockey: DiscJockeyAgent, playlog: PlaylogDocument, snapshot: NowPlaying): Promise<void> {
     if (snapshot.description) return;
 
     try {
       // Name the track rather than letting the agent ask MPD: by the time the model calls the tool the
       // track may have advanced, and the commentary would then describe a song the page is not showing.
-      const description = cached ?? (await discJockey.whatIsPlaying(this.describeTrack(snapshot), undefined, { withoutCurrentSongTool: true })).text;
+      const description = (
+        await discJockey.whatIsPlaying(this.describeTrack(snapshot), undefined, {
+          withoutCurrentSongTool: true,
+          lyricSemantic: snapshot.lyricSemantic,
+        })
+      ).text;
 
       if (!description || !this.isStillPlaying(snapshot, 'commentary')) return;
 

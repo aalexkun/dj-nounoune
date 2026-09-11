@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { CreatePlaylistRequest } from './request/create-playlist.request';
 import { CreatePlaylistResponse } from './response/create-playlist.response';
-import { WhatIsPlayingRequest } from './request/what-is-playing.request';
+import { WhatIsPlayingRequest, WhatIsPlayingOptions } from './request/what-is-playing.request';
 import { WhatIsPlayingResponse } from './response/what-is-playing.response';
 import { CategorisePlaylistRequest } from './request/categorise-playlist.request';
 import { CategorisePlaylistResponse } from './response/categorise-playlist.response';
@@ -500,7 +500,7 @@ ${categorySection}${semanticSection}${reactionSection}`;
     return `\n# Reactions\n${header}\n${lines.join('\n')}\n`;
   }
 
-  async whatIsPlaying(request: string, ctx?: ChatContext, options?: { withoutCurrentSongTool?: boolean }) {
+  async whatIsPlaying(request: string, ctx?: ChatContext, options?: WhatIsPlayingOptions) {
     const wip = new WhatIsPlayingRequest(request, options);
     return await this.generate(wip, ctx);
   }

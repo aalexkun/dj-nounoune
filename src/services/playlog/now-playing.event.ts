@@ -41,6 +41,12 @@ export interface NowPlaying {
   bpm?: number;
   coverUrl?: string;
   artistIntro?: string;
+  /**
+   * The enrichment pass's one-sentence distillation of what the song is about. Not rendered by the
+   * page: it rides on the snapshot so the disc jockey's commentary can take its mood from the song
+   * rather than from the genre tag, and so `current_song` hands the model the same sentence.
+   */
+  lyricSemantic?: string;
   /** The disc jockey's markdown narration of the track. */
   description?: string;
   playedAt: string;

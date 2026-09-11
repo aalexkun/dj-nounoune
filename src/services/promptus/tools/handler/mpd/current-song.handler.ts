@@ -145,6 +145,7 @@ export class CurrentSongHandler implements ToolHandler {
       pace: song.pace,
       country: song.country,
       language: song.language,
+      lyricSemantic: song.lyric_semantic,
       sourceName: name,
       sourceId,
       qobuzTrackId: song.source?.find((source) => source.name === 'qobuz')?.sourceId ?? undefined,
