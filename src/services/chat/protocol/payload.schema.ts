@@ -117,6 +117,27 @@ export const MpcPayloadSchema = z.object({
 });
 export type MpcPayload = z.infer<typeof MpcPayloadSchema>;
 
+/**
+ * A conversation has been renamed, announced to whoever is connected.
+ *
+ * **Session-scoped on purpose** (`chatId: null` on the envelope, the chat named inside the
+ * payload). The durable title lives on the `Chat` document and reaches a client through the
+ * chatroom listing; this is only the live notification that it moved, so there is nothing to
+ * persist and nothing to replay. Carrying it as a chat-scoped envelope instead would put it in the
+ * timeline, and an app build that had never heard of the type would dutifully render "Moody trip
+ * hop" as a bubble in the middle of the conversation — rule 1 working exactly as designed, against
+ * a message that was never meant to be seen.
+ *
+ * It therefore names its own chat. A session-scoped envelope has no `chatId` to route on, and the
+ * rename is about a specific conversation rather than about the connection.
+ */
+export const ChatTitleSchema = z.object({
+  type: z.literal('chat_title'),
+  chatId: z.string(),
+  title: z.string(),
+});
+export type ChatTitlePayload = z.infer<typeof ChatTitleSchema>;
+
 /** System events that are about the connection or the player rather than about a conversation. */
 export const SystemEventSchema = z.enum(['session_resumed', 'playback_started', 'playback_stopped', 'source_upgraded', 'chat_created']);
 export type SystemEvent = z.infer<typeof SystemEventSchema>;
@@ -212,6 +233,8 @@ export const ChatPayloadSchema = z.discriminatedUnion('type', [
     message: z.string(),
     retryable: z.boolean().default(false),
   }),
+
+  ChatTitleSchema,
 ]);
 
 export type ChatPayload = z.infer<typeof ChatPayloadSchema>;

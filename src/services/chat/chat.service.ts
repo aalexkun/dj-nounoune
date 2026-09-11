@@ -4,12 +4,38 @@ import { Model, Types } from 'mongoose';
 import { Content } from '@google/genai';
 
 import { Chat, ChatDocument, ChatMessage } from '../../schemas/chat.schema';
+import { ChatEnvelopeDoc, ChatEnvelopeDocument } from '../../schemas/chat-envelope.schema';
 import { PromptusService } from '../promptus/promptus.service';
 import { ChatPromptusRequest } from '../promptus/request/chat.promptus.request';
 import { ChatContext, newId } from './chat-context';
 import { ChatStreamService } from './chat-stream.service';
+import { ChatTitleService } from './chat-title.service';
 import { SessionId } from '../session/session.service';
 import { getErrorMessage } from '../../utils/error.utils';
+
+/**
+ * One row of the chatroom listing: what the history sheet draws, and nothing else.
+ *
+ * Deliberately not a `Chat`. The document carries `history` — Gemini `Content[]`, tool calls and
+ * pipe-separated tool results included — and returning it whole made the listing a transfer of
+ * every transcript on the server, decoded on the phone by a second, divergent mapping of the model
+ * API's own shape. That mapping is what threw: `functionResponse.response.output` is a string when
+ * a handler returned text and an object when it returned anything else, and the client had declared
+ * it a string.
+ *
+ * So the list route answers in this shape instead, and the transcript is reachable only through the
+ * route that is actually about one conversation. `lastMessage` comes from the envelope log rather
+ * than from the transcript, which is both cheaper and more honest: it is the same `copyText` the
+ * app would have rendered.
+ */
+export interface ChatSummary {
+  id: string;
+  title: string;
+  userId: string;
+  lastMessage: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 /**
  * Chat CRUD, and one turn of conversation.
@@ -27,11 +53,63 @@ export class ChatService {
   constructor(
     private readonly promptusService: PromptusService,
     private readonly chatStream: ChatStreamService,
+    private readonly chatTitle: ChatTitleService,
     @InjectModel(Chat.name) private readonly chatModel: Model<ChatDocument>,
+    @InjectModel(ChatEnvelopeDoc.name) private readonly envelopeModel: Model<ChatEnvelopeDocument>,
   ) {}
 
   async findAll(): Promise<Chat[]> {
     return await this.chatModel.find().exec();
+  }
+
+  /**
+   * The chatroom listing, newest first.
+   *
+   * Sorted on `updatedAt` rather than `createdAt` because a conversation you came back to this
+   * morning is more current than one you opened last week — and because that is the order the
+   * retention pass prunes in, so the list and the cull agree about which chats are old.
+   *
+   * `limit` exists so the listing cannot outgrow the retention ceiling even in the hour before the
+   * cull runs, or on a deploy where the cull is off.
+   */
+  async summaries(userId?: string, limit = 50): Promise<ChatSummary[]> {
+    const filter = userId ? { userId } : {};
+
+    // `history` is excluded at the database rather than after: it is the whole reason this route
+    // used to be heavy, and a projection is the only place that fact can be stated once.
+    const chats = await this.chatModel.find(filter).select({ history: 0 }).sort({ updatedAt: -1 }).limit(limit).exec();
+
+    const previews = await this.lastMessages(chats.map((chat) => chat._id.toString()));
+
+    return chats.map((chat) => summaryOf(chat, previews.get(chat._id.toString())));
+  }
+
+  /**
+   * The newest envelope's `copyText` per chat, in one round trip.
+   *
+   * `seq` rather than a timestamp: it is the chat's own monotonic counter, it is the first key of
+   * the index the resync query already needs, and it is right for a revised envelope too — a
+   * republished message keeps its seq, so a playlist the queue watcher touched an hour ago does not
+   * climb to the top of the preview.
+   */
+  private async lastMessages(chatIds: string[]): Promise<Map<string, string>> {
+    if (chatIds.length === 0) return new Map();
+
+    try {
+      const rows = await this.envelopeModel
+        .aggregate<{ _id: string; copyText: string }>([
+          { $match: { chatId: { $in: chatIds } } },
+          { $sort: { chatId: 1, seq: -1 } },
+          { $group: { _id: '$chatId', copyText: { $first: '$copyText' } } },
+        ])
+        .exec();
+
+      return new Map(rows.map((row) => [row._id, row.copyText ?? '']));
+    } catch (error: unknown) {
+      // A listing with no previews is worth more than no listing.
+      this.logger.warn(`Could not read chat previews: ${getErrorMessage(error)}`);
+      return new Map();
+    }
   }
 
   async findOne(id: string): Promise<Chat> {
@@ -51,16 +129,32 @@ export class ChatService {
     return chat.save();
   }
 
-  async create(topic: string, userId: string): Promise<Chat> {
-    const createdChat = new this.chatModel({ userId, topic, history: [] });
+  /**
+   * A new conversation, under a name that says it has none yet.
+   *
+   * The placeholder is deliberate and is the titler's cue: `ChatTitleService` renames a chat
+   * wearing one on the first message, whatever the evidence, where it would otherwise prefer to
+   * leave a title alone. A client that sends its own topic keeps it.
+   */
+  async create(topic: string, userId: string): Promise<ChatDocument> {
+    const createdChat = new this.chatModel({ userId, topic: topic?.trim() || 'New chat', history: [] });
     return createdChat.save();
   }
 
+  /**
+   * Deletes the conversation and the timeline under it.
+   *
+   * The envelope log is keyed on `chatId` and nothing else refers to it, so a chat removed without
+   * this leaves its whole timeline in `chat_message` permanently — unreachable, because the only
+   * query that would find it starts from a chat document that no longer exists.
+   */
   async remove(id: string): Promise<void> {
     const result = await this.chatModel.findByIdAndDelete(new Types.ObjectId(id)).exec();
     if (!result) {
       throw new NotFoundException(`Chat with ID ${id} not found`);
     }
+
+    await this.envelopeModel.deleteMany({ chatId: id }).exec();
   }
 
   async getHistory(id: string): Promise<ChatMessage[]> {
@@ -93,6 +187,13 @@ export class ChatService {
 
     await this.chatStream.emit(ctx, { type: 'text', format: 'plain', text }, { role: 'user', clientId, actions: [{ kind: 'copy' }] });
 
+    // Beside the turn, not before or after it. Naming the conversation is worth a model call but
+    // not a moment of the user's time, and it is the one thing here that is allowed to fail
+    // silently — the chat keeps the name it had. It is handed `text` explicitly because the agent
+    // loop has not written this turn to `history` yet, and on the first message of a chat that one
+    // sentence is the entire evidence for the title.
+    void this.chatTitle.consider(sessionId, chatId, text);
+
     try {
       const history = await this.getHistory(chatId);
       const request = new ChatPromptusRequest(text, history);
@@ -118,4 +219,32 @@ export class ChatService {
       );
     }
   }
+}
+
+/**
+ * A Mongoose timestamp, off a class that does not declare one.
+ *
+ * `@Schema({ timestamps: true })` adds `createdAt` and `updatedAt` to the documents but not to the
+ * class the document type is derived from, so there is no typed way to reach them. Narrowed out of
+ * `unknown` rather than cast through `any`, and given a present-day fallback: a summary with a
+ * plausible date sorts sensibly, a summary with `NaN` does not.
+ */
+export function summaryOf(chat: ChatDocument, lastMessage = ''): ChatSummary {
+  return {
+    id: chat._id.toString(),
+    title: chat.topic ?? '',
+    userId: chat.userId,
+    lastMessage,
+    createdAt: timestamp(chat, 'createdAt'),
+    updatedAt: timestamp(chat, 'updatedAt'),
+  };
+}
+
+function timestamp(doc: ChatDocument, field: 'createdAt' | 'updatedAt'): number {
+  const value: unknown = (doc as unknown as Record<string, unknown>)[field];
+
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+
+  return Date.now();
 }

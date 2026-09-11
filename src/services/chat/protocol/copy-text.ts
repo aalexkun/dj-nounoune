@@ -56,5 +56,8 @@ export function copyTextFor(payload: ChatPayload): string {
 
     case 'error':
       return payload.message;
+
+    case 'chat_title':
+      return payload.title;
   }
 }

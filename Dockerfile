@@ -33,9 +33,12 @@ ENV NODE_ENV=production
 ARG APP_VERSION=unknown
 ENV npm_package_version=${APP_VERSION}
 
-# The container clock has to match the room the display stands in. The disc jockey's commentary is
-# written against the local hour and season (`WhatIsPlayingRequest.scene`), so a container left on
-# UTC greets a Montreal evening as the following morning and writes the wrong mood all night.
+# The container runs on the local clock, not UTC: scheduled jobs fire at the hour they read as, log
+# lines match what the operator sees, and a playlog entry lands on the day it was actually played.
+#
+# The disc jockey's commentary deliberately does NOT depend on this. It is generated once per song
+# and kept, so it never names a day, an hour or a season — see `WhatIsPlayingRequest.scene`, which
+# is salted from the song's own attributes rather than the clock.
 #
 # Alpine carries no zone database at all, so `TZ` on its own resolves to nothing and the process
 # stays silently on UTC. tzdata is what gives the name meaning, and it stays installed rather than
