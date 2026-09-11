@@ -1,4 +1,13 @@
-import { CachedContent, Content, ContentListUnion, FunctionCall, GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import {
+  CachedContent,
+  Content,
+  ContentListUnion,
+  FunctionCall,
+  GenerateContentConfig,
+  GenerateContentParameters,
+  GenerateContentResponse,
+  GoogleGenAI,
+} from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import { ThrottleHandler } from './handler/throttle.handler';
@@ -87,7 +96,10 @@ export abstract class Agent {
       while (loop < this.maxThinkingLoop) {
         const aiRequest = request.getGeneratedContent();
         await this.printTokenUsage(request.model, aiRequest.contents);
+        // Once per generate, not once per tool-loop iteration: the shape does not change between them.
+        if (loop === 0) this.logThinkingLevel(request, aiRequest);
         const response: GenerateContentResponse = await this.client.models.generateContent(aiRequest);
+        this.logThinkingUsage(request, response);
         // Every call counts against the day, tool-loop iterations included. Displayed, not enforced.
         await this.throttleHandler.recordRequest(request.model);
 
@@ -160,6 +172,44 @@ export abstract class Agent {
       contents: contents,
     });
     this.logger.debug(`Token Count: ${tokenCount.totalTokens} (Model: ${model})`);
+  }
+
+  /**
+   * What the request asks for against what actually goes on the wire — deliberately both, because
+   * they are not guaranteed to agree. `PromptusRequest.config` is transmitted now, but it spent a
+   * long time declared-and-unread, and a request could declare `thinkingLevel: HIGH` while being
+   * answered by a model doing whatever it does by default. Logging the declared value alone is what
+   * let that go unnoticed; the warn below fires the moment the two drift apart again.
+   */
+  protected logThinkingLevel<T>(request: PromptusRequest<T>, aiRequest: GenerateContentParameters): void {
+    const declared = this.thinkingOf(request.config);
+    const sent = this.thinkingOf(aiRequest.config);
+    const name = request.constructor.name;
+
+    if (declared && !sent) {
+      this.logger.warn(`Thinking: ${name} declares ${declared}, which is NOT sent — ${request.model} uses its own default`);
+      return;
+    }
+
+    this.logger.log(`Thinking: ${name} sending ${sent ?? 'nothing, model default'} (${request.model})`);
+  }
+
+  /** Ground truth: what the model actually spent thinking, whatever the request asked for. */
+  protected logThinkingUsage<T>(request: PromptusRequest<T>, response: GenerateContentResponse): void {
+    // Absent rather than zero when the model did no thinking at all, which is its own signal.
+    const thoughts = response.usageMetadata?.thoughtsTokenCount;
+
+    this.logger.debug(`Thinking: ${request.constructor.name} used ${thoughts ?? 'no'} thought tokens`);
+  }
+
+  /** Either half of the pair may be set; `thinkingBudget` is the numeric form of the same knob. */
+  private thinkingOf(config?: Partial<GenerateContentConfig>): string | undefined {
+    const thinking = config?.thinkingConfig;
+
+    if (thinking?.thinkingLevel) return String(thinking.thinkingLevel);
+    if (thinking?.thinkingBudget !== undefined) return `budget ${thinking.thinkingBudget}`;
+
+    return undefined;
   }
 
   protected async proceedFunctionCall(fc: FunctionCall, ctx?: ChatContext): Promise<FunctionCallResult> {

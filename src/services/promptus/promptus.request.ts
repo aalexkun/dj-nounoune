@@ -27,6 +27,19 @@ export abstract class PromptusRequest<TResponse> {
   public abstract role: RequestRole;
   public abstract cache?: CachedContent;
   public abstract structuredResponse?: StructuredResponse;
+  /**
+   * Transmitted as the base of the outbound config, so a `thinkingConfig` set here does take
+   * effect. It spent a long time declared-but-unread, which is why several requests carry a
+   * `thinkingLevel` that had never once been exercised.
+   *
+   * Each shape was checked against the live API rather than assumed: plain, grounded, tool-bearing
+   * and cached requests all answer normally with a thinking level set. The one wrinkle is
+   * `AlbumCoverRequest`, the only request that is grounded *and* carries a responseSchema — it came
+   * back with an empty body in roughly one run of six with thinking on, and none of six without.
+   * Too small a sample to call causal, and harmless either way because `AlbumCoverResponse` reads
+   * an empty answer as "no cover" rather than failing. Look there first if covers start going
+   * missing more often than they used to.
+   */
   public abstract config: Partial<GenerateContentConfig>;
   public abstract tools: ToolDeclaration[];
   public abstract history: Content[];
@@ -78,17 +91,16 @@ export abstract class PromptusRequest<TResponse> {
 
     this.genaiRequest = {
       model: this.model,
-      // The request's own config is the base layer rather than an afterthought: `thinkingConfig`
-      // and the sampling knobs live there, and every key computed below (systemInstruction, tools,
-      // cachedContent, the structured response) is disjoint from it, so nothing is overwritten.
-      // Until this spread existed the field was declared, assigned by four requests and read by
-      // nobody, which is why their `thinkingLevel` never reached Gemini.
+      // The request's own config is the base layer: `thinkingConfig` lives there, and every key
+      // computed below (systemInstruction, tools, cachedContent, the structured response) is
+      // disjoint from it, so nothing set here is overwritten later.
       config: { ...this.config },
       // Get the histo or the query if no history is provided
       contents: this.history,
     };
 
-    // Applied only when set: an unset knob must leave the library default in place.
+    // Applied only when set: an unset knob must leave the library default in place. Written after
+    // the spread on purpose, so an explicit knob wins over the same key inside a request's config.
     if (this.genaiRequest.config) {
       if (this.topK !== undefined) this.genaiRequest.config.topK = this.topK;
       if (this.topP !== undefined) this.genaiRequest.config.topP = this.topP;
