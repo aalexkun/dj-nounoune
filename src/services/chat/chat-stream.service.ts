@@ -26,6 +26,17 @@ import {
   withinVerbosity,
 } from './protocol';
 
+/**
+ * How far along a client already is, in both of the dimensions an envelope can move in.
+ *
+ * `sinceSeq` is exclusive and orders; `sinceUpdatedAt` is exclusive and versions. Neither implies
+ * the other, which is the whole reason both are here.
+ */
+export type BacklogCursor = {
+  sinceSeq?: number;
+  sinceUpdatedAt?: number;
+};
+
 /** Overrides a caller can set on one envelope. Everything else is derived. */
 export type EmitOptions = {
   role?: ChatRole;
@@ -337,13 +348,30 @@ export class ChatStreamService implements OnModuleInit, OnModuleDestroy {
   // Reading
   // ---------------------------------------------------------------------------------------------
 
-  /** What a client missed, from the cursor it says it holds. Feeds `chat:resync` and the REST route. */
-  async backlog(chatId: string, sinceSeq = 0, limit = 500): Promise<ChatEnvelope[]> {
-    const docs = await this.envelopeModel
-      .find({ chatId, seq: { $gt: sinceSeq } })
-      .sort({ seq: 1 })
-      .limit(limit)
-      .exec();
+  /**
+   * What a client missed, from the cursor it says it holds. Feeds `chat:resync` and the REST route.
+   *
+   * **Two cursors, because there are two ways to fall behind.** `seq` covers what was said while
+   * the client was away. It cannot cover what *changed* while the client was away: a revision keeps
+   * its `seq` and only bumps `rev`, so a `seq` cursor is structurally blind to exactly the
+   * envelopes most likely to be stale — the playlist the queue watcher has been reconciling all
+   * along, an answer that finished streaming after the screen went dark, a thread that resolved.
+   * `revisedAt` covers those, and the client sends the highest it holds of each.
+   *
+   * The overlap between the two is free: the client applies an envelope only when `rev` is higher
+   * than what it holds, so a message returned by both arms costs one comparison.
+   *
+   * A caller that passes no `sinceUpdatedAt` gets the old `seq`-only behaviour rather than the whole
+   * timeline — `revisedAt > 0` would match every document ever written.
+   */
+  async backlog(chatId: string, cursor: BacklogCursor = {}, limit = 500): Promise<ChatEnvelope[]> {
+    const sinceSeq = cursor.sinceSeq ?? 0;
+    const sinceUpdatedAt = cursor.sinceUpdatedAt ?? 0;
+
+    const filter =
+      sinceUpdatedAt > 0 ? { chatId, $or: [{ seq: { $gt: sinceSeq } }, { revisedAt: { $gt: sinceUpdatedAt } }] } : { chatId, seq: { $gt: sinceSeq } };
+
+    const docs = await this.envelopeModel.find(filter).sort({ seq: 1 }).limit(limit).exec();
 
     return docs.map(toEnvelope);
   }
@@ -364,9 +392,22 @@ export class ChatStreamService implements OnModuleInit, OnModuleDestroy {
     this.eventEmitter.emit(ChatEnvelopeEventName, new ChatEnvelopeEvent(sessionId, envelope));
   }
 
-  /** An update whose originating session is unknown still has to reach somebody. */
+  /**
+   * A revision of a chat-scoped envelope, to whoever is actually listening.
+   *
+   * The stored `sessionId` is a **hint, not an address**. It names the session that first produced
+   * the envelope, and the tempting reading — send the revision back where it came from — is wrong
+   * for everything the queue watcher touches: MPD state is owned by no session, and a session is
+   * mortal. A phone that closed for more than the five minute grace comes back under a fresh
+   * `randomUUID()`, so every playlist reconcile after that was addressed to a session id nothing
+   * would ever answer to again, and `deliver` dropped it on the floor. Permanently, and silently.
+   *
+   * So the hint is used only while that session is still active, and otherwise this falls back to
+   * every live session. The cost of the fallback is a session receiving an envelope for a chat it
+   * is not looking at, which the client already filters out when it builds a timeline.
+   */
   private publishToChat(sessionId: string | undefined, envelope: ChatEnvelope): void {
-    if (sessionId) {
+    if (sessionId && this.connectionState.get(sessionId) === 'active') {
       this.publish(sessionId, envelope);
       return;
     }

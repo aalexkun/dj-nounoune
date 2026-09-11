@@ -6,7 +6,7 @@ import { QueueSnapshot } from './queue-state.schema';
 import { ChatStreamService } from '../chat/chat-stream.service';
 import { sessionContext } from '../chat/chat-context';
 import { SessionId } from '../session/session.service';
-import { ChatAction, MpcPayload } from '../chat/protocol';
+import { ChatAction, ChatEnvelope, MpcPayload } from '../chat/protocol';
 import { shareTargetFor } from '../chat/share-target.util';
 import { PlaylogService } from '../playlog/playlog.service';
 import { getErrorMessage } from '../../utils/error.utils';
@@ -74,11 +74,11 @@ export class MpcStateService implements OnModuleInit, OnModuleDestroy {
    * The envelope is ephemeral, so there is nothing to replay — it is simply rebuilt from the last
    * projection, which is also why a reconnect never shows a stale transport state.
    */
-  async openFor(sessionId: SessionId): Promise<void> {
+  async openFor(sessionId: SessionId): Promise<ChatEnvelope | null> {
     const snapshot = await this.queueState.current();
-    if (!snapshot) return;
+    if (!snapshot) return null;
 
-    await this.emitFor(sessionId, this.toPayload(snapshot));
+    return await this.emitFor(sessionId, this.toPayload(snapshot));
   }
 
   forget(sessionId: SessionId): void {
@@ -91,13 +91,13 @@ export class MpcStateService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async emitFor(sessionId: SessionId, payload: MpcPayload): Promise<void> {
+  private async emitFor(sessionId: SessionId, payload: MpcPayload): Promise<ChatEnvelope | null> {
     const existing = this.barBySession.get(sessionId);
 
     try {
       if (existing) {
         const updated = await this.chatStream.update(existing, (envelope) => ({ ...envelope, payload, actions: actionsFor(payload) }));
-        if (updated) return;
+        if (updated) return updated;
 
         // The session ended and took its ephemeral envelope with it.
         this.barBySession.delete(sessionId);
@@ -105,45 +105,63 @@ export class MpcStateService implements OnModuleInit, OnModuleDestroy {
 
       const created = await this.chatStream.emit(sessionContext(sessionId), payload, { role: 'system', actions: actionsFor(payload) });
       if (created) this.barBySession.set(sessionId, created.id);
+      return created;
     } catch (error: unknown) {
       this.logger.warn(`Could not publish the transport bar to ${sessionId}: ${getErrorMessage(error)}`);
+      return null;
     }
   }
 
   private toPayload(snapshot: QueueSnapshot): MpcPayload {
     const current = snapshot.entries.find((entry) => entry.mpdSongId === snapshot.currentMpdSongId);
-    const now = this.playlog.getLastSnapshot();
+    const cached = this.playlog.getLastSnapshot();
 
-    // Prefer the enriched now-playing snapshot — the same one /vibing-on renders, so the two
-    // surfaces cannot disagree — and fall back to MPD's own tags when nothing is cached yet.
-    const song =
-      now && (!current?.songId || now.songId === current.songId)
+    // The enriched snapshot is only usable while it is about the track MPD actually has loaded.
+    // It outlives its own play — nothing clears it when the song changes — so a stale one would
+    // otherwise dress the new track in the old one's commentary, artwork and just-played strip.
+    const now = cached && (!current?.songId || cached.songId === current.songId) ? cached : null;
+
+    // Prefer it when it matches — it is the same snapshot /vibing-on renders, so the television and
+    // the phone cannot disagree — and fall back to MPD's own tags when nothing is cached yet.
+    const song = now
+      ? {
+          songId: now.songId,
+          title: now.title,
+          artist: now.artist,
+          album: now.album,
+          year: now.year,
+          genre: now.genre,
+          durationMs: now.duration ? Math.round(now.duration * 1000) : undefined,
+          coverUrl: now.coverUrl,
+          source: now.sourceName,
+          sourceId: current?.sourceId,
+          bitrate: now.bitrate,
+          sampleRate: now.sampleRate,
+          isHighRes: now.isHighRes,
+          isCdQuality: now.isCdQuality,
+          bitDepth: now.bitDepth,
+          encoding: now.encoding,
+          bpm: now.bpm,
+          category: now.category,
+          emotion: now.emotion,
+          pace: now.pace,
+          label: now.label,
+          country: now.country,
+          language: now.language,
+          // Both land on a later revision of this same envelope, seconds after the song changed.
+          artistIntro: now.artistIntro,
+          description: now.description,
+        }
+      : current
         ? {
-            songId: now.songId,
-            title: now.title,
-            artist: now.artist,
-            album: now.album,
-            year: now.year,
-            genre: now.genre,
-            durationMs: now.duration ? Math.round(now.duration * 1000) : undefined,
-            coverUrl: now.coverUrl,
-            source: now.sourceName,
-            sourceId: current?.sourceId,
-            bitrate: now.bitrate,
-            sampleRate: now.sampleRate,
-            isHighRes: now.isHighRes,
-            isCdQuality: now.isCdQuality,
+            songId: current.songId ?? current.sourceId,
+            title: current.title ?? 'Unknown',
+            artist: current.artist ?? 'Unknown',
+            album: current.album,
+            source: current.source,
+            sourceId: current.sourceId,
           }
-        : current
-          ? {
-              songId: current.songId ?? current.sourceId,
-              title: current.title ?? 'Unknown',
-              artist: current.artist ?? 'Unknown',
-              album: current.album,
-              source: current.source,
-              sourceId: current.sourceId,
-            }
-          : null;
+        : null;
 
     return {
       type: 'mpc',
@@ -155,6 +173,7 @@ export class MpcStateService implements OnModuleInit, OnModuleDestroy {
       volume: snapshot.volume,
       modes: snapshot.modes,
       queue: { position: snapshot.currentPosition, length: snapshot.entries.length },
+      recent: now?.recent ?? [],
     };
   }
 }
@@ -213,11 +232,19 @@ function actionsFor(payload: MpcPayload): ChatAction[] {
  *
  * This is what stops the bar republishing twice a second for a track nobody has touched. The
  * elapsed position still reaches the client, through the slow drift stream.
+ *
+ * `coverUrl` and `description` are compared even though `songId` has not moved, because both are
+ * resolved *after* the song change and announced on their own events. Without them the artwork and
+ * the commentary reached a client only when the drift tick happened to come round, which is up to
+ * fifteen seconds of a screen showing a giraffe and "waiting for the disc jockey" over a track the
+ * server had already described.
  */
 function sameProjection(a: MpcPayload, b: MpcPayload): boolean {
   return (
     a.state === b.state &&
     a.song?.songId === b.song?.songId &&
+    a.song?.coverUrl === b.song?.coverUrl &&
+    a.song?.description === b.song?.description &&
     a.volume === b.volume &&
     a.durationMs === b.durationMs &&
     a.queue.position === b.queue.position &&

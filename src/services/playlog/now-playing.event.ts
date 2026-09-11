@@ -47,6 +47,16 @@ export interface NowPlaying {
   recent: RecentlyPlayed[];
 }
 
+/**
+ * Which surface is watching.
+ *
+ * The commentary and the cover search are model calls, so they are only made while somebody can
+ * read the result. That gate used to be a single count reported by the /vibing-on page, which meant
+ * a phone open on the Playing tab got a permanently empty "nounoune says" unless the television
+ * happened to be on. The gate is now the sum over every surface, and this names them.
+ */
+export type NowPlayingAudience = 'vibing' | 'chat';
+
 export class NowPlayingEvent {
   constructor(public readonly nowPlaying: NowPlaying) {}
 }

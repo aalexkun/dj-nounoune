@@ -92,3 +92,11 @@ export const ChatEnvelopeSchemaDefinition = SchemaFactory.createForClass(ChatEnv
  * envelopes are not persisted — so the index needs no partial filter.
  */
 ChatEnvelopeSchemaDefinition.index({ chatId: 1, seq: 1 }, { unique: true });
+
+/**
+ * The other half of the resync query: what changed, as opposed to what is new.
+ *
+ * Not unique — a queue reconcile revises several envelopes within the same millisecond, and that is
+ * normal rather than a broken counter.
+ */
+ChatEnvelopeSchemaDefinition.index({ chatId: 1, revisedAt: 1 });

@@ -51,7 +51,11 @@ export class ChatController {
    * one for live strings and one for Gemini `Content`.
    */
   @Get(':id/messages')
-  async getMessages(@Param('id') id: string, @Query('sinceSeq', new ParseIntPipe({ optional: true })) sinceSeq?: number) {
-    return this.chatStream.backlog(id, sinceSeq ?? 0);
+  async getMessages(
+    @Param('id') id: string,
+    @Query('sinceSeq', new ParseIntPipe({ optional: true })) sinceSeq?: number,
+    @Query('sinceUpdatedAt', new ParseIntPipe({ optional: true })) sinceUpdatedAt?: number,
+  ) {
+    return this.chatStream.backlog(id, { sinceSeq, sinceUpdatedAt });
   }
 }

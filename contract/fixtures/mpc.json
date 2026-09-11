@@ -60,7 +60,18 @@
       "bitrate": 1411,
       "sampleRate": 44100,
       "isHighRes": false,
-      "isCdQuality": true
+      "isCdQuality": true,
+      "bitDepth": 16,
+      "encoding": "flac",
+      "bpm": 84,
+      "category": "Electronic",
+      "emotion": "melancholic",
+      "pace": "slow",
+      "label": "Go! Beat",
+      "country": "United Kingdom",
+      "language": "English",
+      "artistIntro": "Bristol, 1991. A trio who made paranoia sound like a lounge act.",
+      "description": "The one everybody knows, and still the saddest thing on **Dummy**."
     },
     "elapsedMs": 74000,
     "durationMs": 302000,
@@ -75,6 +86,17 @@
     "queue": {
       "position": 0,
       "length": 24
-    }
+    },
+    "recent": [
+      {
+        "title": "Angel",
+        "artist": "Massive Attack",
+        "coverUrl": "https://static.qobuz.com/images/covers/mezzanine600.jpg"
+      },
+      {
+        "title": "Teardrop",
+        "artist": "Massive Attack"
+      }
+    ]
   }
 }

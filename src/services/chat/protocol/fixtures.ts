@@ -31,6 +31,19 @@ const SONG = {
   sampleRate: 44_100,
   isHighRes: false,
   isCdQuality: true,
+  bitDepth: 16,
+  encoding: 'flac',
+  bpm: 84,
+  category: 'Electronic',
+  emotion: 'melancholic',
+  pace: 'slow',
+  label: 'Go! Beat',
+  country: 'United Kingdom',
+  language: 'English',
+  artistIntro: 'Bristol, 1991. A trio who made paranoia sound like a lounge act.',
+  // The late arrival, and the reason the fixture carries one: a client that drops this field on a
+  // later revision of an envelope it has already drawn is the bug this contract exists to catch.
+  description: 'The one everybody knows, and still the saddest thing on **Dummy**.',
 };
 
 function envelope(seq: number, payload: ChatPayload, overrides: Partial<ChatEnvelope> = {}): ChatEnvelope {
@@ -172,6 +185,10 @@ export const FIXTURES: Record<ChatPayloadType, ChatEnvelope> = {
       volume: 68,
       modes: { repeat: false, random: true, single: false, consume: false },
       queue: { position: 0, length: 24 },
+      recent: [
+        { title: 'Angel', artist: 'Massive Attack', coverUrl: 'https://static.qobuz.com/images/covers/mezzanine600.jpg' },
+        { title: 'Teardrop', artist: 'Massive Attack' },
+      ],
     },
     {
       // Session-scoped: the transport bar belongs to the connection, not to a conversation.
@@ -219,7 +236,77 @@ export const FIXTURES: Record<ChatPayloadType, ChatEnvelope> = {
   ),
 };
 
+/**
+ * Samples that are not a payload type of their own, but a *scoping* the client has to route on.
+ *
+ * `FIXTURES` is keyed by payload type so a missing one is a compile error. That is the right shape
+ * for coverage and the wrong shape for this: a `playlist` with a null `chatId` is the same payload
+ * reaching the app down a completely different path — the live queue mirror rather than a
+ * conversation — and a client that renders it into a timeline is broken in a way no per-type
+ * fixture would catch.
+ */
+export const EXTRA_FIXTURES: Record<string, ChatEnvelope> = {
+  queue: envelope(
+    12,
+    {
+      type: 'playlist',
+      // No title: the live queue is not a playlist anybody named.
+      live: true,
+      mpdVersion: 812,
+      items: [
+        {
+          elementId: 'row-0',
+          position: 0,
+          songId: '65f1a2b3c4d5e6f7a8b9c0d1',
+          title: 'Roads',
+          artist: 'Portishead',
+          album: 'Dummy',
+          durationMs: 302_000,
+          source: 'qobuz',
+          artworkUrl: 'https://static.qobuz.com/images/covers/dummy600.jpg',
+          state: 'playing',
+          actions: [
+            { kind: 'copy' },
+            {
+              kind: 'share',
+              target: { title: 'Roads', text: 'Portishead — Roads', url: 'https://open.qobuz.com/track/1234567', mimeType: 'text/plain' },
+            },
+            { kind: 'song_info', songId: '65f1a2b3c4d5e6f7a8b9c0d1' },
+            { kind: 'queue_next', songId: '65f1a2b3c4d5e6f7a8b9c0d1' },
+            { kind: 'remove_from_playlist', songId: '65f1a2b3c4d5e6f7a8b9c0d1' },
+          ],
+        },
+        {
+          elementId: 'row-1',
+          position: 1,
+          songId: '65f1a2b3c4d5e6f7a8b9c0d2',
+          title: 'Angel',
+          artist: 'Massive Attack',
+          album: 'Mezzanine',
+          durationMs: 379_000,
+          source: 'file',
+          state: 'queued',
+          actions: [
+            { kind: 'copy' },
+            { kind: 'share', target: { title: 'Angel', text: 'Massive Attack — Angel', mimeType: 'text/plain' } },
+            { kind: 'play_now', songId: '65f1a2b3c4d5e6f7a8b9c0d2', source: 'file' },
+          ],
+        },
+      ],
+    },
+    {
+      // Session-scoped, exactly like the transport bar: MPD has one queue and no conversation owns
+      // it. This is the routing fact the fixture exists to pin down.
+      chatId: null,
+      turnId: null,
+      role: 'system',
+      copyText: '1 - [Portishead] Dummy - Roads\n2 - [Massive Attack] Mezzanine - Angel',
+      actions: [{ kind: 'copy' }],
+    },
+  ),
+};
+
 /** Filename → envelope, ready to write. */
 export function fixtureFiles(): Array<{ name: string; envelope: ChatEnvelope }> {
-  return Object.entries(FIXTURES).map(([type, envelope]) => ({ name: `${type}.json`, envelope }));
+  return [...Object.entries(FIXTURES), ...Object.entries(EXTRA_FIXTURES)].map(([name, envelope]) => ({ name: `${name}.json`, envelope }));
 }

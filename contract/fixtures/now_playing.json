@@ -34,7 +34,18 @@
       "bitrate": 1411,
       "sampleRate": 44100,
       "isHighRes": false,
-      "isCdQuality": true
+      "isCdQuality": true,
+      "bitDepth": 16,
+      "encoding": "flac",
+      "bpm": 84,
+      "category": "Electronic",
+      "emotion": "melancholic",
+      "pace": "slow",
+      "label": "Go! Beat",
+      "country": "United Kingdom",
+      "language": "English",
+      "artistIntro": "Bristol, 1991. A trio who made paranoia sound like a lounge act.",
+      "description": "The one everybody knows, and still the saddest thing on **Dummy**."
     }
   }
 }

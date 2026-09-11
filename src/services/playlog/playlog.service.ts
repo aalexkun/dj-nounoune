@@ -19,6 +19,7 @@ import { getErrorMessage } from '../../utils/error.utils';
 import { isReachableImageUrl } from '../../utils/image-url.util';
 import {
   NowPlaying,
+  NowPlayingAudience,
   NowPlayingCommentaryEvent,
   NowPlayingCommentaryEventName,
   NowPlayingCoverEvent,
@@ -59,8 +60,20 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
    */
   private readonly artworkCache = new Map<string, MpdPicture>();
 
-  /** Viewers on the /vibing namespace, reported by `VibingGateway`. No viewers, no model calls. */
-  private viewerCount = 0;
+  /**
+   * Who is watching, by surface. Nobody watching, no model calls.
+   *
+   * Kept per-surface rather than as one number because the two gateways count independently and
+   * neither can see the other's clients — a single counter would have each of them stamping the
+   * other's viewers out of existence on every connect.
+   */
+  private readonly audience = new Map<NowPlayingAudience, number>();
+
+  private get viewerCount(): number {
+    let total = 0;
+    for (const count of this.audience.values()) total += count;
+    return total;
+  }
 
   /** Song currently being enriched, so a second viewer joining does not start the work again. */
   private enrichingSongId: string | null = null;
@@ -118,9 +131,9 @@ export class PlaylogService implements NowPlayingSource, OnModuleInit {
     return song?._id.toString() === this.currentNowPlaying.songId ? this.currentNowPlaying : null;
   }
 
-  /** Reported by `VibingGateway` on every connect and disconnect. */
-  setViewerCount(count: number): void {
-    this.viewerCount = count;
+  /** Reported by `VibingGateway` and by `ChatGateway` on every connect and disconnect. */
+  setViewerCount(count: number, surface: NowPlayingAudience = 'vibing'): void {
+    this.audience.set(surface, count);
   }
 
   /**

@@ -29,8 +29,46 @@ export const NowPlayingSchema = z.object({
   sampleRate: z.number().int().nonnegative().optional(),
   isHighRes: z.boolean().optional(),
   isCdQuality: z.boolean().optional(),
+  bitDepth: z.number().int().nonnegative().optional(),
+  /** The codec ffprobe reported, falling back to the file extension for the unenriched bulk. */
+  encoding: z.string().optional(),
+  bpm: z.number().nonnegative().optional(),
+
+  // What the song *is*, as opposed to how it was encoded. Every one of these comes out of the
+  // enrichment pass and is drawn from the closed vocabulary in `src/lexic/songs.description.ts`,
+  // so a client may show them verbatim without worrying what it will get.
+  category: z.string().optional(),
+  emotion: z.string().optional(),
+  pace: z.string().optional(),
+  label: z.string().optional(),
+  country: z.string().optional(),
+  language: z.string().optional(),
+
+  /**
+   * The disc jockey's markdown narration of this track, and the artist blurb behind it.
+   *
+   * Both arrive **late**. The snapshot is published the moment the song changes and the commentary
+   * is a model call that lands seconds later on its own event, so a client has to expect this field
+   * to appear on a later revision of an envelope it already drew. Neither is ever generated while
+   * nothing is watching — see `PlaylogService`'s audience count.
+   */
+  artistIntro: z.string().optional(),
+  description: z.string().optional(),
 });
 export type NowPlayingPayload = z.infer<typeof NowPlayingSchema>;
+
+/**
+ * One entry of the "just played" strip, mirroring `RecentlyPlayed` on the /vibing-on side.
+ *
+ * Deliberately thin. This is the playlog reaching back past the current MPD queue, so there is no
+ * queue entry to address and nothing here is actionable — it answers "what was that one before?"
+ * and nothing else.
+ */
+export const RecentlyPlayedSchema = z.object({
+  title: z.string(),
+  artist: z.string(),
+  coverUrl: z.string().optional(),
+});
 
 /**
  * The floating transport bar, as a message.
@@ -70,6 +108,12 @@ export const MpcPayloadSchema = z.object({
     position: z.number().int().nonnegative().nullable(),
     length: z.number().int().nonnegative(),
   }),
+  /**
+   * What played before this, newest first. On the bar rather than on the song, because it is the
+   * player's history and not a property of the track — a `now_playing` answer in a timeline has no
+   * business carrying one.
+   */
+  recent: z.array(RecentlyPlayedSchema).default([]),
 });
 export type MpcPayload = z.infer<typeof MpcPayloadSchema>;
 

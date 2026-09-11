@@ -2,10 +2,17 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { Subscription, concatMap, from } from 'rxjs';
 
 import { QueueStateService } from './queue-state.service';
-import { PlaylistBinding, PlaylistBindingSchema, PLAYLIST_BINDING_TTL_SECONDS, QueueSnapshot, playlistBindingKey } from './queue-state.schema';
+import {
+  PlaylistBinding,
+  PlaylistBindingSchema,
+  PLAYLIST_BINDING_PREFIX,
+  PLAYLIST_BINDING_TTL_SECONDS,
+  QueueSnapshot,
+  playlistBindingKey,
+} from './queue-state.schema';
 import { ChatStreamService } from '../chat/chat-stream.service';
 import { RedisCacheService } from '../redis-cache/redis-cache.service';
-import { copyTextFor, PlaylistItem } from '../chat/protocol';
+import { ChatEnvelope, copyTextFor, PlaylistItem } from '../chat/protocol';
 import { getErrorMessage } from '../../utils/error.utils';
 
 /**
@@ -35,6 +42,12 @@ export class PlaylistReconcilerService implements OnModuleInit, OnModuleDestroy 
   ) {}
 
   onModuleInit(): void {
+    // Redis is where a binding actually lives; this set is only a cache of it. Without this the
+    // cache started empty on every boot and nothing ever refilled it, so a restarted server stopped
+    // reconciling every playlist for the life of the process while the bindings sat in Redis
+    // untouched — the failure looked exactly like a client that had stopped listening.
+    void this.loadBindings();
+
     this.subscriptions.add(
       this.queueState.snapshot$
         // Serialised: two overlapping reconciles of the same envelope would race on `rev`.
@@ -47,6 +60,23 @@ export class PlaylistReconcilerService implements OnModuleInit, OnModuleDestroy 
 
   onModuleDestroy(): void {
     this.subscriptions.unsubscribe();
+  }
+
+  /** Recovers the live set from Redis, which survived whatever took this process down. */
+  private async loadBindings(): Promise<void> {
+    try {
+      const keys = await this.redis.scanKeys(`${PLAYLIST_BINDING_PREFIX}*`);
+
+      for (const key of keys) {
+        this.liveChats.add(key.slice(PLAYLIST_BINDING_PREFIX.length));
+      }
+
+      if (keys.length > 0) {
+        this.logger.log(`Recovered ${keys.length} playlist binding(s) from Redis`);
+      }
+    } catch (error: unknown) {
+      this.logger.warn(`Could not recover playlist bindings: ${getErrorMessage(error)}`);
+    }
   }
 
   /**
@@ -68,6 +98,22 @@ export class PlaylistReconcilerService implements OnModuleInit, OnModuleDestroy 
     });
   }
 
+  /**
+   * One chat, on demand, against a snapshot the caller just forced.
+   *
+   * `chat:refresh` needs the reconciled envelope in its hand to answer with, and it cannot wait for
+   * the next tick to produce one — a client asking to be refreshed is usually asking precisely
+   * because nothing has changed server-side and so nothing is about to be published.
+   */
+  async refreshChat(chatId: string, snapshot: QueueSnapshot): Promise<ChatEnvelope | null> {
+    try {
+      return await this.reconcileChat(chatId, snapshot);
+    } catch (error: unknown) {
+      this.logger.warn(`Could not refresh the playlist for chat ${chatId}: ${getErrorMessage(error)}`);
+      return null;
+    }
+  }
+
   private async reconcile(snapshot: QueueSnapshot): Promise<void> {
     for (const chatId of [...this.liveChats]) {
       try {
@@ -78,12 +124,12 @@ export class PlaylistReconcilerService implements OnModuleInit, OnModuleDestroy 
     }
   }
 
-  private async reconcileChat(chatId: string, snapshot: QueueSnapshot): Promise<void> {
+  private async reconcileChat(chatId: string, snapshot: QueueSnapshot): Promise<ChatEnvelope | null> {
     const binding = await this.redis.get(playlistBindingKey(chatId), PlaylistBindingSchema);
 
     if (!binding) {
       this.liveChats.delete(chatId);
-      return;
+      return null;
     }
 
     const updated = await this.chatStream.update(binding.messageId, (envelope) => {
@@ -100,6 +146,8 @@ export class PlaylistReconcilerService implements OnModuleInit, OnModuleDestroy 
       this.liveChats.delete(chatId);
       await this.redis.delete(playlistBindingKey(chatId));
     }
+
+    return updated;
   }
 
   /**

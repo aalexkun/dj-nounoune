@@ -19,6 +19,10 @@ import { ChatStreamService } from '../services/chat/chat-stream.service';
 import { ChatActionService } from '../services/chat/chat-action.service';
 import { FeedbackService } from '../services/feedback/feedback.service';
 import { MpcStateService } from '../services/queue-state/mpc-state.service';
+import { QueueMirrorService } from '../services/queue-state/queue-mirror.service';
+import { PlaylistReconcilerService } from '../services/queue-state/playlist-reconciler.service';
+import { QueueStateService } from '../services/queue-state/queue-state.service';
+import { PlaylogService } from '../services/playlog/playlog.service';
 import { sessionContext } from '../services/chat/chat-context';
 import {
   ChatActionMessage,
@@ -26,9 +30,12 @@ import {
   ChatBatchMessage,
   ChatEditMessage,
   ChatEditSchema,
+  ChatEnvelope,
   ChatEventMessage,
   ChatFeedbackMessage,
   ChatFeedbackSchema,
+  ChatRefreshMessage,
+  ChatRefreshSchema,
   ChatResyncMessage,
   ChatResyncSchema,
   ChatSendMessage,
@@ -68,9 +75,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     private readonly chatActions: ChatActionService,
     private readonly feedbackService: FeedbackService,
     private readonly mpcState: MpcStateService,
+    private readonly queueMirror: QueueMirrorService,
+    private readonly playlistReconciler: PlaylistReconcilerService,
+    private readonly queueState: QueueStateService,
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
+    private readonly playlog: PlaylogService,
   ) {}
+
+  /**
+   * Connected sockets, counted for one reason: the disc jockey's commentary.
+   *
+   * `PlaylogService` will not spend a model call on a track nobody can see, and until this existed
+   * its only notion of "somebody" was the /vibing-on page. A phone sitting on the Playing tab is
+   * somebody. Socket ids rather than session ids, because two devices on one session are two
+   * screens — and because this has to be decremented on a disconnect whose session survives it.
+   */
+  private readonly viewers = new Set<string>();
 
   onModuleInit(): void {
     this.outbound = this.chatStream.outbound$.subscribe(({ sessionId, envelope }) => {
@@ -133,9 +154,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         { role: 'system', level: 'debug' },
       );
 
-      // The bar is ephemeral, so there is nothing to replay — it is rebuilt from the queue
-      // projection, which is also why a reconnect never shows a stale transport state.
+      // Both are ephemeral, so there is nothing to replay — they are rebuilt from the queue
+      // projection, which is why a reconnect never shows a stale transport or a stale queue. The
+      // queue is here rather than in the timeline because MPD's queue is one global list owned by
+      // the daemon, not by whichever conversation happened to fill it.
       await this.mpcState.openFor(session.id);
+      await this.queueMirror.openFor(session.id);
+
+      this.viewers.add(client.id);
+      this.playlog.setViewerCount(this.viewers.size, 'chat');
+
+      // The track may have started while nothing was watching, in which case it carries no
+      // commentary yet. Not awaited and harmless to repeat: it returns early once one is there.
+      this.playlog.enrichCurrentIfNeeded().catch((error: unknown) => {
+        this.logger.warn(`Could not enrich for a joining client: ${getErrorMessage(error)}`);
+      });
     } catch (error) {
       this.logger.error(`Error handling connection: ${getErrorMessage(error)}`);
       client.disconnect();
@@ -145,12 +178,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   async handleDisconnect(client: Socket) {
     const sessionId = this.sessionService.getSession(client.id)?.id;
 
+    this.viewers.delete(client.id);
+    this.playlog.setViewerCount(this.viewers.size, 'chat');
+
     // Closes the gate; nothing is buffered in memory while the client is away, because the durable
     // log already holds everything worth redelivering.
     if (sessionId) this.chatStream.setConnection(sessionId, 'disconnected');
 
     await this.sessionService.disconnected(client, (ended: string) => {
       this.mpcState.forget(ended);
+      this.queueMirror.forget(ended);
       this.chatStream.endSession(ended);
     });
     this.logger.log(`Client disconnected: ${client.id}`);
@@ -242,9 +279,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     if (ChatGateway.isAck(accepted)) return accepted;
 
     try {
-      const envelopes = await this.chatStream.backlog(accepted.data.chatId, accepted.data.sinceSeq);
+      const { chatId, sinceSeq, sinceUpdatedAt } = accepted.data;
+      const envelopes = await this.chatStream.backlog(chatId, { sinceSeq, sinceUpdatedAt });
       client.emit(ChatBatchMessage, envelopes);
-      this.logger.debug(`Resynced ${envelopes.length} envelope(s) to ${client.id} from seq ${accepted.data.sinceSeq}`);
+      this.logger.debug(`Resynced ${envelopes.length} envelope(s) to ${client.id} from seq ${sinceSeq} / rev time ${sinceUpdatedAt}`);
       return OK;
     } catch (error: unknown) {
       return { ok: false, error: getErrorMessage(error) };
@@ -269,6 +307,48 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     );
 
     return { ok: false, error: outcome.code };
+  }
+
+  /**
+   * Re-reads MPD and answers with the live state, rather than with history.
+   *
+   * The client cannot wait for this to arrive on its own. Both mirrors are change-driven, and a
+   * client that has fallen behind is usually looking at a queue that has not moved — so there is
+   * nothing pending to publish and no amount of patience produces one.
+   *
+   * The envelopes also reach the room through the normal publish path, which makes this a
+   * deliberate duplicate: the batch is the guarantee, the broadcast is the coincidence. Redelivery
+   * costs one `rev` comparison on the device, which is the whole reason the protocol was built to
+   * upsert on id in the first place.
+   */
+  @SubscribeMessage(ChatRefreshMessage)
+  async handleRefresh(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
+    const accepted = this.accept(ChatRefreshSchema, payload, client, ChatRefreshMessage);
+    if (ChatGateway.isAck(accepted)) return accepted;
+
+    const { sessionId, data } = accepted;
+
+    try {
+      // Now, not at the next tick. Answering a refresh out of a two-second-old projection would
+      // reproduce in miniature exactly the staleness the client is asking to escape.
+      const snapshot = await this.queueState.refresh();
+
+      const envelopes = (
+        await Promise.all([
+          this.mpcState.openFor(sessionId),
+          this.queueMirror.openFor(sessionId),
+          // The conversation's own playlist message is a separate thing from the live queue: a
+          // record of what was asked for, which the watcher keeps honest only while it stays bound.
+          data.chatId && snapshot ? this.playlistReconciler.refreshChat(data.chatId, snapshot) : Promise.resolve(null),
+        ])
+      ).filter((envelope): envelope is ChatEnvelope => envelope !== null);
+
+      client.emit(ChatBatchMessage, envelopes);
+      this.logger.debug(`Refreshed ${envelopes.length} envelope(s) to ${client.id}`);
+      return OK;
+    } catch (error: unknown) {
+      return { ok: false, error: getErrorMessage(error) };
+    }
   }
 
   @SubscribeMessage(ChatSetVerbosityMessage)

@@ -41,7 +41,9 @@ export class QueueStateService implements OnModuleDestroy {
   readonly snapshot$: Observable<QueueSnapshot> = this.snapshots.asObservable();
 
   private latest: QueueSnapshot | null = null;
-  private polling = false;
+
+  /** The read currently in flight, so the timer can skip it and a refresh can await it. */
+  private inFlight: Promise<void> | null = null;
 
   constructor(
     private readonly mpd: MpdClientService,
@@ -64,16 +66,39 @@ export class QueueStateService implements OnModuleDestroy {
   @Interval(POLL_MS)
   async poll(): Promise<void> {
     // The interval fires on a timer, not on completion. A slow `playlistinfo` must not stack.
-    if (this.polling) return;
-    this.polling = true;
+    if (this.inFlight) return;
+    await this.run();
+  }
 
-    try {
-      await this.tick();
-    } catch (error: unknown) {
-      this.logger.warn(`Queue poll failed: ${getErrorMessage(error)}`);
-    } finally {
-      this.polling = false;
-    }
+  /**
+   * Reads MPD **now** rather than at the next tick, and hands back what it found.
+   *
+   * This is what `chat:refresh` is built on, and why the frame is worth having at all: a client
+   * that has just reconnected is asking about a daemon it cannot see, and answering it out of a
+   * projection up to two seconds old would reproduce, in miniature, the staleness it is trying to
+   * escape. Two seconds is a long time here — negentropy swaps entries every twenty, and any other
+   * client on the LAN can reorder the queue at will.
+   *
+   * A read already in flight is joined rather than duplicated, so a room full of phones refreshing
+   * at once still costs one round trip to the daemon.
+   */
+  async refresh(): Promise<QueueSnapshot | null> {
+    await (this.inFlight ?? this.run());
+    return this.latest;
+  }
+
+  /** One read, owning `inFlight` for its whole life. Never rejects: a failed poll is a warning. */
+  private run(): Promise<void> {
+    const running = this.tick()
+      .catch((error: unknown) => {
+        this.logger.warn(`Queue poll failed: ${getErrorMessage(error)}`);
+      })
+      .finally(() => {
+        this.inFlight = null;
+      });
+
+    this.inFlight = running;
+    return running;
   }
 
   private async tick(): Promise<void> {

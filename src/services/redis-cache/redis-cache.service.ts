@@ -338,6 +338,41 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Every key matching a glob pattern, with the prefix stripped back off.
+   *
+   * The read counterpart of {@link RedisCacheService.deleteByPattern}, and SCAN for the same
+   * reason: a KEYS over a live keyspace blocks the server. It exists because some of what lives in
+   * Redis is state rather than cache — the chat-to-playlist bindings — and state has to be
+   * discoverable at boot by a process that has forgotten it, not only addressable by a caller that
+   * already knows the key.
+   *
+   * @param pattern - Glob applied after the prefix, e.g. `chat:playlist:*`
+   * @returns Unprefixed keys, ready to hand straight back to {@link RedisCacheService.get}
+   */
+  public async scanKeys(pattern: string): Promise<string[]> {
+    const client = await this.connect();
+    if (!client) return [];
+
+    const prefix = `${this.keyPrefix}:`;
+    const found: string[] = [];
+
+    try {
+      for await (const keys of client.scanIterator({
+        MATCH: this.namespaced(pattern),
+        COUNT: SCAN_BATCH_SIZE,
+      })) {
+        for (const key of keys) {
+          found.push(key.startsWith(prefix) ? key.slice(prefix.length) : key);
+        }
+      }
+    } catch (error: unknown) {
+      this.logger.warn(`Failed to scan cache keys matching "${pattern}": ${getErrorMessage(error)}`);
+    }
+
+    return found;
+  }
+
+  /**
    * @param key - Unprefixed cache key
    * @returns `true` when the key exists and has not expired
    */
