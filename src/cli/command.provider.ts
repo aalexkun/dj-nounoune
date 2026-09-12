@@ -68,6 +68,13 @@ import { AuthRevokeSubCommand } from './auth/revoke.subcommand';
 import { AuthClaimSubCommand } from './auth/claim.subcommand';
 import { AuthSessionSubCommand } from './auth/session.subcommand';
 import { AuthImportSessionsSubCommand } from './auth/import-sessions.subcommand';
+import { DomoticCommand } from './domotic/domotic.command';
+import { DomoticLightsSubCommand } from './domotic/lights.subcommand';
+import { DomoticEffectSubCommand } from './domotic/effect.subcommand';
+import { DomoticRoomsSubCommand } from './domotic/rooms.subcommand';
+import { DomoticAskSubCommand } from './domotic/ask.subcommand';
+import { DomoticScenesSubCommand } from './domotic/scenes.subcommand';
+import { DomoticMemorySubCommand } from './domotic/memory.subcommand';
 
 export const CommandProviders = [
   AuthCommand,
@@ -151,4 +158,12 @@ export const CommandProviders = [
 
   NegentropyCommand,
   NegentropyRunSubCommand,
+
+  DomoticCommand,
+  DomoticLightsSubCommand,
+  DomoticEffectSubCommand,
+  DomoticRoomsSubCommand,
+  DomoticAskSubCommand,
+  DomoticScenesSubCommand,
+  DomoticMemorySubCommand,
 ];

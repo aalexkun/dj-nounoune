@@ -62,6 +62,7 @@ import { Playlog, PlaylogSchema } from './schemas/playlog.schema';
 import { NegentropyJob, NegentropyJobSchema } from './schemas/negentropy-job.schema';
 import { NegentropyService } from './services/negentropy/negentropy.service';
 import { WeatherModule } from './services/weather/weather.module';
+import { DomoticModule } from './services/domotic/domotic.module';
 import { EnrichService } from './services/enrich/enrich.service';
 import { DeduplicationService } from './services/deduplication/deduplication.service';
 import { EnrichScheduler } from './schedulers/enrich.scheduler';
@@ -105,6 +106,7 @@ const imports: NonNullable<ModuleMetadata['imports']> = [
   OpensearchModule,
   RedisCacheModule,
   WeatherModule,
+  DomoticModule,
 ];
 
 const providers: Provider[] = [

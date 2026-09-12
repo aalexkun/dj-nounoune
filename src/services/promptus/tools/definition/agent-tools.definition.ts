@@ -101,4 +101,21 @@ export class AgentToolsDefinition {
       required: ['natural_language_request'],
     },
   } as const;
+
+  public static readonly lightingDesigner: ToolDeclaration = {
+    name: 'lighting_designer',
+    description:
+      'Hand any request about the lights to the lighting designer agent: mood or ambiance ("make it cosy", "movie night", "something festive"), a room ("dim the bedroom", "living room lights off"), an activity ("I want to read"), a correction to what the lights are doing now ("too bright", "warmer", "not that lamp"), or saving and recalling a named scene. The designer knows which lamps stand where, what they can do, and what this household has asked for before; it changes the lights itself and answers with what it did. Relay its answer to the user. Nothing about the lights is answered without it.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        natural_language_request: {
+          type: Type.STRING,
+          description:
+            "The user's request in full, with anything from earlier in the conversation it depends on: the room if one was named or implied, the activity, the mood, and — for a correction — what they are reacting to. The designer keeps no conversation history, so 'a bit less' has to be spelled out as what should be less.",
+        },
+      },
+      required: ['natural_language_request'],
+    },
+  } as const;
 }

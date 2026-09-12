@@ -504,6 +504,7 @@ needs: the first proves the app, the second names who the token is for.
 |---|---|
 | "Access blocked: Domotic Giraffe has not completed the Google verification process", `access_denied` | The account is not in the Test users list while the app is in Testing |
 | Credential Manager throws `NoCredentialException` ("no credentials available") with an account signed in on the phone | Package name or SHA-1 match no Android client in the project, or the client was created minutes ago and has not propagated yet (allow up to an hour) |
+| "[28444] Developer console is not set up correctly", and the Play services logcat shows `FetchGoogleIdTokenCredentialOperation` succeeding then `CompleteSignInOperation` failing | The id in `GOOGLE_WEB_CLIENT_ID` is a **Desktop app** ("installed") or Android client, not a Web application client. The package, SHA-1, project and test user are usually fine. Create a Web application client and put its id on both sides; the downloaded JSON of a Desktop client says `"installed"` at the top, a Web one says `"web"` |
 | Server answers `401` with an audience error | The app's `GOOGLE_WEB_CLIENT_ID` and the server's `GOOGLE_SIGNIN_CLIENT_ID` differ, or one of them is the Android client's id rather than the Web client's |
 | Server answers `403` | Signed in fine, but the email is not in `AUTH_ALLOWED_EMAILS`, or the user is blocked |
 

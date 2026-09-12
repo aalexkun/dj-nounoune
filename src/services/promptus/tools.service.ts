@@ -44,12 +44,22 @@ import { ImportYoutubeHandler } from './tools/handler/youtube/import-youtube.han
 import { ChatContext } from '../chat/chat-context';
 import { ChatStreamService } from '../chat/chat-stream.service';
 import { PlaylistReconcilerService } from '../queue-state/playlist-reconciler.service';
+import { DomoticService } from '../domotic/domotic.service';
+import { LightingSceneService } from '../domotic/lighting-scene.service';
+import { LightingMemoryService } from '../domotic/lighting-memory.service';
+import { LightingAgent } from './agent/lighting/lighting.agent';
+import { LightingDesignerHandler } from './tools/handler/agent/lighting-designer.handler';
+import { ApplyLightingHandler } from './tools/handler/hue/apply-lighting.handler';
+import { ReadLightsHandler } from './tools/handler/hue/read-lights.handler';
+import { SaveSceneHandler } from './tools/handler/hue/save-scene.handler';
+import { ApplySceneHandler } from './tools/handler/hue/apply-scene.handler';
 
 @Injectable()
 export class ToolsService {
   private readonly logger = new Logger('ToolsService');
   private toolRegistry = new Map<string, ToolHandler>();
   private discJockeyAgent: DiscJockeyAgent | undefined;
+  private lightingAgent: LightingAgent | undefined;
 
   /** Registered by `PlaylogService` on module init. See {@link NowPlayingSource}. */
   private nowPlayingSource: NowPlayingSource | undefined;
@@ -66,6 +76,9 @@ export class ToolsService {
     private spotifyService: SpotifyService,
     private youtubeService: YoutubeService,
     private playlistReconciler: PlaylistReconcilerService,
+    private domoticService: DomoticService,
+    private lightingSceneService: LightingSceneService,
+    private lightingMemoryService: LightingMemoryService,
   ) {
     // Generic and global accessible Tool and function
     this.registerTool(new PlayMusicHandler(this.mpdClientService, this.configService, this.redisCacheService, this.playlistReconciler));
@@ -96,6 +109,13 @@ export class ToolsService {
     this.registerTool(new PlayYoutubeHandler(this.youtubeService, this.mpdClientService, this.configService));
     // The one YouTube tool that writes: "keep this" over a YouTube stream, imported as its album.
     this.registerTool(new ImportYoutubeHandler(this.youtubeService));
+
+    // The lighting designer's hands. Declared only on `DesignLightingRequest`, never on the chat:
+    // the chat reaches the lights through the designer, which is what knows the rooms.
+    this.registerTool(new ApplyLightingHandler(this.domoticService));
+    this.registerTool(new ReadLightsHandler(this.domoticService));
+    this.registerTool(new SaveSceneHandler(this.domoticService, this.lightingSceneService));
+    this.registerTool(new ApplySceneHandler(this.domoticService, this.lightingSceneService));
   }
 
   /**
@@ -127,6 +147,23 @@ export class ToolsService {
 
     const queryDatabaseAgent = new QueryDatabaseAgent(apiKey, this, eventEmitter, this.musicDbService, chatStream);
     this.registerTool(new QueryDatabaseHandler(queryDatabaseAgent));
+
+    const lightingAgent = new LightingAgent(
+      apiKey,
+      this,
+      eventEmitter,
+      this.domoticService,
+      this.lightingSceneService,
+      this.lightingMemoryService,
+      chatStream,
+    );
+    this.lightingAgent = lightingAgent;
+    this.registerTool(new LightingDesignerHandler(lightingAgent));
+  }
+
+  /** The lighting designer built in `initialiseAgent`, for `domotic ask` and any other direct caller. */
+  public getLightingAgent(): LightingAgent | undefined {
+    return this.lightingAgent;
   }
 
   /**

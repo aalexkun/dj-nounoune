@@ -35,6 +35,7 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     YoutubeToolsDefinition.searchMusicCommand,
     YoutubeToolsDefinition.playCommand,
     YoutubeToolsDefinition.importCommand,
+    AgentToolsDefinition.lightingDesigner,
   ];
   public config: Partial<GenerateContentConfig>;
   public structuredResponse?: StructuredResponse | undefined;

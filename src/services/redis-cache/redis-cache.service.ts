@@ -36,6 +36,13 @@ const FALLBACK_CONNECT_TIMEOUT_MS = 2000;
  */
 const RECONNECT_COOLDOWN_MS = 30_000;
 
+/** How long a graceful `close()` gets on shutdown before the socket is simply dropped. */
+const CLOSE_GRACE_MS = 2000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Thin wrapper around a Redis server used as a key/value cache.
  *
@@ -406,12 +413,25 @@ export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   public async onModuleDestroy(): Promise<void> {
+    // An init hook may have started a connect that is still in flight — `PlaylistReconcilerService`
+    // scans for bindings on module init, and a CLI command that finishes in the same tick reaches
+    // this before that scan has a socket. Closing a client mid-connect leaves a half-open socket that
+    // keeps the process alive after the command is done, which is how `mpd test` used to hang.
+    if (this.connecting) await this.connecting;
     if (!this.client?.isOpen) return;
 
     try {
-      await this.client.close();
+      // Graceful first, so a write in flight on the server side lands; but bounded, because `close`
+      // waits for every pending reply and a command cut off by shutdown has none coming.
+      const closed = await Promise.race([this.client.close().then(() => true), delay(CLOSE_GRACE_MS).then(() => false)]);
+
+      if (!closed) {
+        this.logger.debug(`Redis did not close within ${CLOSE_GRACE_MS} ms; dropping the socket`);
+        this.discard();
+      }
     } catch (error: unknown) {
       this.logger.warn(`Failed to close Redis connection: ${getErrorMessage(error)}`);
+      this.discard();
     }
   }
 
