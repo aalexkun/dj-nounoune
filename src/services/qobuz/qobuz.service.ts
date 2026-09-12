@@ -2,8 +2,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PopulatedSong } from '../music-db/music-db.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   QobuzErrorResponseSchema,
   QobuzUserFavoritesResponse,
@@ -30,14 +28,27 @@ import {
 } from './qobuz.interfaces';
 import { z } from 'zod';
 import { QobuzAuthUtil } from './qobuz-auth.util';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
-/** What `.qobuz-session.json` holds; anything else in the file is ignored. */
-const QobuzSessionSchema = z.object({
+/**
+ * What the stored Qobuz session holds; anything else in it is ignored.
+ *
+ * Exported because `auth import-sessions` validates the legacy `.qobuz-session.json` against it
+ * before handing the contents to the credential store.
+ */
+export const QobuzSessionSchema = z.object({
   userId: z.string().optional(),
   userAuthToken: z.string().optional(),
 });
 
-type QobuzSession = z.infer<typeof QobuzSessionSchema>;
+export type QobuzSession = z.infer<typeof QobuzSessionSchema>;
+
+/**
+ * A Qobuz refusal that a fresh user token could fix, as opposed to a bad request or a missing
+ * album. Its own class rather than a string match on the message, so the retry in
+ * {@link QobuzService.withTokenReload} cannot fire on an unrelated error that happens to mention 401.
+ */
+class QobuzAuthError extends Error {}
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Artist, ArtistDocument } from '../../schemas/artist.schema';
@@ -90,6 +101,7 @@ export class QobuzService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly opensearchService: OpensearchService,
+    private readonly credentialStore: CredentialStoreService,
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
@@ -106,7 +118,7 @@ export class QobuzService implements OnModuleInit {
     this.appId = appId || '';
     this.appSecret = appSecret || '';
 
-    this.auth = new QobuzAuthUtil(this.configService);
+    this.auth = new QobuzAuthUtil(this.configService, this.credentialStore);
   }
 
   /**
@@ -152,33 +164,90 @@ export class QobuzService implements OnModuleInit {
   }
 
   /**
+   * Raises whatever the API reported, as a {@link QobuzAuthError} when a fresh user token could fix it.
+   *
+   * Qobuz answers a dead token with its own `status: error` envelope carrying code 401 rather than
+   * relying on the HTTP status, so both are checked.
+   */
+  private raiseForError(jsonData: unknown, httpStatus: number): void {
+    const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
+
+    if (!errorResult.success || errorResult.data.status !== 'error') {
+      return;
+    }
+
+    const message = `Qobuz API Error: ${errorResult.data.message} (code: ${errorResult.data.code})`;
+
+    throw errorResult.data.code === '401' || httpStatus === 401 ? new QobuzAuthError(message) : new Error(message);
+  }
+
+  /**
+   * Runs a call, and on a refused token reloads the session from the credential store and runs it
+   * once more.
+   *
+   * This is the whole of the "a running server does not notice a CLI re-auth" fix for Qobuz, and it
+   * is worth exactly these few lines because every Qobuz call funnels through {@link qobuzGet} and
+   * {@link qobuzPost}. One retry, never a loop: if the stored token is refused too, the answer is a
+   * re-auth, not another round trip.
+   */
+  private async withTokenReload<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (!(error instanceof QobuzAuthError) || !(await this.reloadSession())) {
+        throw error;
+      }
+    }
+
+    return run();
+  }
+
+  /**
+   * Re-reads the session from the credential store, for when somebody re-authenticated from the CLI
+   * while this process was running.
+   *
+   * @returns Whether the store held a token this instance was not already using
+   */
+  private async reloadSession(): Promise<boolean> {
+    const session = await this.credentialStore.load('qobuz', QobuzSessionSchema);
+
+    if (!session?.userAuthToken || session.userAuthToken === this.userAuthToken) {
+      return false;
+    }
+
+    this.userAuthToken = session.userAuthToken;
+    this.logger.log('Picked up a newer Qobuz session from the credential store.');
+
+    return true;
+  }
+
+  /**
    * Send a GET request to the Qobuz API with signature authentication.
    */
   private async qobuzGet<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>): Promise<T> {
-    if (!this.userAuthToken) {
-      throw new Error('User authentication token is missing. Please authenticate first.');
-    }
+    return this.withTokenReload(async () => {
+      if (!this.userAuthToken) {
+        throw new QobuzAuthError('User authentication token is missing. Please authenticate first.');
+      }
 
-    const requestParams = {
-      ...params,
-    };
+      const requestParams = {
+        ...params,
+      };
 
-    const headers: Record<string, string> = {};
-    headers['X-User-Auth-Token'] = this.userAuthToken;
-    headers['X-App-Id'] = this.appId;
+      const headers: Record<string, string> = {};
+      headers['X-User-Auth-Token'] = this.userAuthToken;
+      headers['X-App-Id'] = this.appId;
 
-    const queryString = this.toQueryString(requestParams);
-    const url = `${this.API_BASE_URL}${endpoint}?${queryString}`;
+      const queryString = this.toQueryString(requestParams);
+      const url = `${this.API_BASE_URL}${endpoint}?${queryString}`;
 
-    const response = await fetch(url, { headers });
-    const jsonData = (await response.json()) as unknown;
+      const response = await fetch(url, { headers });
+      const jsonData = (await response.json()) as unknown;
 
-    const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
-    if (errorResult.success && errorResult.data.status === 'error') {
-      throw new Error(`Qobuz API Error: ${errorResult.data.message} (code: ${errorResult.data.code})`);
-    }
+      this.raiseForError(jsonData, response.status);
 
-    return schema.parse(jsonData);
+      return schema.parse(jsonData);
+    });
   }
 
   /**
@@ -188,65 +257,54 @@ export class QobuzService implements OnModuleInit {
    * body rather than a query string, which is the only reason this exists beside {@link qobuzGet}.
    */
   private async qobuzPost<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>): Promise<T> {
-    if (!this.userAuthToken) {
-      throw new Error('User authentication token is missing. Please authenticate first.');
-    }
-
-    const headers: Record<string, string> = {
-      'X-User-Auth-Token': this.userAuthToken,
-      'X-App-Id': this.appId,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-
-    const response = await fetch(`${this.API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: this.toQueryString(params),
-    });
-
-    const jsonData = (await response.json()) as unknown;
-
-    const errorResult = QobuzErrorResponseSchema.safeParse(jsonData);
-    if (errorResult.success && errorResult.data.status === 'error') {
-      throw new Error(`Qobuz API Error: ${errorResult.data.message} (code: ${errorResult.data.code})`);
-    }
-
-    return schema.parse(jsonData);
-  }
-
-  private getSessionFilePath(): string {
-    return path.join(process.cwd(), '.qobuz-session.json');
-  }
-
-  private loadSession(): QobuzSession {
-    try {
-      const sessionPath = this.getSessionFilePath();
-      if (fs.existsSync(sessionPath)) {
-        const data = fs.readFileSync(sessionPath, 'utf8');
-        return QobuzSessionSchema.parse(JSON.parse(data));
+    return this.withTokenReload(async () => {
+      if (!this.userAuthToken) {
+        throw new QobuzAuthError('User authentication token is missing. Please authenticate first.');
       }
-    } catch (error) {
-      this.logger.error(`Error loading Qobuz session: ${getErrorMessage(error)}`);
-    }
-    return {};
+
+      const headers: Record<string, string> = {
+        'X-User-Auth-Token': this.userAuthToken,
+        'X-App-Id': this.appId,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+
+      const response = await fetch(`${this.API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: this.toQueryString(params),
+      });
+
+      const jsonData = (await response.json()) as unknown;
+
+      this.raiseForError(jsonData, response.status);
+
+      return schema.parse(jsonData);
+    });
+  }
+
+  private async loadSession(): Promise<QobuzSession> {
+    return (await this.credentialStore.load('qobuz', QobuzSessionSchema)) ?? {};
   }
 
   /**
-   * Authenticate with the Qobuz API using the username and md5 password
+   * Resolves the Qobuz user token, reading it out of the credential store the first time.
+   *
+   * Qobuz issues no refresh token and the user token does not expire on a clock, so there is
+   * nothing to renew here — this is a load, cached for the life of the process.
    */
-  public login(): Promise<string> {
+  public async login(): Promise<string> {
     if (this.userAuthToken) {
-      return Promise.resolve(this.userAuthToken);
+      return this.userAuthToken;
     }
 
-    const session = this.loadSession();
+    const session = await this.loadSession();
     this.userAuthToken = session.userAuthToken;
+
     if (!this.userAuthToken) {
-      return Promise.reject(
-        new Error('Qobuz session data (.qobuz-session.json) is missing. Please authenticate first by running the auth CLI command.'),
-      );
+      throw new Error('No Qobuz session stored; run `npm run cli -- qobuz auth`.');
     }
-    return Promise.resolve(this.userAuthToken);
+
+    return this.userAuthToken;
   }
 
   /**

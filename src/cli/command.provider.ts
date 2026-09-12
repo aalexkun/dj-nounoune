@@ -60,8 +60,25 @@ import { NegentropyRunSubCommand } from './negentropy/run.subcommand';
 import { ChatCommand } from './chat/chat.command';
 import { ChatFixturesSubCommand } from './chat/fixtures.subcommand';
 import { ChatPruneSubCommand } from './chat/prune.subcommand';
+import { AuthCommand } from './auth/auth.command';
+import { AuthUsersSubCommand } from './auth/users.subcommand';
+import { AuthBlockSubCommand } from './auth/block.subcommand';
+import { AuthUnblockSubCommand } from './auth/unblock.subcommand';
+import { AuthRevokeSubCommand } from './auth/revoke.subcommand';
+import { AuthClaimSubCommand } from './auth/claim.subcommand';
+import { AuthSessionSubCommand } from './auth/session.subcommand';
+import { AuthImportSessionsSubCommand } from './auth/import-sessions.subcommand';
 
 export const CommandProviders = [
+  AuthCommand,
+  AuthUsersSubCommand,
+  AuthBlockSubCommand,
+  AuthUnblockSubCommand,
+  AuthRevokeSubCommand,
+  AuthClaimSubCommand,
+  AuthSessionSubCommand,
+  AuthImportSessionsSubCommand,
+
   ChatCommand,
   ChatFixturesSubCommand,
   ChatPruneSubCommand,

@@ -17,6 +17,20 @@ export class AppService {
     return this.configService.get<string | undefined>('AUTHX_API_KEY');
   }
 
+  /**
+   * Whether the legacy `x-api-key` path may be used at all, on top of the key being set.
+   *
+   * Off unless explicitly `true` — the opposite default from the other feature switches, on
+   * purpose: this one admits a credential that believes whatever user id the caller asserts, so
+   * "not configured" has to read as "refused". An environment that predates the flag loses the
+   * legacy path until it says `true`, which is the breaking change it is meant to be. Deleting the
+   * line is the cutover; the key stays in `.env` for a rollback.
+   */
+  isAuthXApiKeyEnabled(): boolean {
+    const raw = this.configService.get<string>('AUTHX_API_KEY_ENABLED')?.trim().toLowerCase();
+    return raw === 'true' || raw === '1';
+  }
+
   getImportLibraryRootPath(): string {
     return this.configService.get<string>('IMPORT_LIBRARY_PATH_ROOT') || 'Linux';
   }

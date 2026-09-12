@@ -1,15 +1,22 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import SpotifyWebApi from 'spotify-web-api-node';
-import * as fs from 'fs';
-import * as path from 'path';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
+/**
+ * The Spotify authorization-code flow: print an authorize url, the user pastes back the code from
+ * the redirect, the code is exchanged for tokens and the session goes into the credential store.
+ *
+ * A plain class rather than a provider — `SpotifyService` constructs it in `onModuleInit`, once the
+ * `SpotifyWebApi` client exists — so everything it needs arrives through the constructor.
+ */
 export class SpotifyAuthUtil {
   private readonly logger = new Logger(SpotifyAuthUtil.name);
 
   constructor(
     private readonly spotifyApi: SpotifyWebApi,
     private readonly configService: ConfigService,
+    private readonly credentialStore: CredentialStoreService,
   ) {}
 
   public getAuthorizeUrl(scopes: string[], state: string = 'state'): string {
@@ -33,10 +40,12 @@ export class SpotifyAuthUtil {
       const { access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn } = data.body;
 
       const expirationTime = Date.now() + expiresIn * 1000;
-      const sessionPath = path.join(process.cwd(), '.spotify-session.json');
-      fs.writeFileSync(sessionPath, JSON.stringify({ accessToken, refreshToken, expirationTime }, null, 2), 'utf8');
 
-      this.logger.log(`\nSuccess! Authenticated with Spotify. Session saved to .spotify-session.json`);
+      // Thrown past rather than caught: a refresh token that took a browser round trip to obtain is
+      // not something to lose to a warning line the operator will scroll past.
+      await this.credentialStore.save('spotify', { accessToken, refreshToken, expirationTime });
+
+      this.logger.log(`\nSuccess! Authenticated with Spotify. Session stored, encrypted, in provider_credentials.`);
 
       return { accessToken, refreshToken };
     } catch (error) {

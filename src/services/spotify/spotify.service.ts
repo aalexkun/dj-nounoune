@@ -1,9 +1,8 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import SpotifyWebApi from 'spotify-web-api-node';
-import * as fs from 'fs';
-import * as path from 'path';
 import { SpotifyAuthUtil } from './spotify-auth.util';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { z } from 'zod';
@@ -43,12 +42,19 @@ import {
 } from './spotify-track-match.util';
 import { identitySimilarity } from '../../utils/text-match.utils';
 
-/** What `.spotify-session.json` holds; anything else in the file is ignored. */
-const SpotifySessionSchema = z.object({
+/**
+ * What the stored Spotify session holds; anything else in it is ignored.
+ *
+ * Exported because `auth import-sessions` validates the legacy `.spotify-session.json` against it
+ * before handing the contents to the credential store.
+ */
+export const SpotifySessionSchema = z.object({
   accessToken: z.string().optional(),
   refreshToken: z.string().optional(),
   expirationTime: z.number().optional(),
 });
+
+export type SpotifySession = z.infer<typeof SpotifySessionSchema>;
 
 /** Hits scoring below this are not returned by {@link SpotifyService.findTrack}. */
 const MINIMUM_MATCH_SCORE = 0.6;
@@ -116,12 +122,17 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly opensearchService: OpensearchService,
+    private readonly credentialStore: CredentialStoreService,
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
   ) {}
 
-  public onModuleInit(): void {
+  /**
+   * Async because the session comes out of Mongo rather than off disk. Nest awaits the hook, so the
+   * tokens are in place before anything can call a Spotify method.
+   */
+  public async onModuleInit(): Promise<void> {
     const clientId = this.configService.get<string>('SPOTIFY_CLIENT_ID');
     const clientSecret = this.configService.get<string>('SPOTIFY_CLIENT_SECRET');
     const redirectUri = this.configService.get<string>('SPOTIFY_REDIRECT_URL');
@@ -132,31 +143,51 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
       redirectUri,
     });
 
-    const sessionPath = path.join(process.cwd(), '.spotify-session.json');
-    if (fs.existsSync(sessionPath)) {
-      try {
-        const data = fs.readFileSync(sessionPath, 'utf8');
-        const session = SpotifySessionSchema.parse(JSON.parse(data));
-        if (session.accessToken) {
-          this.spotifyApi.setAccessToken(session.accessToken);
-        }
-        if (session.refreshToken) {
-          this.spotifyApi.setRefreshToken(session.refreshToken);
-        }
-        if (session.expirationTime) {
-          this.currentExpirationTime = session.expirationTime;
-        }
+    this.auth = new SpotifyAuthUtil(this.spotifyApi, this.configService, this.credentialStore);
 
-        // Start token refresh interval and check immediately
-        this.startTokenRefreshInterval();
-      } catch (error) {
-        this.logger.error(`Error loading Spotify session: ${getErrorMessage(error)}`);
-      }
-    } else {
-      this.logger.warn('Spotify session data (.spotify-session.json) is missing. Please authenticate first by running the auth CLI command.');
+    const session = await this.credentialStore.load('spotify', SpotifySessionSchema);
+
+    if (!session) {
+      this.logger.warn('No Spotify session stored; run `npm run cli -- spotify auth`.');
+      return;
     }
 
-    this.auth = new SpotifyAuthUtil(this.spotifyApi, this.configService);
+    this.applySession(session);
+
+    // Start token refresh interval and check immediately
+    this.startTokenRefreshInterval();
+  }
+
+  /** Puts a loaded session onto the client. Shared by the boot path and {@link reloadSession}. */
+  private applySession(session: SpotifySession): void {
+    if (session.accessToken) {
+      this.spotifyApi.setAccessToken(session.accessToken);
+    }
+    if (session.refreshToken) {
+      this.spotifyApi.setRefreshToken(session.refreshToken);
+    }
+    if (session.expirationTime) {
+      this.currentExpirationTime = session.expirationTime;
+    }
+  }
+
+  /**
+   * Re-reads the session from the store, for when somebody re-authenticated from the CLI while this
+   * process was running.
+   *
+   * @returns Whether the store held a session with a refresh token this instance did not already have
+   */
+  private async reloadSession(): Promise<boolean> {
+    const session = await this.credentialStore.load('spotify', SpotifySessionSchema);
+
+    if (!session?.refreshToken || session.refreshToken === this.spotifyApi.getRefreshToken()) {
+      return false;
+    }
+
+    this.applySession(session);
+    this.logger.log('Picked up a newer Spotify session from the credential store.');
+
+    return true;
   }
 
   public getClient(): SpotifyWebApi {
@@ -169,30 +200,61 @@ export class SpotifyService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Renews the access token and stores the result.
+   *
+   * A refresh is the one Spotify call where reloading from the credential store earns its keep: it
+   * fails only on a grant that has expired or been revoked, and the usual cause of a revoked grant
+   * is somebody having run `spotify auth` from the CLI while this process kept using the refresh
+   * token that flow replaced. So a failure reloads once and tries again, and gives up after that.
+   * The other few dozen Spotify calls are left alone — they go straight through
+   * `spotify-web-api-node` with no shared error path to hang this on.
+   */
   public async refreshToken(): Promise<void> {
+    if (!this.spotifyApi.getRefreshToken()) return;
+
     try {
-      if (!this.spotifyApi.getRefreshToken()) return;
-      this.logger.log('Refreshing Spotify access token...');
-      const data = await this.spotifyApi.refreshAccessToken();
-      const newAccessToken = data.body.access_token;
-      const newExpiresIn = data.body.expires_in;
-      const newExpirationTime = Date.now() + newExpiresIn * 1000;
+      await this.refreshTokenOnce();
+      return;
+    } catch (error) {
+      if (!(await this.reloadSession())) {
+        this.logger.error(`Failed to refresh Spotify access token: ${describeSpotifyError(error)}`);
+        return;
+      }
+    }
 
-      this.spotifyApi.setAccessToken(newAccessToken);
-      this.currentExpirationTime = newExpirationTime;
+    try {
+      await this.refreshTokenOnce();
+    } catch (error) {
+      this.logger.error(`Failed to refresh Spotify access token: ${describeSpotifyError(error)}`);
+    }
+  }
 
-      const sessionPath = path.join(process.cwd(), '.spotify-session.json');
-      const sessionData = {
+  /** One refresh attempt with whatever refresh token the client currently holds. */
+  private async refreshTokenOnce(): Promise<void> {
+    this.logger.log('Refreshing Spotify access token...');
+
+    const data = await this.spotifyApi.refreshAccessToken();
+    const newAccessToken = data.body.access_token;
+    const newExpirationTime = Date.now() + data.body.expires_in * 1000;
+
+    this.spotifyApi.setAccessToken(newAccessToken);
+    this.currentExpirationTime = newExpirationTime;
+
+    // Persisted only after the in-memory client has the new token, and a storage failure is logged
+    // rather than thrown: the token is good for the hour it was issued for whether or not Mongo
+    // accepted it, and throwing here would make a working refresh look like a failed one.
+    try {
+      await this.credentialStore.save('spotify', {
         accessToken: newAccessToken,
         refreshToken: this.spotifyApi.getRefreshToken(),
         expirationTime: newExpirationTime,
-      };
-      fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf8');
-      this.logger.log('Spotify access token refreshed successfully.');
+      });
     } catch (error) {
-      const errorMessage = describeSpotifyError(error);
-      this.logger.error(`Failed to refresh Spotify access token: ${errorMessage}`);
+      this.logger.warn(`Refreshed the Spotify access token but could not store it: ${getErrorMessage(error)}`);
     }
+
+    this.logger.log('Spotify access token refreshed successfully.');
   }
 
   private startTokenRefreshInterval(): void {

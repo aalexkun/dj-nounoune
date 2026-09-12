@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
 import { SpotifyService } from './spotify.service';
 import { ConfigService } from '@nestjs/config';
 import SpotifyWebApi from 'spotify-web-api-node';
+import { Artist } from '../../schemas/artist.schema';
+import { Album } from '../../schemas/albums.schema';
+import { Song } from '../../schemas/song.schema';
+import { OpensearchService } from '../opensearch/opensearch.service';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
 jest.mock('spotify-web-api-node');
 
@@ -20,22 +26,39 @@ describe('SpotifyService', () => {
               const config: Record<string, string> = {
                 SPOTIFY_CLIENT_ID: 'test-client-id',
                 SPOTIFY_CLIENT_SECRET: 'test-client-secret',
-                SPOTIFY_ACCESS_TOKEN: 'test-access-token',
-                SPOTIFY_REFRESH_TOKEN: 'test-refresh-token',
                 SPOTIFY_REDIRECT_URL: 'http://localhost/callback',
               };
               return config[key];
             }),
           },
         },
+        // The session now comes out of the credential store rather than a dotfile, so this is where
+        // the tokens the assertions below expect are injected.
+        {
+          provide: CredentialStoreService,
+          useValue: {
+            isEnabled: jest.fn(() => true),
+            load: jest.fn(() => Promise.resolve({ accessToken: 'test-access-token', refreshToken: 'test-refresh-token' })),
+            save: jest.fn(() => Promise.resolve()),
+            clear: jest.fn(() => Promise.resolve()),
+          },
+        },
+        { provide: OpensearchService, useValue: {} },
+        { provide: getModelToken(Artist.name), useValue: {} },
+        { provide: getModelToken(Album.name), useValue: {} },
+        { provide: getModelToken(Song.name), useValue: {} },
       ],
     }).compile();
 
     service = module.get<SpotifyService>(SpotifyService);
 
     // Get the instance created in onModuleInit
-    service.onModuleInit();
+    await service.onModuleInit();
     mockSpotifyApi = service['spotifyApi'] as jest.Mocked<SpotifyWebApi>;
+  });
+
+  afterEach(() => {
+    service.onModuleDestroy();
   });
 
   it('should be defined', () => {

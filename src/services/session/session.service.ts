@@ -9,6 +9,9 @@ import { getErrorMessage } from '../../utils/error.utils';
 
 const FIVE_MIN_IN_MS = 5 * 60 * 1000;
 
+/** What a device is called when the client named neither itself nor its user agent. */
+const UNKNOWN_DEVICE = 'Unknown Device';
+
 export type SessionId = string;
 export type SessionStatus = 'active' | 'disconnected' | 'expired';
 export type NounouneSession = {
@@ -16,8 +19,21 @@ export type NounouneSession = {
   status: BehaviorSubject<SessionStatus>;
   socketId: string;
   userId: string;
+  deviceId: string;
   deviceName?: string;
   connectionId: string;
+};
+
+/**
+ * What identifies a phone, and what a human calls it.
+ *
+ * `deviceId` is the key and is minted once by the client; `deviceName` is for the log line and the
+ * connection listing. They are passed together because a session that is created stores both while
+ * only the id ever matches.
+ */
+export type DeviceIdentity = {
+  deviceId: string;
+  deviceName: string;
 };
 
 @Injectable()
@@ -29,6 +45,12 @@ export class SessionService implements OnModuleInit {
   constructor(@InjectModel(Connection.name) private connectionModel: Model<ConnectionDocument>) {}
 
   async onModuleInit() {
+    // The wipe belongs to the server that owns the sockets. A CLI command boots this same module,
+    // and without the gate every `npm run cli` cleared the live server's rows from under it — which
+    // mattered little while a session was keyed on a user agent, and matters now that `deviceId`
+    // is what a reconnecting phone is matched on.
+    if (process.env.IS_CLI === 'true') return;
+
     this.logger.log('Server starting: Clearing stale WebSocket connections...');
 
     try {
@@ -45,13 +67,21 @@ export class SessionService implements OnModuleInit {
     return this.sessions.get(socketId);
   }
 
-  async retrieveUserSession(userId: string, client: Socket) {
-    const deviceName = client.handshake.headers['user-agent'] || client.handshake.headers['User-Agent'] || 'Unknown Device';
+  /**
+   * The session this phone was already using, if it still has one.
+   *
+   * Matched on `deviceId` rather than on the user-agent it used to be matched on: every build of
+   * the Android app reports the same `DomoticGiraffe/1.0 (Android)` string, so two phones on one
+   * account shared a single `Connection` document and the second silently took the first's room
+   * over. The id is minted once per install, so two devices are two sessions however alike their
+   * user agents read.
+   */
+  async retrieveUserSession(userId: string, deviceId: string, client: Socket) {
     const existingSessionDoc = await this.connectionModel
       .findOne({
         userId: userId,
         status: { $ne: 'expired' },
-        deviceName,
+        deviceId,
       })
       .exec();
 
@@ -76,7 +106,10 @@ export class SessionService implements OnModuleInit {
           return this.sessions.get(client.id);
         }
       } else {
-        return await this.createSession(userId, client);
+        // The document outlived the in-memory session — a server restart, most often. The device is
+        // described from the row rather than from the handshake, so the new session inherits the
+        // name the old one was recorded under.
+        return await this.createSession(userId, { deviceId, deviceName: existingSessionDoc.deviceName ?? UNKNOWN_DEVICE }, client);
       }
     }
 
@@ -143,12 +176,19 @@ export class SessionService implements OnModuleInit {
     return activeDevice.valueOf() === 0;
   }
 
-  async createSession(userId: string, client: Socket) {
+  /**
+   * A fresh session for this device.
+   *
+   * Both halves of `device` are stored: the id is what the next connect is matched on, the name is
+   * what a log line and the connection listing read.
+   */
+  async createSession(userId: string, device: DeviceIdentity, client: Socket) {
     const newSession = new this.connectionModel({
       socketId: client.id,
       sessionId: randomUUID(),
       status: 'active',
-      deviceName: client.handshake.headers['user-agent'] || client.handshake.headers['User-Agent'] || 'Unknown Device',
+      deviceId: device.deviceId,
+      deviceName: device.deviceName || UNKNOWN_DEVICE,
       ...(userId ? { userId: userId } : {}),
     });
     const session = await newSession.save();
@@ -159,6 +199,7 @@ export class SessionService implements OnModuleInit {
         socketId: session.socketId,
         userId: session.userId,
         status: new BehaviorSubject<SessionStatus>('active'),
+        deviceId: session.deviceId,
         deviceName: session.deviceName,
         connectionId: session.id.toString(),
       };

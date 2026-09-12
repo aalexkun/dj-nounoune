@@ -251,7 +251,7 @@ export const GoogleTokenResponseSchema = z.object({
 });
 export type GoogleTokenResponse = z.infer<typeof GoogleTokenResponseSchema>;
 
-/** Shape of `.youtube-session.json`, written by the auth flow and read back on boot. */
+/** Shape of the stored YouTube session, written by the auth flow and read back on boot. */
 export const YoutubeSessionSchema = z.object({
   accessToken: z.string().optional(),
   refreshToken: z.string().optional(),

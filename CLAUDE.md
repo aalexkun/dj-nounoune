@@ -107,7 +107,7 @@ are genuinely different.
   lookups are public data reachable with `YOUTUBE_API_KEY` alone. OAuth exists *only* for the
   signed-in account's liked videos and private playlists. The service works with a key alone and
   logs that fact rather than throwing. `youtube auth` is Google's standard authorization-code
-  redirect, `.youtube-session.json` at the repo root, refresh token renewed on a one-minute check.
+  redirect, the session stored encrypted in Mongo through `CredentialStoreService`, refresh token renewed on a one-minute check.
   Google validates the redirect uri far more strictly than Qobuz: a `.lan` host is rejected
   outright, so `YOUTUBE_REDIRECT_URL` defaults to loopback.
 - **A playlist is the album.** A video has a title, a channel and a duration — nothing that maps
@@ -156,9 +156,9 @@ never swapped for its Qobuz equivalent. YouTube *is* the last rung of that pass,
 
 ### Chat request flow
 
-Socket.io client → `ChatGateway` (validates `x-api-key` + `x-user-id`, joins a session room) → `SessionService` (in-memory sessions over the `Connection` collection) → `ChatService` per-session RxJS channels → `PromptusService.generate(ChatPromptusRequest)` → tool loop → results emitted back as `EventEmitter2` events (`chat.message.response`, `chat.status.response`) that the gateway relays. Chat history persists as Gemini `Content` objects directly in the `Chat` document.
+Socket.io client → `ChatGateway` (a `server.use` middleware resolves the handshake `auth: { token, deviceId, deviceName }` bag to a `User` through `AuthSessionService` — or the legacy `x-api-key` + `x-user-id` pair while `AUTHX_API_KEY` is set and `AUTHX_API_KEY_ENABLED=true` — and joins a session room) → `SessionService` (in-memory sessions over the `Connection` collection) → `ChatService` per-session RxJS channels → `PromptusService.generate(ChatPromptusRequest)` → tool loop → results emitted back as `EventEmitter2` events (`chat.message.response`, `chat.status.response`) that the gateway relays. Chat history persists as Gemini `Content` objects directly in the `Chat` document.
 
-REST (`ChatController`, `/chatroom`) is guarded by `ApiAuthGuard` (`AUTHX_API_KEY` via `x-api-key`). No real auth — shared key only. Two of its routes matter to the app and the split between them is deliberate: **`GET /chatroom` carries no transcripts**. It answers with `ChatSummary` rows (id, title, last message, timestamps), scoped to `x-user-id` when the caller sends one and sorted newest-first on `updatedAt`. It used to return the `Chat` documents whole, `history` and all — every Gemini transcript on the server on every app start, which the client decoded with a second mapping of `Content` maintained beside the protocol one, and which threw: `functionResponse.response.output` is a string when a handler returned text and an object when it returned anything else. The timeline is `GET /chatroom/:id/messages`, in the socket's own envelope shape, through the one decoder. `/history` still returns the Gemini transcript and is the CLI's, not the app's.
+REST (`ChatController`, `/chatroom`) is guarded by `SessionAuthGuard`: `Authorization: Bearer <session token>`, minted by `POST /auth/google` from a verified Google ID token and kept in Redis (design and rollout in [`doc/auth-implementation-plan.md`](doc/auth-implementation-plan.md)); the legacy `x-api-key` + `x-user-id` pair is accepted only while `AUTHX_API_KEY` is set and `AUTHX_API_KEY_ENABLED=true`. Every chat read and write filters on the session user id in the query itself, and a chat that is not the caller's own is a 404. Two of its routes matter to the app and the split between them is deliberate: **`GET /chatroom` carries no transcripts**. It answers with `ChatSummary` rows (id, title, last message, timestamps), scoped to the caller and sorted newest-first on `updatedAt`. It used to return the `Chat` documents whole, `history` and all — every Gemini transcript on the server on every app start, which the client decoded with a second mapping of `Content` maintained beside the protocol one, and which threw: `functionResponse.response.output` is a string when a handler returned text and an object when it returned anything else. The timeline is `GET /chatroom/:id/messages`, in the socket's own envelope shape, through the one decoder. `/history` still returns the Gemini transcript and is the CLI's, not the app's.
 
 ### Chat titles: named by a model, beside every turn
 
@@ -253,4 +253,4 @@ Unit tests are largely bypassed in this project. `npm run build` is the real gat
 
 ## Known drift
 
-- Session tokens are written to `.qobuz-session.json` / `.spotify-session.json` / `.youtube-session.json` at the repo root (gitignored, and currently populated with live tokens).
+- The three `*-session.json` dotfiles at the repo root still hold live tokens until `npm run cli -- auth import-sessions --delete` has moved them into the encrypted `provider_credentials` collection; the services no longer read them.

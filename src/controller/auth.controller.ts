@@ -39,7 +39,17 @@ export class AuthController {
     res.send(this.renderAuthCodePage(code));
   }
 
-  private renderAuthCodePage(authCode: string): string {
+  /**
+   * The code comes straight off the query string of an unauthenticated route, so it is escaped
+   * before it is put inside markup: without this the page reflected whatever the redirect
+   * carried, script tags included.
+   */
+  private static escapeHtml(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  private renderAuthCodePage(rawAuthCode: string): string {
+    const authCode = AuthController.escapeHtml(rawAuthCode);
     return `
       <!DOCTYPE html>
       <html lang="en">

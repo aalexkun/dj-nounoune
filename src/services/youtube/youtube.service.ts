@@ -42,6 +42,7 @@ import {
   stripReleasePrefix,
 } from './youtube-track-match.util';
 import { getErrorMessage } from '../../utils/error.utils';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
 /** Hits scoring below this are not returned by {@link YoutubeService.findTrack}. */
 const MINIMUM_MATCH_SCORE = 0.6;
@@ -98,6 +99,13 @@ const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 type AuthMode = 'key' | 'oauth';
 
 /**
+ * A YouTube refusal that a fresh session could fix, as opposed to a quota error or a bad request.
+ * Its own class rather than a string match on the message, so the one retry in
+ * {@link YoutubeService.youtubeGet} cannot fire on an unrelated error that happens to mention 401.
+ */
+class YoutubeAuthError extends Error {}
+
+/**
  * The YouTube Data API v3, hand-rolled on `fetch`.
  *
  * Mirrors `QobuzService` in shape — search, lookup, import, and a `SongSource` builder — with two
@@ -130,13 +138,18 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly opensearchService: OpensearchService,
+    private readonly credentialStore: CredentialStoreService,
     @InjectModel(Artist.name) private artistModel: Model<ArtistDocument>,
     @InjectModel(Album.name) private albumModel: Model<AlbumDocument>,
     @InjectModel(Song.name) private songModel: Model<SongDocument>,
   ) {}
 
-  public onModuleInit(): void {
-    this.auth = new YoutubeAuthUtil(this.configService);
+  /**
+   * Async because the session comes out of Mongo rather than off disk. Nest awaits the hook, so the
+   * refresh loop is running before anything can ask for an account-scoped call.
+   */
+  public async onModuleInit(): Promise<void> {
+    this.auth = new YoutubeAuthUtil(this.configService, this.credentialStore);
     this.apiKey = this.configService.get<string>('YOUTUBE_API_KEY') ?? '';
 
     if (!this.apiKey) {
@@ -146,12 +159,12 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    this.session = this.auth.loadSession();
+    this.session = await this.auth.loadSession();
 
     if (this.session.refreshToken || this.session.accessToken) {
       this.startTokenRefreshInterval();
     } else {
-      this.logger.debug('No .youtube-session.json found. Only public YouTube data is reachable; run "cli youtube auth" for the rest.');
+      this.logger.debug('No YouTube session stored. Only public YouTube data is reachable; run `npm run cli -- youtube auth` for the rest.');
     }
   }
 
@@ -214,7 +227,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
    */
   private async getAccessToken(): Promise<string> {
     if (!this.session.accessToken && !this.session.refreshToken) {
-      throw new Error('YouTube session data (.youtube-session.json) is missing. Please authenticate first by running "npm run cli -- youtube auth".');
+      throw new Error('No YouTube session stored; run `npm run cli -- youtube auth`.');
     }
 
     const expiresAt = this.session.expirationTime;
@@ -224,7 +237,7 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.session.accessToken) {
-      throw new Error('The YouTube session holds no usable access token. Re-run "npm run cli -- youtube auth".');
+      throw new Error('The stored YouTube session holds no usable access token. Re-run `npm run cli -- youtube auth`.');
     }
 
     return this.session.accessToken;
@@ -242,15 +255,59 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
   /**
    * One GET against the Data API, validated on the way out.
    *
-   * The response body is `unknown` until it has been through `schema`. The error envelope is
-   * checked first because Google replaces the entire body with it on failure, so the success
-   * schema would report a confusing "items is required" for what is really a 403.
+   * An account-scoped call refused with a 401 is retried once against a session re-read from the
+   * credential store: the usual cause is somebody having run `youtube auth` from the CLI while this
+   * process kept using the grant that flow replaced. Every YouTube call funnels through here, so
+   * that resilience costs these few lines and covers the whole service. Never a loop — if the
+   * stored session is refused too, the answer is a re-auth rather than another round trip.
    *
    * @param authMode - `key` uses `YOUTUBE_API_KEY`; `oauth` sends the user's bearer token. The two
    *   are mutually exclusive by design — sending a key alongside a bearer token makes Google
    *   attribute quota to the key's project but resolve `mine=true` against nobody.
    */
   private async youtubeGet<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>, authMode: AuthMode = 'key'): Promise<T> {
+    try {
+      return await this.youtubeGetOnce(endpoint, params, schema, authMode);
+    } catch (error) {
+      if (!(error instanceof YoutubeAuthError) || !(await this.reloadSession())) {
+        throw error;
+      }
+    }
+
+    return this.youtubeGetOnce(endpoint, params, schema, authMode);
+  }
+
+  /**
+   * Re-reads the session from the credential store and restarts the refresh loop on it.
+   *
+   * @returns Whether the store held a session this instance was not already using
+   */
+  private async reloadSession(): Promise<boolean> {
+    const stored = await this.auth.loadSession();
+
+    if (!stored.accessToken && !stored.refreshToken) {
+      return false;
+    }
+
+    if (stored.accessToken === this.session.accessToken && stored.refreshToken === this.session.refreshToken) {
+      return false;
+    }
+
+    this.session = stored;
+    this.startTokenRefreshInterval();
+    this.logger.log('Picked up a newer YouTube session from the credential store.');
+
+    return true;
+  }
+
+  /**
+   * One attempt, with whatever session this instance currently holds.
+   *
+   * The response body is `unknown` until it has been through `schema`. The error envelope is
+   * checked first because Google replaces the entire body with it on failure, so the success
+   * schema would report a confusing "items is required" for what is really a 403.
+   */
+  private async youtubeGetOnce<T>(endpoint: string, params: Record<string, string>, schema: z.ZodSchema<T>, authMode: AuthMode): Promise<T> {
     const query = new URLSearchParams(params);
     const headers: Record<string, string> = { Accept: 'application/json' };
 
@@ -281,7 +338,9 @@ export class YoutubeService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      throw new Error(`YouTube API Error ${code}${reason ? ` (${reason})` : ''}: ${message}`);
+      const described = `YouTube API Error ${code}${reason ? ` (${reason})` : ''}: ${message}`;
+
+      throw code === 401 && authMode === 'oauth' ? new YoutubeAuthError(described) : new Error(described);
     }
 
     return schema.parse(json);

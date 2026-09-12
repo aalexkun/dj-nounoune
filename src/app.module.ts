@@ -32,12 +32,19 @@ import { ChatEnvelopeDoc, ChatEnvelopeSchemaDefinition } from './schemas/chat-en
 import { ChatController } from './controller/chat.controller';
 import { AuthController } from './controller/auth.controller';
 import { VibingController } from './controller/vibing.controller';
+import { SessionController } from './controller/session.controller';
 import { AuthService } from './services/auth/auth.service';
-import { ApiAuthGuard } from './services/auth/api-auth.guard';
+import { User, UserSchema } from './schemas/user.schema';
+import { GoogleIdTokenVerifier } from './services/auth/google-id-token.verifier';
+import { UserService } from './services/auth/user.service';
+import { AuthSessionService } from './services/auth/auth-session.service';
+import { SessionAuthGuard } from './services/auth/session-auth.guard';
+import { AuthRateLimitGuard } from './services/auth/auth-rate-limit.guard';
 import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
 import { QobuzModule } from './services/qobuz/qobuz.module';
 import { YoutubeModule } from './services/youtube/youtube.module';
+import { CredentialStoreModule } from './services/credential-store/credential-store.module';
 import { PromptusService } from './services/promptus/promptus.service';
 import { ToolsService } from './services/promptus/tools.service';
 import { SessionService } from './services/session/session.service';
@@ -84,11 +91,15 @@ const imports: NonNullable<ModuleMetadata['imports']> = [
     { name: Enrich.name, schema: EnrichSchema },
     { name: Playlog.name, schema: PlaylogSchema },
     { name: NegentropyJob.name, schema: NegentropyJobSchema },
+    { name: User.name, schema: UserSchema },
   ]),
   MpdClientModule,
   SpotifyModule,
   QobuzModule,
   YoutubeModule,
+  // Also imported by the three provider modules; here because `auth import-sessions` is a root
+  // provider, and a root provider only sees what a root import exports.
+  CredentialStoreModule,
   ElasticsearchModule,
   MergeModule,
   OpensearchModule,
@@ -122,7 +133,14 @@ const providers: Provider[] = [
   VibingGateway,
   ToolsService,
   AuthService,
-  ApiAuthGuard,
+  // Google sign-in and the sessions it mints. SessionAuthGuard accepts a bearer token and, while
+  // AUTHX_API_KEY_ENABLED=true (off by default), the legacy x-api-key pair beside it — so both are live during
+  // the rollout and the cutover is deleting one flag, not a code change.
+  GoogleIdTokenVerifier,
+  UserService,
+  AuthSessionService,
+  SessionAuthGuard,
+  AuthRateLimitGuard,
   SessionService,
   ProfilerService,
   PlaylogService,
@@ -141,7 +159,9 @@ if (process.env.IS_CLI !== 'true') {
 
 @Module({
   imports,
-  controllers: [ChatController, AuthController, VibingController],
+  // SessionController and AuthController share the `auth` prefix on purpose: one signs people in,
+  // the other holds the three provider OAuth callbacks. Different concerns, one path segment.
+  controllers: [ChatController, AuthController, SessionController, VibingController],
   providers,
 })
 export class AppModule {}

@@ -8,7 +8,7 @@ import { WeatherSnapshot } from '../services/weather/weather.interfaces';
 
 /**
  * Public display page. Deliberately unguarded — like `AuthController`, and unlike `ChatController`,
- * it carries no `ApiAuthGuard`. Live updates arrive on the `/vibing` websocket namespace.
+ * it carries no `SessionAuthGuard`. Live updates arrive on the `/vibing` websocket namespace.
  */
 @Controller('vibing-on')
 export class VibingController {
