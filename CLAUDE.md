@@ -25,7 +25,7 @@ Requires a `.env` file — copy `.env.template` and fill it. Without `MONGODB_UR
 
 ### CLI command tree
 
-`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,review,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import, search-track, search-artist), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, find-artist-track, search-current-track), `youtube` (auth, search-track, search-playlist, import-playlist, play, liked, playlists), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run), `chat` (fixtures, prune).
+`npm run cli -- <group> <subcommand>`. Groups: `music` (import, clear, enrich, migrate-technical-info, migrate-song-source, dedup {search,review,process}), `mpd` (test, add, play, clear, shuffle, playlist), `promptus` (search, play, chat, clear-cache), `spotify` (auth, list, import, search-track, search-artist), `qobuz` (auth, favorites, favorite-albums, import-favorite-albums, search-track, find-artist-track, search-current-track), `youtube` (auth, search-track, search-playlist, import-playlist, play, liked, playlists), `elastic` (create-index, index-songs, prune-index), `opensearch` (create, index, prune), `profiler` (run), `negentropy` (run), `chat` (fixtures, prune), `domotic` (lights, effect, rooms, ask, scenes, memory).
 
 Most mutating commands accept `--dry-run`. Long-running ones accept `--limit` and `--created-after yyyy-mm-dd`.
 
@@ -77,7 +77,7 @@ Google Gemini via `@google/genai`. Read `.agent/rules/promptus.md` and `.agent/r
 - **`Agent`** (`agent.ts`) is the abstract base running the function-calling loop (max 10 iterations, then throws). Agents are **stateless** — conversation history lives on the *request* object. Subclasses call `initialiseAgent(apiKey, toolService, eventEmitter)` from their constructor rather than relying on DI, which is why sub-agents can be plain-`new`ed.
 - **`PromptusRequest<TResponse>`** carries model, system instruction, query, tools, history and a phantom response type, so `agent.generate(request)` is statically typed to the matching response class. Each concrete agent implements `wrapResponse` as an `instanceof` chain.
 - **`ToolsService`** holds a `Map<name, ToolHandler>`. Stateless handlers register in the constructor; agent-delegating handlers register in `initialiseAgent(...)`, which `PromptusService`'s constructor calls — this is the deliberate break in the circular dependency (agents need tools, tools need agents).
-- **Agents are exposed as tools.** `ChatPromptusRequest` (top-level, user-facing) declares `disc_jockey_create_playlist` etc.; those handlers call into `DiscJockeyAgent`, which itself calls `search_music_database` → `QueryDatabaseAgent`. Three levels deep. `sessionId` is threaded all the way down so nested agents emit progress to the same WebSocket session.
+- **Agents are exposed as tools.** `ChatPromptusRequest` (top-level, user-facing) declares `disc_jockey_create_playlist` etc.; those handlers call into `DiscJockeyAgent`, which itself calls `search_music_database` → `QueryDatabaseAgent`. Three levels deep. `lighting_designer` is the same pattern for the Hue lights: it calls `LightingAgent` (`agent/lighting/`), the only request that declares the four `hue_*` tools, briefed on every call with the room map, the live light states, the saved scenes and a model-written household memory that is rewritten after each request. Design in [`doc/lighting-agent-design.md`](doc/lighting-agent-design.md). `sessionId` is threaded all the way down so nested agents emit progress to the same WebSocket session.
 - **Tool handlers return errors as `FunctionCallResult` strings** rather than throwing, so the model can self-correct.
 - **Grounded requests are a separate shape.** `PromptusRequest.grounded` adds Google Search; Gemini then rejects both function declarations and a `responseSchema`, so `album-cover`, `artist-performance` and `music-talk` all declare `tools = []` and answer in prose. `artist-performance` is handed the current date in its query — "upcoming" means nothing to a model whose knowledge stops before now.
 - **The Qobuz tools bypass the library entirely** (`tools/handler/qobuz/`): `qobuz_search_artist` → `qobuz_start_playback` streams a recording that has no song document, and nothing is written to Mongo on the way (attaching a qobuz source is the negentropy pass's job, and only for songs that already exist). A search returning no artist is reported as a *final answer for that rung*, worded to stop the model retrying spellings until the thinking loop throws.
@@ -223,13 +223,42 @@ epoch milliseconds**, cached ten minutes in memory and shared by every viewer. S
 `VIBING_LATITUDE` / `VIBING_LONGITUDE` place the display; unset means Montreal. The service is lazy,
 so the CLI never triggers a call and needs no `IS_CLI` gate.
 
+### Domotic: the Hue lights (`src/services/domotic/`)
+
+Philips Hue over CLIP v2, hand-rolled on `node:https` because the bridge serves a certificate from
+Signify's private root and the global `fetch` has no per-request way to accept it; the check is
+switched off, as `OpensearchService` does for its own node, and `HUE_USERNAME` in the
+`hue-application-key` header is what actually authenticates. `HueClientService` is the transport
+(`getLights`, `updateLight`), `DomoticService` the orchestration, and nothing in the module touches
+Mongo or MPD. Every answer is the `{ errors, data }` envelope parsed by Zod, and a non-empty
+`errors` is a failure whatever the HTTP status, because the bridge refuses with a 200.
+
+- **The bridge does not know the rooms.** `files/hue-<room>.yaml` does: a `room:` name, a free-form
+  `grid: |` sketch for people, and a `legend:` of label to light id. `hue-placement.util.ts` reads
+  the room and the legend line by line rather than pulling a YAML parser in for that, ignores the
+  grid, and ignores anything after a legend entry's closing brace. Files are re-read on every
+  command. A light on the bridge with no placement is listed without a room; a placement the bridge
+  no longer lists is warned about and dropped.
+- **Effects are written through `effects_v2.action.effect`**, the current-generation field, with
+  `no_effect` as the value that stops a running one. A real effect is only visible on a lit lamp, so
+  it is switched on in the same put; `no_effect` leaves the on-state alone. Effects the light does
+  not advertise in `effect_values` are refused before any call. Puts go one at a time, 100 ms
+  apart, under the bridge's ten-commands-a-second guidance.
+- **An effect owns the brightness while it runs, and `no_effect` does not give it back.** `candle`
+  took a lamp from 100% to 26% and stopping it left it there. Nothing snapshots state yet; restoring
+  brightness after an effect is the next thing this module needs.
+- **A light name that is ambiguous is an error, not a guess.** `domotic effect <effect> [light...]`
+  matches a label, a bridge name or an id exactly first, then as a unique substring; `shrine` alone
+  is refused because two lamps carry it. `--room` narrows the pool and `--dry-run` resolves without
+  writing. `domotic lights [--room]` is the listing.
+
 ### MPD client
 
 `src/services/mpd-client/` is a hand-rolled TCP client for the MPD line protocol: one socket, serialized FIFO queue, banner handshake, responses terminated by `OK`/`ACK`. One request class per verb in `requests/`, paired 1:1 with a lazy-parsing response class in `responses/`. Protocol notes in `mpd-client/readme.md`. Add a verb by adding both halves of the pair.
 
 ## Conventions
 
-Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. Longer-form architecture references live in `doc/` — currently [`promptus-architecture.md`](doc/promptus-architecture.md) and [`promptus-caching.md`](doc/promptus-caching.md). The non-obvious ones:
+Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. Longer-form architecture references live in `doc/` — currently [`promptus-architecture.md`](doc/promptus-architecture.md), [`promptus-caching.md`](doc/promptus-caching.md) and [`lighting-agent-design.md`](doc/lighting-agent-design.md). The non-obvious ones:
 
 - **No `any`.** Use `unknown` plus narrowing, and Zod at the boundary where a value comes from outside (an API body, a JSON file, a spawned process). `@typescript-eslint/no-explicit-any` is an **error** and the `no-unsafe-*` rules are on, so `npm run lint` refuses new `any`; `noImplicitAny` is still off in tsconfig, so an unannotated parameter is the one gap the linter has to catch for you. Where a third-party type is generic over `any` (mongoose `Schema`, socket.io `handshake.auth`), take the value into an `unknown`-typed local and narrow it rather than passing it through.
 - **TypeScript 6 pins `strict: false` deliberately.** TS6 flipped `strict` to default `true`; this project runs the NestJS scaffold posture instead, so `tsconfig.json` sets `strict: false` and opts individual checks back in. `strictNullChecks`, `useUnknownInCatchVariables` and `strictFunctionTypes` are **on**; `strictPropertyInitialization` is **off** because Mongoose `@Prop` and GenAI request/response classes are populated by the framework, never in a constructor. Don't "tidy" this by deleting `strict: false` — that reintroduces 116 property-init errors.
