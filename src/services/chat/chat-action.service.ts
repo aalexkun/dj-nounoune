@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChatStreamService } from './chat-stream.service';
+import { ChatService } from './chat.service';
 import { PlaybackControlService } from '../playback/playback-control.service';
 import { MusicDbService, PopulatedSong } from '../music-db/music-db.service';
 import { MpdClientService } from '../mpd-client/mpd-client.service';
@@ -37,14 +38,15 @@ export class ChatActionService {
 
   constructor(
     private readonly chatStream: ChatStreamService,
+    private readonly chatService: ChatService,
     private readonly playbackControl: PlaybackControlService,
     private readonly musicDb: MusicDbService,
     private readonly mpd: MpdClientService,
     private readonly configService: ConfigService,
   ) {}
 
-  async execute(request: ChatActionRequest): Promise<ActionOutcome> {
-    const declared = await this.declaredActions(request);
+  async execute(request: ChatActionRequest, userId: string): Promise<ActionOutcome> {
+    const declared = await this.declaredActions(request, userId);
 
     if (!declared.some((action) => action.kind === request.action.kind)) {
       this.logger.warn(`Rejected "${request.action.kind}" on ${request.messageId}: not declared on that target`);
@@ -60,16 +62,44 @@ export class ChatActionService {
     }
   }
 
-  /** The action set the server itself put on this target, read back from the source of truth. */
-  private async declaredActions(request: ChatActionRequest): Promise<ChatAction[]> {
+  /**
+   * The action set the server itself put on this target, read back from the source of truth.
+   *
+   * The envelope is also what says which conversation the target belongs to, so the owner check
+   * lives here rather than in the gateway: the frame carries a `messageId`, and only the envelope
+   * behind it knows whose chat that is. An envelope with a **null `chatId` is global by design** —
+   * that is the transport bar and the MPD queue, one daemon and one queue that any signed-in
+   * member of the household may drive, the same stance `/vibing-on` takes for the whole LAN. The
+   * ownership rule is about conversations, which are personal.
+   *
+   * A refusal is an empty set rather than a throw, so it comes back as the same
+   * `action_not_available` a forged or stale action gets, and says nothing about whether the id
+   * named a real message.
+   */
+  private async declaredActions(request: ChatActionRequest, userId: string): Promise<ChatAction[]> {
     const envelope = await this.chatStream.findById(request.messageId);
     if (!envelope) return [];
+
+    if (envelope.chatId !== null && !(await this.ownsChat(envelope.chatId, userId))) {
+      this.logger.warn(`Rejected "${request.action.kind}" on ${request.messageId}: chat ${envelope.chatId} is not ${userId}'s`);
+      return [];
+    }
 
     if (!request.elementId) return envelope.actions;
 
     if (envelope.payload.type !== 'playlist') return [];
 
     return envelope.payload.items.find((item) => item.elementId === request.elementId)?.actions ?? [];
+  }
+
+  /** `ChatService.assertOwned` as a predicate: this class answers a refusal, it does not raise one. */
+  private async ownsChat(chatId: string, userId: string): Promise<boolean> {
+    try {
+      await this.chatService.assertOwned(chatId, userId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async run(request: ChatActionRequest): Promise<ActionOutcome> {

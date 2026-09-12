@@ -3,6 +3,7 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketServer,
   MessageBody,
   ConnectedSocket,
@@ -12,7 +13,8 @@ import { Server, Socket } from 'socket.io';
 import { Subscription } from 'rxjs';
 import { ZodType } from 'zod';
 
-import { AuthService } from '../services/auth/auth.service';
+import { AuthSessionService } from '../services/auth/auth-session.service';
+import type { HandshakeIdentity } from '../services/auth/auth.types';
 import { SessionService } from '../services/session/session.service';
 import { ChatService } from '../services/chat/chat.service';
 import { ChatStreamService } from '../services/chat/chat-stream.service';
@@ -50,12 +52,50 @@ type Ack = { ok: boolean; error?: string };
 
 const OK: Ack = { ok: true };
 
+/**
+ * What the handshake middleware leaves behind for the rest of the gateway.
+ *
+ * socket.io types `data` as `any`, so it is narrowed through this rather than read off the socket
+ * directly — the whole connection path hangs off the identity being real.
+ */
+interface ChatSocketData {
+  identity?: HandshakeIdentity;
+}
+
+/**
+ * socket.io's own `next` takes its `ExtendedError`, which is `Error` with an optional `data`. Typed
+ * as plain `Error` here so the middleware body needs no import out of the library's `dist`.
+ */
+type HandshakeNext = (err?: Error) => void;
+
+/** A frame's `chatId`, when it names one. The four inbound schemas that carry it all spell it the same. */
+function chatIdOf(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null) return null;
+
+  const chatId: unknown = (data as { chatId?: unknown }).chatId;
+  return typeof chatId === 'string' && chatId.length > 0 ? chatId : null;
+}
+
+/** The identity the handshake middleware stored, narrowed back out of socket.io's untyped bag. */
+function socketIdentity(client: Socket): HandshakeIdentity | null {
+  const data: unknown = client.data;
+  if (typeof data !== 'object' || data === null) return null;
+
+  const identity: unknown = (data as { identity?: unknown }).identity;
+  if (typeof identity !== 'object' || identity === null) return null;
+
+  const { user, deviceId, deviceName } = identity as Partial<HandshakeIdentity>;
+  if (!user || typeof user.id !== 'string' || typeof deviceId !== 'string' || typeof deviceName !== 'string') return null;
+
+  return { user, deviceId, deviceName };
+}
+
 @WebSocketGateway({
   cors: true,
   pingInterval: 1000, // 10 seconds (Default is 25000)
   pingTimeout: 1000, // 5 seconds (Default is 20000)
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
@@ -78,7 +118,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     private readonly queueMirror: QueueMirrorService,
     private readonly playlistReconciler: PlaylistReconcilerService,
     private readonly queueState: QueueStateService,
-    private readonly authService: AuthService,
+    private readonly authSessions: AuthSessionService,
     private readonly sessionService: SessionService,
     private readonly playlog: PlaylogService,
   ) {}
@@ -107,30 +147,67 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   /**
-   * A credential from the handshake: the header first, then socket.io's `auth` bag. The bag is
-   * typed as `any` by socket.io, so only a string is accepted out of it.
+   * Authorises the handshake before a socket is ever connected.
+   *
+   * A middleware rather than a check in `handleConnection` because it can **refuse with a reason**:
+   * the client receives `connect_error` carrying `unauthorized`, which is the one failure it must
+   * not retry — a dead session is told apart from a dead server, and the app drops to its login
+   * screen instead of reconnecting forever against a token that will never work.
+   *
+   * `server.use` registers on the default namespace only, which is `io.of('/')`. `VibingGateway`
+   * declares `namespace: '/vibing'` and is therefore untouched by this, which is the intent: the
+   * public display stays open to the LAN.
    */
-  private credential(client: Socket, header: string, authKey: string): string | undefined {
-    const fromHeader = client.handshake.headers[header];
-    const headerValue = Array.isArray(fromHeader) ? fromHeader[0] : fromHeader;
-    if (headerValue) return headerValue;
-    const fromAuth: unknown = client.handshake.auth[authKey];
-    return typeof fromAuth === 'string' ? fromAuth : undefined;
+  afterInit(server: Server): void {
+    server.use((socket, next) => {
+      void this.authoriseHandshake(socket, next);
+    });
+  }
+
+  /**
+   * The middleware body, kept out of the subscriber so `server.use`'s callback stays synchronous.
+   *
+   * `AuthSessionService.resolveHandshake` never throws: a `null` is the refusal, and it covers both
+   * the new `auth: { token, deviceId, deviceName }` bag and the legacy headers while the shared key
+   * is still configured.
+   */
+  private async authoriseHandshake(socket: Socket, next: HandshakeNext): Promise<void> {
+    try {
+      const identity = await this.authSessions.resolveHandshake(socket.handshake.auth, socket.handshake.headers);
+
+      if (!identity) {
+        this.logger.warn(`Refused an unauthorised handshake from ${socket.id}`);
+        next(new Error('unauthorized'));
+        return;
+      }
+
+      (socket.data as ChatSocketData).identity = identity;
+      next();
+    } catch (error: unknown) {
+      // Belt and braces: `resolveHandshake` is documented not to throw, and a socket admitted
+      // because it did would be an unauthenticated one.
+      this.logger.error(`Handshake authorisation failed for ${socket.id}: ${getErrorMessage(error)}`);
+      next(new Error('unauthorized'));
+    }
   }
 
   async handleConnection(client: Socket) {
-    const apiKey = this.credential(client, 'x-api-key', 'apiKey');
-    const userId = this.credential(client, 'x-user-id', 'userId');
+    const identity = socketIdentity(client);
 
-    if (!this.authService.validateApiKey(apiKey) || !userId) {
-      this.logger.warn(`Unauthorised connection attempt from ${client.id}`);
+    if (!identity) {
+      // Unreachable through the middleware above, which refuses before a socket connects. Kept as
+      // the defensive half: a socket that arrived here with no identity is not one to serve.
+      this.logger.error(`Connection with no handshake identity from ${client.id}`);
       client.disconnect();
       return;
     }
 
+    const userId = identity.user.id;
+
     try {
-      const existing = await this.sessionService.retrieveUserSession(userId, client);
-      const session = existing ?? (await this.sessionService.createSession(userId, client));
+      const existing = await this.sessionService.retrieveUserSession(userId, identity.deviceId, client);
+      const session =
+        existing ?? (await this.sessionService.createSession(userId, { deviceId: identity.deviceId, deviceName: identity.deviceName }, client));
 
       if (!session) {
         this.logger.error('Error creating session');
@@ -146,7 +223,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       // only cursor that is right after a server restart or a fresh install too.
       this.chatStream.setConnection(session.id, 'active');
 
-      this.logger.log(`${existing ? 'Reconnecting' : 'Creating'} session for ${userId} |${existing ? '=' : '+'}| ${session.id}`);
+      this.logger.log(
+        `${existing ? 'Reconnecting' : 'Creating'} session for ${userId} on ${identity.deviceName} |${existing ? '=' : '+'}| ${session.id}`,
+      );
 
       await this.chatStream.emit(
         sessionContext(session.id),
@@ -198,14 +277,34 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * Parses a frame and resolves the session behind the socket.
+   * Parses a frame, resolves the session behind the socket, and refuses another user's chat.
    *
    * Every inbound frame goes through a schema. The old gateway typed its `@MessageBody()` and never
    * checked it, which is an assertion rather than validation — a malformed frame walked straight
    * into `ChatService`.
+   *
+   * The owner is checked here rather than in each handler, for the same reason the service filters
+   * on `userId` in the query: a rule stated once per frame cannot be forgotten by the next frame
+   * somebody adds. Any payload naming a `chatId` is checked; the ones that do not — a feedback
+   * reaction, a verbosity change, a refresh of the transport bar — are session state and have no
+   * owner to check.
+   *
+   * The user comes from the socket's handshake identity, never from the `Connection` document: the
+   * session row is a record of a device, and it is the bearer token that says who is holding it.
    */
-  private accept<T>(schema: ZodType<T>, payload: unknown, client: Socket, event: string): { sessionId: string; data: T } | Ack {
+  private async accept<T>(
+    schema: ZodType<T>,
+    payload: unknown,
+    client: Socket,
+    event: string,
+  ): Promise<{ sessionId: string; userId: string; data: T } | Ack> {
+    const identity = socketIdentity(client);
     const sessionId = this.sessionService.getSession(client.id)?.id;
+
+    if (!identity) {
+      this.logger.warn(`No handshake identity for ${client.id} on ${event}`);
+      return { ok: false, error: 'unauthorized' };
+    }
 
     if (!sessionId) {
       this.logger.error(`No session for ${client.id} on ${event}`);
@@ -219,16 +318,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       return { ok: false, error: 'Malformed payload' };
     }
 
-    return { sessionId, data: parsed.data };
+    const userId = identity.user.id;
+    const chatId = chatIdOf(parsed.data);
+
+    if (chatId) {
+      try {
+        await this.chatService.assertOwned(chatId, userId);
+      } catch {
+        // Answered the same way whether the chat is missing or simply somebody else's, which is the
+        // point: an ack that distinguished them would confirm the id names a real conversation.
+        this.logger.warn(`Refused ${event} on chat ${chatId} for ${userId}`);
+        return { ok: false, error: 'not_found' };
+      }
+    }
+
+    return { sessionId, userId, data: parsed.data };
   }
 
-  private static isAck<T>(result: { sessionId: string; data: T } | Ack): result is Ack {
+  private static isAck<T>(result: { sessionId: string; userId: string; data: T } | Ack): result is Ack {
     return 'ok' in result;
   }
 
   @SubscribeMessage(ChatSendMessage)
-  handleSend(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Ack {
-    const accepted = this.accept(ChatSendSchema, payload, client, ChatSendMessage);
+  async handleSend(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
+    const accepted = await this.accept(ChatSendSchema, payload, client, ChatSendMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     const { sessionId, data } = accepted;
@@ -251,7 +364,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
    */
   @SubscribeMessage(ChatEditMessage)
   async handleEdit(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
-    const accepted = this.accept(ChatEditSchema, payload, client, ChatEditMessage);
+    const accepted = await this.accept(ChatEditSchema, payload, client, ChatEditMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     await this.chatStream.emit(
@@ -264,8 +377,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   @SubscribeMessage(ChatFeedbackMessage)
-  handleFeedback(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Ack {
-    const accepted = this.accept(ChatFeedbackSchema, payload, client, ChatFeedbackMessage);
+  async handleFeedback(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
+    const accepted = await this.accept(ChatFeedbackSchema, payload, client, ChatFeedbackMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     this.feedbackService.record(accepted.data.feedback);
@@ -275,7 +388,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   /** Backfill. The client passes the highest `seq` it holds and gets everything after it. */
   @SubscribeMessage(ChatResyncMessage)
   async handleResync(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
-    const accepted = this.accept(ChatResyncSchema, payload, client, ChatResyncMessage);
+    const accepted = await this.accept(ChatResyncSchema, payload, client, ChatResyncMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     try {
@@ -291,10 +404,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
 
   @SubscribeMessage(ChatActionMessage)
   async handleAction(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
-    const accepted = this.accept(ChatActionRequestSchema, payload, client, ChatActionMessage);
+    const accepted = await this.accept(ChatActionRequestSchema, payload, client, ChatActionMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
-    const outcome = await this.chatActions.execute(accepted.data);
+    // The user goes down with the request: an action names a `messageId`, and a frame that carries
+    // no `chatId` can still resolve to an envelope inside somebody else's conversation. `accept`
+    // could not have checked that one — only the envelope knows which chat it belongs to.
+    const outcome = await this.chatActions.execute(accepted.data, accepted.userId);
 
     if (outcome.ok) return OK;
 
@@ -323,7 +439,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
    */
   @SubscribeMessage(ChatRefreshMessage)
   async handleRefresh(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
-    const accepted = this.accept(ChatRefreshSchema, payload, client, ChatRefreshMessage);
+    const accepted = await this.accept(ChatRefreshSchema, payload, client, ChatRefreshMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     const { sessionId, data } = accepted;
@@ -352,8 +468,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
   }
 
   @SubscribeMessage(ChatSetVerbosityMessage)
-  handleSetVerbosity(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Ack {
-    const accepted = this.accept(ChatSetVerbositySchema, payload, client, ChatSetVerbosityMessage);
+  async handleSetVerbosity(@MessageBody() payload: unknown, @ConnectedSocket() client: Socket): Promise<Ack> {
+    const accepted = await this.accept(ChatSetVerbositySchema, payload, client, ChatSetVerbosityMessage);
     if (ChatGateway.isAck(accepted)) return accepted;
 
     const effective = this.chatStream.setSessionVerbosity(accepted.sessionId, accepted.data.level);

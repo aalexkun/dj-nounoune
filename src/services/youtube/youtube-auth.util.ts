@@ -1,14 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as fs from 'fs';
-import * as path from 'path';
 import { GoogleTokenResponseSchema, YoutubeSession, YoutubeSessionSchema } from './youtube.interfaces';
 import { getErrorMessage } from '../../utils/error.utils';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
 /**
  * Google OAuth 2.0 for the YouTube Data API, in the same shape as the Spotify and Qobuz flows:
  * print an authorize url, the user pastes back the code from the redirect, the code is exchanged
- * for tokens and the session is written to a dotfile at the repo root.
+ * for tokens and the session goes into the credential store, encrypted.
  *
  * Two things about this provider are worth knowing before changing anything here.
  *
@@ -38,7 +37,10 @@ export class YoutubeAuthUtil {
    */
   public static readonly SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly credentialStore: CredentialStoreService,
+  ) {}
 
   private get clientId(): string {
     return this.configService.get<string>('YOUTUBE_CLIENT_ID') ?? '';
@@ -50,10 +52,6 @@ export class YoutubeAuthUtil {
 
   private get redirectUrl(): string {
     return this.configService.get<string>('YOUTUBE_REDIRECT_URL') ?? 'http://localhost:3000/auth/youtube/callback';
-  }
-
-  public getSessionFilePath(): string {
-    return path.join(process.cwd(), '.youtube-session.json');
   }
 
   /**
@@ -89,7 +87,7 @@ export class YoutubeAuthUtil {
   }
 
   /**
-   * Exchanges the authorization code for tokens and writes `.youtube-session.json`.
+   * Exchanges the authorization code for tokens and stores the session.
    *
    * @param code - The `code` query parameter from the redirect
    */
@@ -142,8 +140,10 @@ export class YoutubeAuthUtil {
         scope: token.scope,
       };
 
-      this.writeSession(session);
-      this.logger.log('\nSuccess! Authenticated with YouTube. Session saved to .youtube-session.json');
+      // Awaited and not swallowed: this is the one path where the refresh token is new, and losing
+      // it means the whole browser round trip has to be done again.
+      await this.credentialStore.save('youtube', session);
+      this.logger.log('\nSuccess! Authenticated with YouTube. Session stored, encrypted, in provider_credentials.');
 
       return session;
     } catch (error) {
@@ -197,36 +197,27 @@ export class YoutubeAuthUtil {
       scope: token.scope,
     };
 
-    this.writeSession(session);
+    // Persistence must not stand between the caller and the refreshed session. This used to write
+    // first and throw on failure, which meant `YoutubeService.refreshToken` never reached the line
+    // that replaces the in-memory session: the old, expired token stayed live and the one-minute
+    // loop failed the same way until the process was restarted. A storage failure now costs the
+    // next boot a re-auth and nothing else.
+    await this.writeSession(session);
 
     return session;
   }
 
-  /** Reads `.youtube-session.json`, or an empty session when it is absent or unreadable. */
-  public loadSession(): YoutubeSession {
-    try {
-      const sessionPath = this.getSessionFilePath();
-
-      if (!fs.existsSync(sessionPath)) {
-        return {};
-      }
-
-      const raw = JSON.parse(fs.readFileSync(sessionPath, 'utf8')) as unknown;
-      const parsed = YoutubeSessionSchema.safeParse(raw);
-
-      if (!parsed.success) {
-        this.logger.warn('.youtube-session.json does not match the expected shape - ignoring it.');
-        return {};
-      }
-
-      return parsed.data;
-    } catch (error) {
-      this.logger.error(`Error loading the YouTube session: ${getErrorMessage(error)}`);
-      return {};
-    }
+  /** Reads the stored session, or an empty one when there is none or it is unreadable. */
+  public async loadSession(): Promise<YoutubeSession> {
+    return (await this.credentialStore.load('youtube', YoutubeSessionSchema)) ?? {};
   }
 
-  public writeSession(session: YoutubeSession): void {
-    fs.writeFileSync(this.getSessionFilePath(), JSON.stringify(session, null, 2), 'utf8');
+  /** Stores the session, reporting a failure rather than throwing it at the caller. */
+  public async writeSession(session: YoutubeSession): Promise<void> {
+    try {
+      await this.credentialStore.save('youtube', session);
+    } catch (error) {
+      this.logger.warn(`Could not store the YouTube session: ${getErrorMessage(error)}`);
+    }
   }
 }

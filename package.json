@@ -45,6 +45,7 @@
     "@nestjs/websockets": "^11.1.28",
     "@opensearch-project/opensearch": "^3.6.0",
     "csv-parse": "^6.1.0",
+    "jose": "^6.2.11",
     "jsonpath-plus": "^10.4.0",
     "mongoose": "^9.2.0",
     "nest-commander": "^3.20.1",

@@ -37,6 +37,9 @@ export interface ChatSummary {
   updatedAt: number;
 }
 
+/** The name a conversation wears until `ChatTitleService` renames it on the first message. */
+const PLACEHOLDER_TOPIC = 'New chat';
+
 /**
  * Chat CRUD, and one turn of conversation.
  *
@@ -58,12 +61,13 @@ export class ChatService {
     @InjectModel(ChatEnvelopeDoc.name) private readonly envelopeModel: Model<ChatEnvelopeDocument>,
   ) {}
 
-  async findAll(): Promise<Chat[]> {
-    return await this.chatModel.find().exec();
-  }
-
   /**
-   * The chatroom listing, newest first.
+   * The chatroom listing, newest first, and only this user's.
+   *
+   * `userId` is required rather than optional. It used to be a filter the caller could omit, and an
+   * omitted filter meant every conversation on the server — which was the CLI's convenience and
+   * everybody else's leak, since the id it scoped by was whatever `x-user-id` the caller chose to
+   * send. Ownership now comes from the session and there is no caller left that wants the lot.
    *
    * Sorted on `updatedAt` rather than `createdAt` because a conversation you came back to this
    * morning is more current than one you opened last week — and because that is the order the
@@ -72,12 +76,10 @@ export class ChatService {
    * `limit` exists so the listing cannot outgrow the retention ceiling even in the hour before the
    * cull runs, or on a deploy where the cull is off.
    */
-  async summaries(userId?: string, limit = 50): Promise<ChatSummary[]> {
-    const filter = userId ? { userId } : {};
-
+  async summaries(userId: string, limit = 50): Promise<ChatSummary[]> {
     // `history` is excluded at the database rather than after: it is the whole reason this route
     // used to be heavy, and a projection is the only place that fact can be stated once.
-    const chats = await this.chatModel.find(filter).select({ history: 0 }).sort({ updatedAt: -1 }).limit(limit).exec();
+    const chats = await this.chatModel.find({ userId }).select({ history: 0 }).sort({ updatedAt: -1 }).limit(limit).exec();
 
     const previews = await this.lastMessages(chats.map((chat) => chat._id.toString()));
 
@@ -112,33 +114,157 @@ export class ChatService {
     }
   }
 
-  async findOne(id: string): Promise<Chat> {
-    const chat = await this.chatModel.findById(new Types.ObjectId(id)).exec();
-    if (!chat) {
-      throw new NotFoundException(`Chat with ID ${id} not found`);
-    }
-    return chat;
+  async findOne(id: string, userId: string): Promise<Chat> {
+    return this.byIdAndOwner(id, userId);
+  }
+
+  /**
+   * Refuses unless this user owns this chat, and reads nothing back.
+   *
+   * For the callers that are about to work on a conversation through another service — the REST
+   * `/messages` route, which hands the id to `ChatStreamService`, and every socket frame that names
+   * a `chatId`. One indexed query, no document loaded, and the same 404 semantics as the rest of
+   * this class.
+   */
+  async assertOwned(id: string, userId: string): Promise<void> {
+    const objectId = toObjectId(id);
+    if (!objectId) throw notFound(id);
+
+    const owned = await this.chatModel.exists({ _id: objectId, userId }).exec();
+    if (!owned) throw notFound(id);
   }
 
   async update(id: string, updateChatDto: Partial<Chat>): Promise<Chat> {
-    const chat = await this.chatModel.findById(new Types.ObjectId(id)).exec();
-    if (!chat) {
-      throw new NotFoundException(`Chat with ID ${id} not found`);
-    }
+    const chat = await this.byId(id);
     Object.assign(chat, updateChatDto);
     return chat.save();
   }
 
   /**
-   * A new conversation, under a name that says it has none yet.
+   * One chat, by id **and** by owner.
    *
-   * The placeholder is deliberate and is the titler's cue: `ChatTitleService` renames a chat
+   * The owner is a clause of the query rather than a check after it, which is the whole point: a
+   * route that forgets to check cannot exist when there is nothing separate to forget.
+   *
+   * A chat that exists but belongs to somebody else is reported as missing, deliberately. A 403
+   * would confirm that the id names a real conversation, and chat ids are guessable enough that
+   * confirming existence is itself the leak.
+   */
+  private async byIdAndOwner(id: string, userId: string): Promise<ChatDocument> {
+    const objectId = toObjectId(id);
+    if (!objectId) throw notFound(id);
+
+    const chat = await this.chatModel.findOne({ _id: objectId, userId }).exec();
+    if (!chat) throw notFound(id);
+
+    return chat;
+  }
+
+  /**
+   * One chat by id alone, for the paths where ownership was already settled upstream.
+   *
+   * The agent loop reads and rewrites the transcript of a turn the gateway admitted only after
+   * `assertOwned`; re-checking on every write would be a second query answering a question that has
+   * already been answered for this frame.
+   */
+  private async byId(id: string): Promise<ChatDocument> {
+    const objectId = toObjectId(id);
+    if (!objectId) throw notFound(id);
+
+    const chat = await this.chatModel.findById(objectId).exec();
+    if (!chat) throw notFound(id);
+
+    return chat;
+  }
+
+  /**
+   * A new conversation — or the one this user already has open and has not written in yet.
+   *
+   * A client asks for a chat the moment somebody opens the window, well before they type, so a
+   * user who opened it five times left five documents behind. Those count against
+   * `ChatRetentionService`'s per-user ceiling, which means abandoned blanks evicting real
+   * conversations from the history sheet — the reason they are worth preventing rather than
+   * merely hiding.
+   *
+   * An unused chat is handed back instead of a new one. Nothing is lost: it has no history and no
+   * envelopes, so the only thing that distinguishes it is its id, and at most one blank per user
+   * survives — the one they are sitting in.
+   *
+   * The placeholder topic is deliberate and is the titler's cue: `ChatTitleService` renames a chat
    * wearing one on the first message, whatever the evidence, where it would otherwise prefer to
-   * leave a title alone. A client that sends its own topic keeps it.
+   * leave a title alone. A client that sends its own topic keeps it, on a reused chat too.
    */
   async create(topic: string, userId: string): Promise<ChatDocument> {
-    const createdChat = new this.chatModel({ userId, topic: topic?.trim() || 'New chat', history: [] });
+    const wanted = topic?.trim() || PLACEHOLDER_TOPIC;
+    const unused = await this.findUnusedChat(userId);
+
+    if (unused) {
+      if (unused.topic !== wanted) {
+        unused.topic = wanted;
+        await unused.save();
+      }
+
+      this.logger.debug(`Reusing empty chat ${unused._id.toString()} rather than creating another for ${userId}`);
+      return unused;
+    }
+
+    const createdChat = new this.chatModel({ userId, topic: wanted, history: [] });
     return createdChat.save();
+  }
+
+  /**
+   * This user's newest conversation, but only when there is nothing in it at all.
+   *
+   * An empty `history` is not enough on its own. The timeline lives in `chat_message` keyed on
+   * `chatId`, so a chat could hold envelopes a client is already rendering while its history array
+   * is still empty, and handing that one back would splice two conversations together. Both have to
+   * be empty before the document counts as unused.
+   */
+  private async findUnusedChat(userId: string): Promise<ChatDocument | null> {
+    if (!userId) return null;
+
+    const candidate = await this.chatModel
+      .findOne({ userId, $or: [{ history: { $size: 0 } }, { history: { $exists: false } }] })
+      .sort({ updatedAt: -1 })
+      .exec();
+
+    if (!candidate) return null;
+
+    // `exists` stops at the first envelope; a count would walk the whole timeline to learn "not zero".
+    const used = await this.envelopeModel.exists({ chatId: candidate._id.toString() }).exec();
+
+    return used ? null : candidate;
+  }
+
+  /** How many conversations one owner holds, for the CLI's account listing and the `auth claim` report. */
+  async countOwned(userId: string): Promise<number> {
+    return this.chatModel.countDocuments({ userId }).exec();
+  }
+
+  /**
+   * Conversations per `userId`, in one pass, keyed on the raw value the documents carry.
+   *
+   * A legacy id that no `auth claim` has moved yet is its own key and matches no account, which is
+   * the honest answer and the reason to run the claim.
+   */
+  async countPerOwner(): Promise<Map<string, number>> {
+    const rows = await this.chatModel.aggregate<{ _id: string; count: number }>([{ $group: { _id: '$userId', count: { $sum: 1 } } }]).exec();
+
+    return new Map(rows.map((row) => [row._id, row.count]));
+  }
+
+  /**
+   * Hands every conversation of one owner to another, and says how many moved.
+   *
+   * The one-way migration from the pre-sign-in user ids (whatever the phone asserted) to a `User`
+   * document's `_id`. Envelopes are untouched: `chat_message` is keyed on `chatId`, so the timeline
+   * follows the conversation. It lives here rather than in the CLI because `Chat.userId` is this
+   * class's key — the clause every read filters on — and nothing else should write it.
+   */
+  async reassignOwner(from: string, to: string): Promise<number> {
+    const result = await this.chatModel.updateMany({ userId: from }, { $set: { userId: to } }).exec();
+
+    return result.modifiedCount;
   }
 
   /**
@@ -147,29 +273,25 @@ export class ChatService {
    * The envelope log is keyed on `chatId` and nothing else refers to it, so a chat removed without
    * this leaves its whole timeline in `chat_message` permanently — unreachable, because the only
    * query that would find it starts from a chat document that no longer exists.
+   *
+   * The owner is part of the delete, so somebody else's id deletes nothing and is answered 404.
    */
-  async remove(id: string): Promise<void> {
-    const result = await this.chatModel.findByIdAndDelete(new Types.ObjectId(id)).exec();
-    if (!result) {
-      throw new NotFoundException(`Chat with ID ${id} not found`);
-    }
+  async remove(id: string, userId: string): Promise<void> {
+    const objectId = toObjectId(id);
+    if (!objectId) throw notFound(id);
+
+    const result = await this.chatModel.findOneAndDelete({ _id: objectId, userId }).exec();
+    if (!result) throw notFound(id);
 
     await this.envelopeModel.deleteMany({ chatId: id }).exec();
   }
 
-  async getHistory(id: string): Promise<ChatMessage[]> {
-    const chat = await this.chatModel.findById(new Types.ObjectId(id)).exec();
-    if (!chat) {
-      throw new NotFoundException(`Chat with ID ${id} not found`);
-    }
-    return chat.history;
+  async getHistory(id: string, userId: string): Promise<ChatMessage[]> {
+    return (await this.byIdAndOwner(id, userId)).history;
   }
 
   async saveHistory(id: string, history: ChatMessage[] | Content[]): Promise<void> {
-    const chat = await this.chatModel.findById(new Types.ObjectId(id)).exec();
-    if (!chat) {
-      throw new NotFoundException(`Chat with ID ${id} not found`);
-    }
+    const chat = await this.byId(id);
     chat.history = history;
     await chat.save();
   }
@@ -195,7 +317,9 @@ export class ChatService {
     void this.chatTitle.consider(sessionId, chatId, text);
 
     try {
-      const history = await this.getHistory(chatId);
+      // By id alone: the gateway admitted this frame only after `assertOwned`, so the owner is
+      // settled for the whole turn.
+      const history = (await this.byId(chatId)).history;
       const request = new ChatPromptusRequest(text, history);
       const response = await this.promptusService.generate(request, ctx);
 
@@ -219,6 +343,22 @@ export class ChatService {
       );
     }
   }
+}
+
+/**
+ * A chat id as Mongo understands it, or nothing.
+ *
+ * `new Types.ObjectId(x)` throws on anything that is not twenty-four hex characters, and a throw out
+ * of a service is a 500. A malformed id is not a server fault: it names no chat, so it gets the same
+ * answer as an id that names somebody else's.
+ */
+function toObjectId(id: string): Types.ObjectId | null {
+  return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+}
+
+/** The one answer for "no such chat", "not yours" and "not an id". They must be indistinguishable. */
+function notFound(id: string): NotFoundException {
+  return new NotFoundException(`Chat with ID ${id} not found`);
 }
 
 /**

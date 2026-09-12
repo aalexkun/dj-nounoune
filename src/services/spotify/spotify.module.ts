@@ -5,6 +5,7 @@ import { Artist, ArtistSchema } from '../../schemas/artist.schema';
 import { Album, AlbumSchema } from '../../schemas/albums.schema';
 import { Song, SongSchema } from '../../schemas/song.schema';
 import { OpensearchModule } from '../opensearch/opensearch.module';
+import { CredentialStoreModule } from '../credential-store/credential-store.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { OpensearchModule } from '../opensearch/opensearch.module';
       { name: Song.name, schema: SongSchema },
     ]),
     OpensearchModule,
+    CredentialStoreModule,
   ],
   providers: [SpotifyService],
   exports: [SpotifyService],

@@ -1,9 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as fs from 'fs';
-import * as path from 'path';
 import { z } from 'zod';
+import { CredentialStoreService } from '../credential-store/credential-store.service';
 
+/**
+ * The Qobuz OAuth flow: print an authorize url, the user pastes back the code from the redirect,
+ * the code is traded for a user token and the session goes into the credential store.
+ *
+ * A plain class rather than a provider — `QobuzService` constructs it in `onModuleInit` — so
+ * everything it needs arrives through the constructor.
+ */
 export class QobuzAuthUtil {
   private readonly logger = new Logger(QobuzAuthUtil.name);
 
@@ -12,7 +18,10 @@ export class QobuzAuthUtil {
   private readonly QOBUZ_API_BASE: string;
   private readonly QOBUZ_OAUTH_URL: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly credentialStore: CredentialStoreService,
+  ) {
     this.OAUTH_APP_ID = this.configService.get<string>('QOBUZ_OAUTH_APP_ID') || '798273057';
     this.OAUTH_PRIVATE_KEY = this.configService.get<string>('QOBUZ_OAUTH_PRIVATE_KEY') || '6lz8C03UDIC7';
     this.QOBUZ_API_BASE = this.configService.get<string>('QOBUZ_API_BASE') || 'https://www.qobuz.com/api.json/0.2';
@@ -99,10 +108,11 @@ export class QobuzAuthUtil {
       const profileData = ProfileDataSchema.parse(profileJson);
       const userEmail = profileData.user?.email || 'Unknown User';
 
-      const sessionPath = path.join(process.cwd(), '.qobuz-session.json');
-      fs.writeFileSync(sessionPath, JSON.stringify({ userId, userAuthToken }, null, 2), 'utf8');
+      // Thrown past rather than caught: a Qobuz user token takes a browser round trip to obtain and
+      // is not something to lose to a warning line the operator will scroll past.
+      await this.credentialStore.save('qobuz', { userId, userAuthToken });
 
-      this.logger.log(`\nSuccess! Authenticated as ${userEmail}. Session saved to .qobuz-session.json`);
+      this.logger.log(`\nSuccess! Authenticated as ${userEmail}. Session stored, encrypted, in provider_credentials.`);
 
       return { userId, userAuthToken };
     } catch (error) {
