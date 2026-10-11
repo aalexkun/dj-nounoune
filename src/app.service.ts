@@ -45,6 +45,15 @@ export class AppService {
     return this.configService.get<number>('MPD_PORT') || 6600;
   }
 
+  /**
+   * How long one MPD command may wait for its reply, time spent queued behind other commands
+   * included. The daemon is on the same machine and answers in milliseconds, so the default is short.
+   */
+  getMpdTimeoutMs(): number {
+    const configured = Number(this.configService.get<string>('MPD_TIMEOUT_MS'));
+    return Number.isFinite(configured) && configured > 0 ? configured : 2000;
+  }
+
   getImportPathStyle(): string {
     return this.configService.get<string>('IMPORT_LIBRARY_PATH_STYLE') || 'Linux';
   }

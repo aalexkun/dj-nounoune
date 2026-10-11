@@ -23,32 +23,80 @@ import { getErrorMessage } from '../../utils/error.utils';
 const MAX_PICTURE_BYTES = 8 * 1024 * 1024;
 
 const NEWLINE = 0x0a;
+const LETTER_O = 0x4f;
+const LETTER_K = 0x4b;
+
+/** What the server greets with. Anything else on a fresh connection is not an MPD server. */
+const BANNER = 'OK MPD';
+
+/** A greeting longer than this with no line break in it is not a greeting. */
+const MAX_BANNER_BYTES = 256;
+
+/**
+ * Pause before the first reconnect attempt, doubled on each failure up to the ceiling.
+ *
+ * The daemon is on the same machine, so a refused connection comes back at once and a tight loop
+ * would just fill the log. The ceiling keeps the wait after an MPD restart short enough that the
+ * queue watcher, which polls every two seconds, is not what the user ends up waiting on.
+ */
+const RECONNECT_MIN_MS = 500;
+const RECONNECT_MAX_MS = 5000;
+
+/** Keeps a half-open socket from going unnoticed for longer than the OS default would allow. */
+const KEEPALIVE_DELAY_MS = 10_000;
 
 /**
  * One command waiting on the wire. `unknown` because the queue holds every request type at once;
  * `send<T>` restores the concrete response type at the call site. `resolve`/`reject` are declared
  * as methods on purpose: method parameters stay bivariant under `strictFunctionTypes`, which is
  * what lets a `Promise<T>` resolver be stored here.
+ *
+ * `timer` is the request's deadline. It starts when the request is queued, not when it is written,
+ * because a caller waiting behind a stuck request is waiting all the same.
  */
 type PendingRequest = {
   request: MpdRequest<unknown>;
   resolve(value: unknown): void;
   reject(reason?: unknown): void;
+  timer: NodeJS.Timeout;
 };
 
+/**
+ * Client for the MPD line protocol: one socket, a serialised FIFO of requests, one reply per request.
+ *
+ * Three things keep the FIFO from stalling, and all three were missing once:
+ *
+ * - **Every request has a deadline** (`MPD_TIMEOUT_MS`, queue time included). A request that expires
+ *   while it is on the wire drops the connection, because its reply may still arrive and would be
+ *   read as the answer to the next command. A request that expires while still queued is simply
+ *   failed, which is what happens to every caller while the daemon is unreachable.
+ * - **A dropped connection fails only the request on the wire.** Its command may or may not have
+ *   run and its reply will never come. What is still queued was never sent and waits for the next
+ *   connection under its own deadline. Before this, the request on the wire stayed "current"
+ *   forever and nothing was ever written again, on any connection.
+ * - **A new socket per connection, with its listeners registered once.** Reconnecting the same
+ *   socket object and adding four more listeners each time fed every chunk to the buffer several
+ *   times over, which is how a queue came back with each track repeated.
+ */
 @Injectable()
 export class MpdClientService implements OnModuleInit, OnModuleDestroy {
-  private readonly client: net.Socket;
   private readonly logger = new Logger(MpdClientService.name);
+  private readonly timeoutMs: number;
+
+  private socket: net.Socket | null = null;
   private requestQueue: PendingRequest[] = [];
   private currentRequest: PendingRequest | null = null;
   /** Kept as bytes: a picture payload cannot survive a round trip through a string. */
   private buffer: Buffer = Buffer.alloc(0);
-  private isConnected: boolean = false;
-  private hasReceivedBanner: boolean = false;
+  /** True once the banner has been read on the current socket, which is when commands may be sent. */
+  private ready = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectDelay = RECONNECT_MIN_MS;
+  /** Set by `onModuleDestroy`; stops the reconnect loop and refuses new requests. */
+  private closing = false;
 
   constructor(private appService: AppService) {
-    this.client = new net.Socket();
+    this.timeoutMs = this.appService.getMpdTimeoutMs();
   }
 
   onModuleInit() {
@@ -56,69 +104,185 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
-    this.disconnect();
+    this.closing = true;
+    this.clearReconnectTimer();
+
+    const queued = this.requestQueue;
+    this.requestQueue = [];
+
+    this.dropConnection('MPD client is shutting down');
+
+    for (const pending of queued) {
+      this.fail(pending, new Error('MPD client is shutting down'));
+    }
   }
 
-  private connect() {
-    const host = this.appService.getMpdHost();
-    const port = this.appService.getMpdPort();
+  private hasHost(): boolean {
+    return this.appService.getMpdHost() !== 'undefined';
+  }
 
-    if (host === 'undefined') {
+  /** Opens a fresh socket. A no-op while one exists, while a reconnect is pending, or when shutting down. */
+  private connect() {
+    if (this.closing || this.socket || this.reconnectTimer) return;
+
+    if (!this.hasHost()) {
       this.logger.warn('MPD_HOST is not defined. Skipping connection.');
       return;
     }
 
+    const host = this.appService.getMpdHost();
+    const port = this.appService.getMpdPort();
+
     this.logger.debug(`Connecting to MPD server at ${host}:${port}`);
 
-    // Reset state on new connection attempt
-    this.isConnected = false;
-    this.hasReceivedBanner = false;
+    this.ready = false;
     this.buffer = Buffer.alloc(0);
-    if (this.currentRequest) {
-      // todo
-      // Should check if we need to fail pending request or requeue
-      // For simplicity, fail current request if connection drops mid-processing?
-      // Or just requeue? Let's requeue if not sent?
-      // If sent, we don't know state. Fail is safer.
-      // But here we are connecting.
-    }
 
-    this.client.connect(port, host);
-    this.client.on('connect', () => {
+    const socket = new net.Socket();
+    this.socket = socket;
+
+    socket.setNoDelay(true);
+    socket.setKeepAlive(true, KEEPALIVE_DELAY_MS);
+
+    socket.once('connect', () => {
       this.logger.debug('TCP Connection established to MPD server');
-      this.client.unref();
-      this.isConnected = true;
-      this.processQueue();
+      // A one-shot CLI command must not be kept alive by the socket it opened on the way.
+      socket.unref();
     });
 
-    this.client.on('data', (data) => {
-      this.handleData(data);
+    // Every handler checks the socket is still the live one: a socket this client has already
+    // replaced may still emit `close` on its way out, and that must not touch the new connection.
+    socket.on('data', (data: Buffer) => {
+      if (socket === this.socket) this.handleData(data);
     });
 
-    this.client.on('close', () => {
-      this.logger.debug('Connection closed');
-      this.isConnected = false;
-      this.hasReceivedBanner = false;
-      // Retry logic could be added here
+    socket.on('error', (err: Error) => {
+      // `close` follows and does the recovery; this only says why.
+      if (socket === this.socket) this.logger.warn(`MPD connection error: ${err.message}`);
     });
 
-    this.client.on('error', (err) => {
-      this.logger.error(`Connection error: ${err.message}`);
-      this.isConnected = false;
+    socket.once('close', () => {
+      if (socket !== this.socket) return;
+
+      // The daemon closes a connection it has heard nothing on for `connection_timeout` (60 s by
+      // default). With nothing on the wire that is routine; with a request on it, a loss.
+      if (this.currentRequest) {
+        this.logger.warn(`MPD connection closed while waiting for ${this.currentRequest.request.command}`);
+      } else {
+        this.logger.debug('MPD closed an idle connection');
+      }
+
+      this.dropConnection('MPD connection closed');
     });
+
+    socket.connect(port, host);
   }
 
-  private disconnect() {
-    if (this.client) {
-      this.client.destroy();
+  /**
+   * Lets go of the current socket and fails the request that was on the wire.
+   *
+   * Both the socket's own `close` and a deadline expiring on the wire come through here, so the
+   * recovery is the same whoever noticed first. The queued requests are left alone: nothing was
+   * sent on their behalf, and their own deadlines bound how long they wait for the next connection.
+   *
+   * A reconnect is scheduled only when somebody is waiting. An idle client reconnects on its next
+   * request instead, so a connection the daemon closed for inactivity is not reopened just to go
+   * idle again: the server's poller keeps its connection busy, and a finished CLI command is gone.
+   */
+  private dropConnection(reason: string) {
+    const socket = this.socket;
+    this.socket = null;
+    this.ready = false;
+    this.buffer = Buffer.alloc(0);
+
+    // Its `close` is ignored from here on: it is no longer `this.socket`.
+    socket?.destroy();
+
+    const pending = this.currentRequest;
+    this.currentRequest = null;
+
+    if (pending) {
+      this.fail(pending, new Error(`${reason} while waiting for ${pending.request.command}`));
     }
+
+    if (!this.closing && (pending || this.requestQueue.length > 0)) this.scheduleReconnect();
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer || this.closing) return;
+
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_MS);
+
+    this.logger.debug(`Reconnecting to MPD in ${delay}ms`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+
+    // A dead daemon must not keep a finished CLI command's process alive.
+    this.reconnectTimer.unref();
+  }
+
+  private clearReconnectTimer() {
+    if (!this.reconnectTimer) return;
+
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   async send<T>(request: MpdRequest<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.requestQueue.push({ request, resolve, reject });
+    if (this.closing) {
+      throw new Error('MPD client is shutting down');
+    }
+
+    // Fails now rather than queueing forever: without a host there will never be a connection.
+    if (!this.hasHost()) {
+      throw new Error('MPD_HOST is not defined');
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      const pending: PendingRequest = {
+        request,
+        resolve,
+        reject,
+        timer: setTimeout(() => this.expire(pending), this.timeoutMs),
+      };
+
+      this.requestQueue.push(pending);
       this.processQueue();
     });
+  }
+
+  /** The deadline ran out. What happens next depends on whether the request had reached the wire. */
+  private expire(pending: PendingRequest) {
+    const command = pending.request.command;
+
+    if (pending === this.currentRequest) {
+      // The reply may still be on its way, and on this socket it would be taken for the answer to
+      // the next command. The only safe way out is a new connection.
+      this.logger.warn(`MPD did not answer ${command} within ${this.timeoutMs}ms, reconnecting`);
+      this.currentRequest = null;
+      this.fail(pending, new Error(`MPD did not answer ${command} within ${this.timeoutMs}ms`));
+      this.dropConnection('MPD connection reset');
+      return;
+    }
+
+    const index = this.requestQueue.indexOf(pending);
+    if (index !== -1) this.requestQueue.splice(index, 1);
+
+    this.fail(pending, new Error(`MPD request ${command} waited ${this.timeoutMs}ms without being sent`));
+  }
+
+  private succeed(pending: PendingRequest, value: unknown) {
+    clearTimeout(pending.timer);
+    pending.resolve(value);
+  }
+
+  private fail(pending: PendingRequest, error: Error) {
+    clearTimeout(pending.timer);
+    pending.reject(error);
   }
 
   async next() {
@@ -184,7 +348,7 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Whole cover image sitting next to the file in its directory (cover.jpg, folder.png, …).
+   * Whole cover image sitting next to the file in its directory (cover.jpg, folder.png, ...).
    * Null when the directory holds none.
    */
   async fetchDirectoryArtwork(uri: string): Promise<MpdPicture | null> {
@@ -192,7 +356,7 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Walks the offsets until the picture announced by `size:` is complete — the server hands over at
+   * Walks the offsets until the picture announced by `size:` is complete: the server hands over at
    * most `binarylimit` bytes (8 KiB by default) per request.
    */
   private async fetchPicture(command: string, uri: string, request: (offset: number) => MpdRequest<BinaryMpdResponse>): Promise<MpdPicture | null> {
@@ -234,20 +398,20 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   private processQueue() {
-    if (!this.isConnected || !this.hasReceivedBanner) {
-      if (!this.isConnected && (this.client.destroyed || !this.client.writable) && !this.client.connecting) {
-        this.connect();
-      }
+    if (!this.ready) {
+      // Nothing to do if a socket is already on its way; otherwise this is the safety net.
+      this.connect();
       return;
     }
 
     if (this.currentRequest || this.requestQueue.length === 0) return;
 
     this.currentRequest = this.requestQueue.shift()!;
-    this.buffer = Buffer.alloc(0); // Ensure buffer is clear for new response
+    // Nothing was in flight, so whatever is in the buffer was unsolicited.
+    this.buffer = Buffer.alloc(0);
     const commandStr = this.currentRequest.request.getCommandString();
     this.logger.verbose(`Sending command: ${commandStr.trim()}`);
-    this.client.write(commandStr);
+    this.socket!.write(commandStr);
   }
 
   private handleData(data: Buffer) {
@@ -255,7 +419,7 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
 
     this.buffer = this.buffer.length === 0 ? data : Buffer.concat([this.buffer, data]);
 
-    if (!this.hasReceivedBanner && !this.consumeBanner()) return;
+    if (!this.ready && !this.consumeBanner()) return;
 
     if (this.buffer.length === 0) return;
 
@@ -266,76 +430,83 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * The server greets with `OK MPD <version>` before anything else. Returns false while the greeting
-   * is still incomplete, so the caller waits for the rest rather than reading it as a response.
+   * is still incomplete, so the caller waits for the rest rather than reading it as a response, and
+   * false after dropping a connection whose first line was not a greeting at all.
    */
   private consumeBanner(): boolean {
-    if (this.buffer.length < 6) return false;
-
-    if (this.buffer.subarray(0, 6).toString('latin1') !== 'OK MPD') {
-      this.logger.warn('Received data but expecting banner: ' + this.buffer.toString('utf8'));
-      return true; // Not a banner: let the normal response path deal with it.
-    }
-
     const lineEnd = this.buffer.indexOf(NEWLINE);
+
     if (lineEnd === -1) {
-      this.logger.warn('Received partial data looking like banner: ' + this.buffer.toString('utf8'));
+      if (this.buffer.length > MAX_BANNER_BYTES) {
+        this.logger.error(`Expected the MPD banner, received ${this.buffer.length} bytes with no line break`);
+        this.dropConnection('Not an MPD server');
+      }
       return false;
     }
 
-    this.logger.log('Received MPD Banner: ' + this.buffer.subarray(0, lineEnd).toString('utf8'));
-    this.hasReceivedBanner = true;
+    const line = this.buffer.subarray(0, lineEnd).toString('utf8');
 
-    // Held aside because `processQueue` clears the buffer for the command it is about to send.
-    const remainder = this.buffer.subarray(lineEnd + 1);
-    this.buffer = Buffer.alloc(0);
-    this.processQueue(); // Ready to send commands
-    this.buffer = Buffer.concat([this.buffer, remainder]);
+    if (!line.startsWith(BANNER)) {
+      this.logger.error(`Expected the MPD banner, received: ${line}`);
+      this.dropConnection('Not an MPD server');
+      return false;
+    }
+
+    this.logger.log(`Received MPD banner: ${line}`);
+
+    // The server sends nothing unsolicited, so this is normally empty.
+    this.buffer = this.buffer.subarray(lineEnd + 1);
+    this.ready = true;
+    this.reconnectDelay = RECONNECT_MIN_MS;
+
+    this.processQueue();
 
     return true;
   }
 
   /**
-   * Text responses end at the closing `OK`. A picture cannot be framed that way — its bytes may hold
-   * that very sequence — so its length is taken from the `binary:` header instead.
+   * Text responses end at a line that is exactly `OK`. A picture cannot be framed that way, since
+   * its bytes may hold that very sequence, so its length is taken from the `binary:` header instead.
    */
   private isResponseComplete(): boolean {
     if (this.currentRequest?.request.isBinary) {
       return isBinaryResponseComplete(this.buffer);
     }
 
-    const text = this.buffer.toString('utf8');
-    return text.endsWith('OK\n') || text.startsWith('ACK [');
+    return endsWithOkLine(this.buffer) || isCompleteAck(this.buffer);
   }
 
   private finalizeRequest() {
-    if (!this.currentRequest) {
-      // Unsolicited message or leftover
-      if (this.buffer.toString('utf8').trim().length > 0) {
-        this.logger.warn('Received data without active request: ' + this.buffer.toString('utf8'));
-      }
-      this.buffer = Buffer.alloc(0);
-      return;
-    }
-
     const raw = this.buffer;
     this.buffer = Buffer.alloc(0);
 
-    const isBinary = this.currentRequest.request.isBinary;
+    const pending = this.currentRequest;
+
+    if (!pending) {
+      // Unsolicited message or leftover
+      if (raw.toString('utf8').trim().length > 0) {
+        this.logger.warn('Received data without active request: ' + raw.toString('utf8'));
+      }
+      return;
+    }
+
+    this.currentRequest = null;
+
+    const isBinary = pending.request.isBinary;
     // Only the head is decoded for a picture: the rest is payload, and an error never gets that far.
     const head = raw.subarray(0, Math.min(raw.length, 256)).toString('utf8');
 
     if (head.startsWith('ACK')) {
-      this.currentRequest.reject(new Error(`MPD Error: ${head.trim()}`));
+      this.fail(pending, new Error(`MPD Error: ${head.trim()}`));
     } else {
       try {
-        const response = this.currentRequest.request.createResponse(isBinary ? raw : raw.toString('utf8'));
-        this.currentRequest.resolve(response);
+        const response = pending.request.createResponse(isBinary ? raw : raw.toString('utf8'));
+        this.succeed(pending, response);
       } catch (e: unknown) {
-        this.currentRequest.reject(new Error(`Response parsing error: ${getErrorMessage(e)}`));
+        this.fail(pending, new Error(`Response parsing error: ${getErrorMessage(e)}`));
       }
     }
 
-    this.currentRequest = null;
     this.processQueue();
   }
 
@@ -344,4 +515,27 @@ export class MpdClientService implements OnModuleInit, OnModuleDestroy {
     if (this.currentRequest?.request.isBinary) return `${data.length} bytes`;
     return data.toString('utf8').replace(/\n/g, '\\n');
   }
+}
+
+/**
+ * Whether the buffer ends with a line that is exactly `OK`.
+ *
+ * Checked on the bytes at the tail rather than by decoding the whole buffer: `playlistinfo` on a
+ * long queue arrives in many chunks, and decoding everything received so far on each of them is
+ * work that grows with the square of the reply. Anchored on the line break before it, because a tag
+ * value can end in those two letters (`Title: It's OK`) and a chunk can end right after it; taking
+ * that for the end of the reply hands the rest of it to the next command as its answer.
+ */
+function endsWithOkLine(buffer: Buffer): boolean {
+  const length = buffer.length;
+  if (length < 3) return false;
+
+  if (buffer[length - 1] !== NEWLINE || buffer[length - 2] !== LETTER_K || buffer[length - 3] !== LETTER_O) return false;
+
+  return length === 3 || buffer[length - 4] === NEWLINE;
+}
+
+/** An error reply is one `ACK [...] {...} message` line, complete once its line break has arrived. */
+function isCompleteAck(buffer: Buffer): boolean {
+  return buffer.length >= 5 && buffer.subarray(0, 5).toString('latin1') === 'ACK [' && buffer[buffer.length - 1] === NEWLINE;
 }
