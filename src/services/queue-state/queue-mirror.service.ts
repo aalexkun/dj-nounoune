@@ -42,13 +42,16 @@ export class QueueMirrorService implements OnModuleInit, OnModuleDestroy {
   private readonly queueBySession = new Map<SessionId, string>();
 
   /**
-   * Library documents behind the current queue, keyed by song id, memoised on the queue version.
+   * Library documents behind the current queue, keyed by song id, memoised on the set of song ids.
    *
    * Rows carry artwork and a duration, and a `QueueEntry` has neither — MPD reports a uri, a
    * position and whatever tags the file or the proxy supplied. Hydrating is therefore one Mongo
-   * read, and it happens only when the queue version actually moves, not on the two-second tick.
+   * read, and it happens only when the songs in the queue actually change, not on the two-second
+   * tick. The key is the ids themselves rather than MPD's queue version: that counter restarts
+   * with the daemon, so after a restart it can land on a value already seen and leave a different
+   * queue dressed in the previous one's documents.
    */
-  private hydratedVersion: number | null = null;
+  private hydratedKey: string | null = null;
   private hydrated = new Map<string, PopulatedSong>();
 
   constructor(
@@ -169,18 +172,19 @@ export class QueueMirrorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async hydrate(snapshot: QueueSnapshot): Promise<Map<string, PopulatedSong>> {
-    if (this.hydratedVersion === snapshot.version) return this.hydrated;
-
     const ids = [...new Set(snapshot.entries.map((entry) => entry.songId).filter((id): id is string => !!id))];
+    const key = ids.join(',');
+
+    if (this.hydratedKey === key) return this.hydrated;
 
     try {
       const songs = ids.length > 0 ? await this.musicDb.getPopulatedSongsByIds(ids, true) : [];
 
       this.hydrated = new Map(songs.map((song) => [song._id.toString(), song]));
-      this.hydratedVersion = snapshot.version;
+      this.hydratedKey = key;
     } catch (error: unknown) {
-      // Rows without artwork are worth more than no queue at all, and the next version bump will
-      // try again. The stale map is deliberately kept: it is right for every entry that survived.
+      // Rows without artwork are worth more than no queue at all, and the next snapshot will try
+      // again. The stale map is deliberately kept: it is right for every entry that survived.
       this.logger.warn(`Could not hydrate the queue: ${getErrorMessage(error)}`);
     }
 

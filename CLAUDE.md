@@ -256,6 +256,8 @@ Mongo or MPD. Every answer is the `{ errors, data }` envelope parsed by Zod, and
 
 `src/services/mpd-client/` is a hand-rolled TCP client for the MPD line protocol: one socket, serialized FIFO queue, banner handshake, responses terminated by `OK`/`ACK`. One request class per verb in `requests/`, paired 1:1 with a lazy-parsing response class in `responses/`. Protocol notes in `mpd-client/readme.md`. Add a verb by adding both halves of the pair.
 
+Every request carries a deadline (`MPD_TIMEOUT_MS`, default 2 s, queue time included) — the FIFO is only as alive as its head, and a request that never settles used to stall every caller behind it for the life of the process, which is what a hung queue screen looked like. A deadline that expires on the wire drops the connection, since the late reply would be read as the next command's answer; a dropped connection fails only the request on the wire, keeps the queued ones, and reconnects on a backoff with a fresh socket. The `OK` that closes a text reply is matched as a whole line, never as a suffix: a title can end in those letters.
+
 ## Conventions
 
 Project rules live in `.agent/rules/` (`project.md`, `cli.md`, `promptus.md`, `genai.md`) and apply to all work here. Longer-form architecture references live in `doc/` — currently [`promptus-architecture.md`](doc/promptus-architecture.md), [`promptus-caching.md`](doc/promptus-caching.md) and [`lighting-agent-design.md`](doc/lighting-agent-design.md). The non-obvious ones:

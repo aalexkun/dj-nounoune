@@ -40,7 +40,6 @@ import { UserService } from './services/auth/user.service';
 import { AuthSessionService } from './services/auth/auth-session.service';
 import { SessionAuthGuard } from './services/auth/session-auth.guard';
 import { AuthRateLimitGuard } from './services/auth/auth-rate-limit.guard';
-import { MpdClientService } from './services/mpd-client/mpd-client.service';
 import { SpotifyModule } from './services/spotify/spotify.module';
 import { QobuzModule } from './services/qobuz/qobuz.module';
 import { YoutubeModule } from './services/youtube/youtube.module';
@@ -129,7 +128,6 @@ const providers: Provider[] = [
   PlaylistReconcilerService,
   ShellService,
   MusicDbService,
-  MpdClientService,
   FileService,
   ChatGateway,
   VibingGateway,

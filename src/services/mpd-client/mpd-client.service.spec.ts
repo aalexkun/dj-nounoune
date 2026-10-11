@@ -14,6 +14,7 @@ describe('MpdClientService', () => {
           useValue: {
             getMpdHost: jest.fn().mockReturnValue('localhost'),
             getMpdPort: jest.fn().mockReturnValue(6600),
+            getMpdTimeoutMs: jest.fn().mockReturnValue(2000),
           },
         },
       ],
