@@ -1,7 +1,7 @@
 import { GEMINI_FLASH } from '../config';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../promptus.request';
 import { ChatPromptusResponse } from '../response/chat.promptus.response';
-import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { ToolDeclaration } from '../tools/tool.type';
 import { chatPromptusPrompt } from './chat-promptus.prompt';
 
@@ -37,7 +37,15 @@ export class ChatPromptusRequest extends PromptusRequest<ChatPromptusResponse> {
     YoutubeToolsDefinition.importCommand,
     AgentToolsDefinition.lightingDesigner,
   ];
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * The user-facing conversation: a long instruction, a dozen tools and a routing decision on every
+   * turn. MEDIUM is the floor it needs; HIGH, the model default, is paid on every message.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    },
+  };
   public structuredResponse?: StructuredResponse | undefined;
   private readonly _model = GEMINI_FLASH;
   private readonly _role: RequestRole = 'user';

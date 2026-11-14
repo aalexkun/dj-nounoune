@@ -3,12 +3,20 @@ import { GenerateQueryResponse } from '../response/generate-query.response';
 import { generateQueryPrompt } from './generate-query.prompt';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
-import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 
 export class GenerateQueryRequest extends PromptusRequest<GenerateQueryResponse> {
   public structuredResponse?: StructuredResponse = undefined;
   public tools: ToolDeclaration[] = [];
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * Writes the OpenSearch query from the brief; a wrong clause empties the result silently, so
+   * MEDIUM.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_3_FLASH;

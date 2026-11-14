@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client } from '@opensearch-project/opensearch';
+import { Client, errors } from '@opensearch-project/opensearch';
 import { PopulatedSong } from '../music-db/music-db.service';
 import { NeuralSearch, SongIndices } from './models/SongIndices';
 import {
@@ -41,6 +41,26 @@ export type DuplicateSongCheck = {
   album: string;
 };
 
+/**
+ * How long one request to the node may take, connect included, unless `OPENSEARCH_REQUEST_TIMEOUT_MS`
+ * says otherwise. The client's own default is 30 s with three retries, so a node that was simply off
+ * cost two minutes per request, and the profiler asks twice per field: a playlist request sat for a
+ * quarter of an hour behind a dead box before anything was logged. Ten seconds is well clear of the
+ * slowest live call here (a neural query that embeds its text on the node) and short enough that an
+ * outage reads as an outage.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Whether an error means the node could not be reached at all, as opposed to answering with a
+ * complaint about the request. The profiler stops at the first of these rather than paying the
+ * timeout once per field, and the DJ falls back to the last profile it wrote. Everything else
+ * (a bad mapping, a missing field, a 4xx) is about one request and stays with that request.
+ */
+export function isSearchNodeUnreachable(err: unknown): boolean {
+  return err instanceof errors.ConnectionError || err instanceof errors.TimeoutError || err instanceof errors.NoLivingConnectionsError;
+}
+
 @Injectable()
 export class OpensearchService {
   private readonly logger = new Logger(OpensearchService.name);
@@ -63,12 +83,20 @@ export class OpensearchService {
 
     const auth = username && password ? { username, password } : undefined;
     const ssl = node.startsWith('https://') ? { rejectUnauthorized: false } : undefined;
+    const configuredTimeout = Number(this.configService.get<string>('OPENSEARCH_REQUEST_TIMEOUT_MS'));
+    const requestTimeout = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : DEFAULT_REQUEST_TIMEOUT_MS;
 
     this.client = new Client({
       node,
       auth,
       ssl,
+      requestTimeout,
+      // One node, so a retry can only go back to the same box: on a timeout it doubles the wait and
+      // the load, on a dead host it multiplies the outage. The callers that can degrade already do
+      // (the search methods return null, the profiler stops at the first unreachable error).
+      maxRetries: 0,
     });
+    this.logger.log(`OpenSearch client on ${node} (request timeout ${requestTimeout} ms, no retries)`);
   }
 
   private async getDeployedModelId(): Promise<string | null> {

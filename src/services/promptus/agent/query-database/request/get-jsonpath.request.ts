@@ -1,5 +1,5 @@
 import { GEMINI_3_FLASH } from '../../../config';
-import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { GetJsonpathResponse } from '../response/get-jsonpath.response';
 import { getJsonpathPrompt } from './get-jsonpath.prompt';
@@ -7,7 +7,14 @@ import { ToolDeclaration } from '../../../tools/tool.type';
 
 export class GetJsonpathRequest extends PromptusRequest<GetJsonpathResponse> {
   public tools: ToolDeclaration[] = [];
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * Picks a JSONPath out of a known document shape. LOW.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.LOW,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_3_FLASH;

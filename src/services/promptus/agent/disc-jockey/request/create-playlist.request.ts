@@ -1,5 +1,5 @@
 import { GEMINI_FLASH } from '../../../config';
-import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { CreatePlaylistResponse } from '../response/create-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
@@ -70,7 +70,15 @@ export class CreatePlaylistRequest extends PromptusRequest<CreatePlaylistRespons
       required: ['description', 'items'],
     },
   };
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * The playlist itself. MEDIUM by default; the complexity assessment in the handler raises it to
+   * HIGH for a precise brief.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH;

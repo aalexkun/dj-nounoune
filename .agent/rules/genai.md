@@ -75,10 +75,15 @@ const ai = new GoogleGenAI({});
 
 ## Models
 
+-   In this project every model id is a constant in `src/services/promptus/config.ts`
+    (`GEMINI_FLASH`, `GEMINI_FLASH_LITE`, `GEMINI_3_FLASH`, `GEMINI_FLASH_CACHED`); reference those,
+    never a raw id. Explicit context caching is refused by every Gemini 4 model, so a cached request
+    and its cache both use `GEMINI_FLASH_CACHED`.
 -   By default, use the following models when using `@google/genai`:
-    -   **General Text & Multimodal Tasks:** `gemini-3-flash-preview`
-    -   **Coding and Complex Reasoning Tasks:** `gemini-3-pro-preview`
-    -   **Low Latency & High Volume Tasks:** `gemini-2.5-flash-lite`
+    -   **General Text & Multimodal Tasks:** `gemini-4-hydrogen` (GA 2026-11-12; thinking `low`/`medium`/`high`/`xhigh`, defaults to `high`)
+    -   **Coding and Complex Reasoning Tasks:** `gemini-4-argon`, or `gemini-4-carbon` for the hardest reasoning
+    -   **Low Latency & High Volume Tasks:** `gemini-3.5-flash-lite`, or the `gemini-flash-lite-latest` alias (hot-swapped with two weeks' notice)
+    -   **Yes/no and single-choice decisions, scored rather than generated:** `gemini-decision-1` through the Decisions API
     -   **Fast Image Generation and Editing:** `gemini-2.5-flash-image` (aka Nano Banana)
     -   **High-Quality Image Generation and Editing:** `gemini-3-pro-image-preview` (aka Nano Banana Pro)
     -   **High-Fidelity Video Generation:** `veo-3.0-generate-001` or `veo-3.1-generate-preview`
@@ -92,6 +97,7 @@ const ai = new GoogleGenAI({});
 
 -   Do not use the following deprecated models (or their variants like
     `gemini-1.5-flash-latest`):
+    -   **Deprecated:** `gemini-3-pro-preview` (still answers, shutdown pending; `gemini-3-flash-preview` is not deprecated)
     -   **Prohibited:** `gemini-1.5-flash`
     -   **Prohibited:** `gemini-1.5-pro`
     -   **Prohibited:** `gemini-pro`
@@ -197,17 +203,20 @@ run();
 
 ### Thinking (Reasoning)
 
-Gemini 2.5 and 3 series models support explicit "thinking" for complex logic.
+Every current Gemini model thinks by default, and `thinkingLevel` is the **only** knob. Set it
+inside `config.thinkingConfig`, or omit it to take the model's own default.
 
-#### Gemini 3
+- **`MINIMAL`:** as few thinking tokens as possible, for low-complexity tasks. Gemini 3.x Flash and
+  Flash Lite only: **not accepted by the Gemini 4 models or by `gemini-3.8-flash`**.
+- **`LOW`**: fewer thinking tokens, for simpler tasks where extensive reasoning is not required.
+- **`MEDIUM`**: a balance for tasks of moderate complexity that benefit from reasoning but don't need
+  deep, multi-step planning. The default on `gemini-3.8-flash`, `gemini-4-argon` and `gemini-4-carbon`.
+- **`HIGH`**: maximum reasoning depth, slower to first token. The default on `gemini-4-hydrogen` and
+  `gemini-3-flash-preview`.
+- **`XHIGH`**: `gemini-4-hydrogen` only, and absent from the `ThinkingLevel` enum of `@google/genai` 2.x.
 
-Thinking is on by default for `gemini-3-pro-preview` and `gemini-3-flash-preview`.
-It can be adjusted by using the `thinkingLevel` parameter.
-
-- **`MINIMAL`:** (Gemini 3 Flash Only) Constrains the model to use as few tokens as possible for thinking and is best used for low-complexity tasks that wouldn't benefit from extensive reasoning.
-- **`LOW`**: Constrains the model to use fewer tokens for thinking and is suitable for simpler tasks where extensive reasoning is not required.
-- **`MEDIUM`**: (Gemini 3 Flash only) Offers a balanced approach suitable for tasks of moderate complexity that benefit from reasoning but don't require deep, multi-step planning.
-- **`HIGH`**: (Default) Maximizes reasoning depth. The model may take significantly longer to reach a first token, but the output will be more thoroughly vetted.
+Supported levels vary by model: the table is at https://aistudio.google.com/docs/thinking. A level a
+model does not support is an error, not a fallback, so check it when a request changes model.
 
 ```javascript
 import { GoogleGenAI } from "@google/genai";
@@ -216,12 +225,12 @@ const ai = new GoogleGenAI({});
 
 async function main() {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: "What is AI?",
     config: {
       thinkingConfig: {
         includeThoughts: true, // If you want to see the thoughts
-        // 'HIGH' is default.
+        // 'HIGH' is this model's default.
         thinkingLevel: 'LOW', // Use 'LOW' for faster/cheaper reasoning
       },
     },
@@ -239,41 +248,13 @@ async function main() {
 main();
 ```
 
-#### Gemini 2.5
-
-Thinking is on by default for `gemini-2.5-pro` and `gemini-2.5-flash`. It can be
-adjusted by using the `thinkingBudget` setting. Setting it to zero turns
-thinking off, and will reduce latency.
-
-```javascript
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({});
-
-async function main() {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-pro",
-    contents: "What is AI?",
-    config: {
-      thinkingConfig: {
-        thinkingBudget: 0 // Turn thinking OFF
-        // thinkingBudget: 1024 // Turn thinking ON with specific token budget
-      },
-    },
-  });
-
-  console.log(response.text);
-}
-
-main();
-```
-
 IMPORTANT NOTES:
 
--   Minimum thinking budget for `gemini-2.5-pro` is `128` and thinking can not
-    be turned off for that model.
--   No models (apart from Gemini 2.5/3 series) support thinking or thinking
-    budgets APIs. Do not try to adjust thinking budgets for other models.
+-   **`thinkingBudget` is gone.** The Gemini 3 series silently remapped a budget onto a level; the
+    models after it answer any request that sets `thinkingBudget` with `400 INVALID_ARGUMENT`. Never
+    set it, for any model, and never try to turn thinking off with a budget of `0`: use
+    `thinkingLevel: 'MINIMAL'` where the model accepts it, or the lowest level it does.
+-   `includeThoughts` is unaffected and still works beside `thinkingLevel`.
 
 ### System Instructions
 
@@ -299,9 +280,13 @@ run();
 
 ### Hyperparameters
 
-You can also set `temperature` or `maxOutputTokens` within the `config` object.
-**Avoid** setting `maxOutputTokens`, `topP`, `topK` unless explicitly requested
-by the user.
+**Never set `temperature`, `topP` or `topK`.** The sampling parameters are deprecated on the Gemini
+API (changelog, 21 July 2026): since Gemini 3.6 Flash they are pinned to the model defaults, so a
+custom value has had no effect on the output, and the models after it reject a request that carries
+one. Variety, and determinism, are the prompt's job now. In this codebase `PromptusRequest` has no
+field for them on purpose; do not add one back.
+
+`maxOutputTokens` still works. **Avoid** setting it unless explicitly requested by the user.
 
 ### Safety configurations
 

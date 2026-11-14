@@ -6,6 +6,8 @@ import { MpdClientService } from '../../../../mpd-client/mpd-client.service';
 import { ClearMpdRequest } from '../../../../mpd-client/requests/ClearMpdRequest';
 import { AddMpdRequest } from '../../../../mpd-client/requests/AddMpdRequest';
 import { PlayMpdRequest } from '../../../../mpd-client/requests/PlayMpdRequest';
+import { PlayIdMpdRequest } from '../../../../mpd-client/requests/PlayIdMpdRequest';
+import { StatusMpdRequest } from '../../../../mpd-client/requests/StatusMpdRequest';
 import { AddTagIdMpdRequest } from '../../../../mpd-client/requests/AddTagIdMpdRequest';
 import { ConfigService } from '@nestjs/config';
 import { RedisCacheService } from '../../../../redis-cache/redis-cache.service';
@@ -65,6 +67,9 @@ export class PlayMusicHandler implements ToolHandler {
     // What actually reached the queue, so the playlist message can be bound to it afterwards.
     const queuedSongIds: string[] = [];
     const queuedUris: string[] = [];
+    // The first entry this call put in the queue, by MPD's own id: where playback starts when
+    // nothing was playing. See `startPlayback`.
+    let firstQueuedId: number | undefined;
 
     for (const song of songs) {
       if (song.source === undefined) {
@@ -97,6 +102,9 @@ export class PlayMusicHandler implements ToolHandler {
       try {
         const addResponse = await this.mpdClientService.send(new AddMpdRequest(uri));
         const songId = addResponse.songId;
+        if (firstQueuedId === undefined && songId !== undefined && Number.isFinite(Number(songId))) {
+          firstQueuedId = Number(songId);
+        }
         if (songId) {
           if (song.artist) {
             await this.mpdClientService.send(new AddTagIdMpdRequest(songId, 'Artist', song.artist));
@@ -117,14 +125,7 @@ export class PlayMusicHandler implements ToolHandler {
     }
 
     await this.bindPlaylistMessage(args.cacheKey, queuedSongIds, queuedUris);
-
-    try {
-      await this.mpdClientService.send(new PlayMpdRequest());
-      this.logger.log('Playback started.');
-    } catch (e) {
-      this.logger.error(e);
-      this.logger.error('Failed to start playback');
-    }
+    await this.startPlayback(firstQueuedId);
 
     const markdownList = songsQueued.map((item) => `- ${item}`).join('\n');
 
@@ -152,6 +153,40 @@ export class PlayMusicHandler implements ToolHandler {
       await this.playlistReconciler.bind({ messageId: ref.messageId, chatId: ref.chatId, sessionId: ref.sessionId, songIds, uris });
     } catch (e) {
       this.logger.warn(`Could not bind the playlist message ${ref.messageId}: ${getErrorMessage(e)}`);
+    }
+  }
+
+  /**
+   * Where playback starts once the songs are in the queue depends on what MPD was doing.
+   *
+   * A bare `play` means "continue". While something plays it changes nothing, which is right: the new
+   * songs wait their turn behind it. But stopped or paused, `play` restarts the *current* song, which
+   * is wherever the old queue was parked, so the user who just asked for music heard the beginning of
+   * the previous queue again instead of what they asked for. When the state is not `play`, the first
+   * song this call added is started instead, by its queue id rather than its position, because another
+   * client can reorder the queue between the add and the play. With nothing added (every add failed)
+   * the bare `play` is kept, so the request still produces sound where it can.
+   */
+  private async startPlayback(firstQueuedId?: number): Promise<void> {
+    try {
+      const status = await this.mpdClientService.send(new StatusMpdRequest());
+
+      if (status.state === 'play') {
+        this.logger.log('Playback already running; the new songs are queued behind it.');
+        return;
+      }
+
+      if (firstQueuedId !== undefined) {
+        await this.mpdClientService.send(new PlayIdMpdRequest(firstQueuedId));
+        this.logger.log(`Playback started at queue id ${firstQueuedId}.`);
+        return;
+      }
+
+      await this.mpdClientService.send(new PlayMpdRequest());
+      this.logger.log('Playback started.');
+    } catch (e) {
+      this.logger.error(e);
+      this.logger.error('Failed to start playback');
     }
   }
 }

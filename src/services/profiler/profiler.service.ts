@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Schema, SchemaType } from 'mongoose';
 import { z } from 'zod';
 import { MusicDbService } from '../music-db/music-db.service';
-import { OpensearchService } from '../opensearch/opensearch.service';
+import { isSearchNodeUnreachable, OpensearchService } from '../opensearch/opensearch.service';
 import { Client } from '@opensearch-project/opensearch';
 import type { AggregationContainer } from '@opensearch-project/opensearch/api/_types/_common.aggregations.js';
 import { ProfilerOptions, SchemaInferenceResult, InferredField, CardinalityResult, CompletenessResult, DistributionResult } from './profiler.types';
@@ -92,6 +92,15 @@ export class ProfilerService {
     return [];
   }
 
+  /**
+   * The grounding document for the DJ's query generator: schemas, cardinalities, completeness and
+   * the controlled vocabulary, as one Markdown string.
+   *
+   * Throws when the search node cannot be reached. Every aggregation below swallows the errors that
+   * are about one field, but an unreachable node is about all of them, and continuing would pay the
+   * timeout once per field and then hand back a profile with every cardinality missing, which the
+   * caller would cache for the day. The DJ catches this and reuses the last profile it wrote.
+   */
   async getDatabaseProfileForPrompt(): Promise<string> {
     let output = '';
     const appendLine = (str: string) => (output += str + '\n');
@@ -194,6 +203,8 @@ export class ProfilerService {
         body: { size: 0, aggs: { test: { terms: { field: aggField } } } },
       });
     } catch (err) {
+      // Only a complaint about the field tells us anything; a node that did not answer tells us to stop.
+      if (isSearchNodeUnreachable(err)) throw err;
       const parsed = OpenSearchErrorSchema.safeParse(err);
       const reason = parsed.success ? (parsed.data.meta.body.error.root_cause[0]?.reason ?? '') : '';
       if (reason.includes('Text fields are not optimised') || reason.includes('Fielddata is disabled')) {
@@ -247,6 +258,7 @@ export class ProfilerService {
           topValues: uniqueCount <= threshold ? buckets.map((b) => ({ value: b.key, count: b.doc_count })) : undefined,
         });
       } catch (err) {
+        if (isSearchNodeUnreachable(err)) throw err;
         this.logger.warn(`Failed to get cardinality for ${field}: ${getErrorMessage(err)}`);
       }
     }
@@ -301,6 +313,7 @@ export class ProfilerService {
         });
       }
     } catch (err) {
+      if (isSearchNodeUnreachable(err)) throw err;
       this.logger.error(`Error calculating completeness: ${getErrorMessage(err)}`);
     }
 
@@ -348,6 +361,7 @@ export class ProfilerService {
         });
       }
     } catch (err) {
+      if (isSearchNodeUnreachable(err)) throw err;
       this.logger.error(`Error calculating numeric distribution: ${getErrorMessage(err)}`);
     }
 

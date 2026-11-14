@@ -1,4 +1,4 @@
-import { GEMINI_FLASH } from '../../../config';
+import { GEMINI_FLASH_CACHED } from '../../../config';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { GenerateQueryWithCacheResponse } from '../response/generate-query-with-cache.response';
 import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
@@ -16,7 +16,9 @@ export class GenerateQueryWithCacheRequest extends PromptusRequest<GenerateQuery
   // never sends its own context, so anything written here would be inert.
   context: string = '';
   history: Content[];
-  readonly model: string = GEMINI_FLASH;
+  // Must equal `DiscJockeyAgent.cache.model`, and Gemini 4 refuses explicit caching: hence the
+  // dedicated constant rather than `GEMINI_FLASH`.
+  readonly model: string = GEMINI_FLASH_CACHED;
   query: string;
   role: RequestRole = 'user';
   tools: ToolDeclaration[];

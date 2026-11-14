@@ -1,5 +1,5 @@
 import { GEMINI_FLASH } from '../../../config';
-import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { LyricSemanticResponse } from '../response/lyric-semantic.response';
@@ -13,7 +13,14 @@ import { lyricSemanticPrompt } from './lyric-semantic.prompt';
  */
 export class LyricSemanticRequest extends PromptusRequest<LyricSemanticResponse> {
   public tools: ToolDeclaration[] = [];
-  public config: Partial<GenerateContentConfig> = {};
+  /**
+   * One sentence about one song under a short instruction. LOW.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.LOW,
+    },
+  };
   public cache?: CachedContent = undefined;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH;

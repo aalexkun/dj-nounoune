@@ -1,9 +1,12 @@
-import { GEMINI_FLASH } from '../../config';
+import { GEMINI_DECISION, GEMINI_FLASH_CACHED } from '../../config';
 import { Agent, ReadonlyAgentCache } from '../../agent';
 import { Logger } from '@nestjs/common';
 import { ToolsService } from '../../tools.service';
 import { PromptusRequest } from '../../promptus.request';
-import { GenerateContentResponse } from '@google/genai';
+import { GenerateContentResponse, ThinkingLevel } from '@google/genai';
+import { DecisionClient } from '../../decision/decision.client';
+import { PLAYLIST_COMPLEXITY_QUESTION, playlistComplexityInput, playlistThinkingLevel } from './request/playlist-complexity.decision';
+import { getErrorMessage } from '../../../../utils/error.utils';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { CreatePlaylistRequest } from './request/create-playlist.request';
@@ -195,17 +198,22 @@ export function isMusicSearchResult(obj: unknown): obj is MusicSearchResult {
 export class DiscJockeyAgent extends Agent {
   name = 'MusicSearchAgent';
   protected readonly logger = new Logger(this.name);
+  /** The yes/no model that sizes a playlist before it is built; see `assessThinkingLevel`. */
+  private readonly decisionClient: DecisionClient;
   /**
    * The cached file is the database profile (data); the prompt is the cache's system instruction.
    * `GenerateQueryWithCacheRequest` is the only request that references this cache, so nothing
    * else inherits the instruction — and because CacheHandler reuses a cache by name without
    * comparing content, editing the prompt does nothing until `promptus clear-cache`.
+   *
+   * On `GEMINI_FLASH_CACHED`, not `GEMINI_FLASH`: Gemini 4 refuses explicit caching, and the request
+   * that reads this cache must be on the same model. See the constant for the whole story.
    */
   protected cache: ReadonlyAgentCache = {
     name: 'dj-nounoune-cache',
     file: `files/dj-nounoune-cache`,
     fileMineType: 'text/plain',
-    model: GEMINI_FLASH,
+    model: GEMINI_FLASH_CACHED,
     cacheInstruction: generateQueryWithCache,
     cacheContent: undefined,
   };
@@ -223,17 +231,47 @@ export class DiscJockeyAgent extends Agent {
   ) {
     super();
     this.initialiseAgent(apiKey, toolService, eventEmitter, chatStream);
+    this.decisionClient = new DecisionClient(apiKey);
+  }
+
+  /**
+   * How hard to think about this playlist, decided before anything is generated.
+   *
+   * "Play whatever" and "the 1971 Laurel Canyon records, nothing after Nixon" are not the same job,
+   * and running both at HIGH paid for the second on every instance of the first. So the brief is put
+   * to `gemini-decision-1` as one yes/no question (wording and threshold in
+   * `playlist-complexity.decision.ts`) and the answer, MEDIUM or HIGH, is the level every request in
+   * the pipeline runs at: the query generator, the curator and the arranger alike, whatever each
+   * declares for itself. The decision costs a few hundred milliseconds and no output tokens.
+   *
+   * A decision that fails, times out or parses badly is MEDIUM, and a warning: the gate is a cost
+   * control, never a dependency, and MEDIUM is the level the requests default to anyway.
+   */
+  private async assessThinkingLevel(naturalLanguageRequest: string): Promise<ThinkingLevel> {
+    try {
+      const decision = await this.decisionClient.askYesNo(playlistComplexityInput(naturalLanguageRequest), PLAYLIST_COMPLEXITY_QUESTION);
+      const level = playlistThinkingLevel(decision.probability);
+      this.logger.log(
+        `Thinking: ${GEMINI_DECISION} rates the brief P(high)=${decision.probability.toFixed(2)} (confidence ${decision.confidence.toFixed(2)}) -> ${level}`,
+      );
+      return level;
+    } catch (e: unknown) {
+      this.logger.warn(`Thinking: complexity decision unavailable (${getErrorMessage(e)}); falling back to ${ThinkingLevel.MEDIUM}`);
+      return ThinkingLevel.MEDIUM;
+    }
   }
 
   /**
    * The query generator on its own: make sure the DB-profile cache is live, then turn the request
    * into its three branches. `createPlaylist` builds on this; `opensearch semantic` calls it directly
    * to show what the model produced before anything is searched.
+   *
+   * `thinkingLevel` is the pipeline-wide level `createPlaylist` decided on; left out, the request's
+   * own declared level stands.
    */
-  async generateQuery(naturalLanguageRequest: string, ctx?: ChatContext): Promise<GenerateQueryWithCacheResponse> {
+  async generateQuery(naturalLanguageRequest: string, ctx?: ChatContext, thinkingLevel?: ThinkingLevel): Promise<GenerateQueryWithCacheResponse> {
     if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
-      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
-      await this.fileService.saveFile(this.cache.name, dbProfile);
+      await this.refreshProfileFile(ctx);
 
       const cacheContent = await this.cacheHandler.cache(this.cache);
       if (!cacheContent || !cacheContent.expireTime) {
@@ -246,8 +284,44 @@ export class DiscJockeyAgent extends Agent {
       this.cache.cacheContent = cacheContent;
     }
 
-    const request = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent);
+    const request = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent).withThinkingLevel(thinkingLevel);
     return await this.generate(request, ctx);
+  }
+
+  /**
+   * Rewrite `files/dj-nounoune-cache` from a fresh database profile, or keep the one already there.
+   *
+   * The profile is rebuilt from OpenSearch each time the Gemini cache has to be recreated, which is
+   * the first playlist after a restart and then once per cache lifetime. A search node that is down
+   * at that moment used to freeze the request for as long as the profiler took to give up on every
+   * field, and then cache a profile with nothing in it. The profiler now fails fast, and the answer
+   * here is the last profile this method wrote: a day old at worst, and far better grounding than
+   * none. Only when there is no previous file either does the request fail, and then it says why.
+   */
+  private async refreshProfileFile(ctx?: ChatContext): Promise<void> {
+    try {
+      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
+      await this.fileService.saveFile(this.cache.name, dbProfile);
+    } catch (e: unknown) {
+      const previous = await this.fileService.getFileContent(this.cache.name).catch(() => '');
+      if (!previous.trim()) {
+        const error = `The database profile could not be built (${getErrorMessage(e)}) and no previous profile is on disk.`;
+        if (ctx) {
+          await this.chatStream?.emit(
+            ctx,
+            {
+              type: 'error',
+              code: 'cache_unavailable',
+              message: 'The library index is unreachable right now. Try again in a moment?',
+              retryable: true,
+            },
+            { state: 'failed', actions: [{ kind: 'retry' }] },
+          );
+        }
+        throw new Error(error);
+      }
+      this.logger.warn(`Database profile could not be rebuilt (${getErrorMessage(e)}); reusing the last profile written to files/${this.cache.name}`);
+    }
   }
 
   /**
@@ -262,7 +336,9 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('a ChatContext is required to createPlaylist');
     }
 
-    const generateQueryWithCacheResponse = await this.generateQuery(naturalLanguageRequest, ctx);
+    // One cheap, fast decision sizes the whole pipeline; see `assessThinkingLevel`.
+    const thinkingLevel = await this.assessThinkingLevel(naturalLanguageRequest);
+    const generateQueryWithCacheResponse = await this.generateQuery(naturalLanguageRequest, ctx, thinkingLevel);
 
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.aggregate, null, 2));
     this.logger.log(JSON.stringify(generateQueryWithCacheResponse.fulltext, null, 2));
@@ -329,8 +405,8 @@ export class DiscJockeyAgent extends Agent {
       throw new Error('No songs found');
     }
 
-    const postFiltering = await this.postFilteringSong(naturalLanguageRequest, musicResult, generateQueryWithCacheResponse.semantic);
-    const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering);
+    const postFiltering = await this.postFilteringSong(naturalLanguageRequest, musicResult, generateQueryWithCacheResponse.semantic, thinkingLevel);
+    const arrangePopulatedSongs = await this.findBestArrangement(naturalLanguageRequest, postFiltering, thinkingLevel);
 
     // The structured playlist, not a newline-joined string of it. Every row keeps its song id, its
     // source and its own action set, which is what makes a long press on one title do something.
@@ -365,7 +441,11 @@ export class DiscJockeyAgent extends Agent {
     return { cacheKey, messageId: message?.id };
   }
 
-  private async findBestArrangement(naturalLanguageRequest: string, populatedSongs: PopulatedSong[]): Promise<PopulatedSong[]> {
+  private async findBestArrangement(
+    naturalLanguageRequest: string,
+    populatedSongs: PopulatedSong[],
+    thinkingLevel?: ThinkingLevel,
+  ): Promise<PopulatedSong[]> {
     const arrangedSongs: PopulatedSong[] = [];
     const aiRequestMap = new Map<number, string>();
     // Generate the map for efficient token usage
@@ -378,7 +458,7 @@ export class DiscJockeyAgent extends Agent {
       prompt += `${index + 1}|${song.artist.artist}|${song.album.title}|${song.title}|${song.emotion}|${song.pace}|${song.track_number}|${song.language}|${song.country}|${song.lyric_semantic ?? ''}\n`;
     });
 
-    const response = await this.generate(new FindBestArrangementRequest(prompt));
+    const response = await this.generate(new FindBestArrangementRequest(prompt).withThinkingLevel(thinkingLevel));
 
     response.items.forEach((item) => {
       const id = aiRequestMap.get(Number(item));
@@ -401,7 +481,12 @@ export class DiscJockeyAgent extends Agent {
    * nothing else, so the model judges it on meaning rather than on tags it was never selected by.
    * Ids run in one sequence across both.
    */
-  async postFilteringSong(request: string, candidates: Map<string, { intent: string; song: PopulatedSong }>, semanticQuery?: string) {
+  async postFilteringSong(
+    request: string,
+    candidates: Map<string, { intent: string; song: PopulatedSong }>,
+    semanticQuery?: string,
+    thinkingLevel?: ThinkingLevel,
+  ) {
     const recentlyPlayed = await this.musicDBService.getRecentlyPlayedArtist();
 
     const categoryHeader = 'ID|Artist|Album|Title|emotion|pace|genre|track_number|language';
@@ -450,7 +535,7 @@ ${recentlyPlayed.map((artist) => artist.artist + '|' + artist.playedAt).join('\n
 # Songs
 ${categorySection}${semanticSection}${reactionSection}`;
 
-    const response = await this.generate(new PostFilteringRequest(prompt));
+    const response = await this.generate(new PostFilteringRequest(prompt).withThinkingLevel(thinkingLevel));
 
     const result: PopulatedSong[] = [];
 

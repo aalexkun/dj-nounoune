@@ -106,7 +106,7 @@ instruction is written into the cache file.**
 protected cache: ReadonlyAgentCache = {
   name: 'dj-nounoune-cache',
   file: `files/dj-nounoune-cache`,
-  model: GEMINI_FLASH,
+  model: GEMINI_FLASH_CACHED,                 // not GEMINI_FLASH: Gemini 4 refuses explicit caching
   cacheInstruction: generateQueryWithCache,   // the query generator's prompt
   cacheContent: undefined,
 };
@@ -159,17 +159,23 @@ Also note `DiscJockeyAgent.createPlaylist` re-creates its cache only when `cache
 
 1. **Model match.** `cacheSetting.model` must equal the request's `model`. A mismatch is a
    `PERMISSION_DENIED` / not-found at call time, not a compile error.
-2. **No tools — in this codebase.** `tools` is only attached in the non-cached branch, so a cached
+2. **Not on Gemini 4.** `cachedContents.create` against any Gemini 4 model answers
+   `400 INVALID_ARGUMENT: Explicit caching is not supported for models/gemini-4-hydrogen`; the docs
+   say the same of the whole family and of the Interactions API. Cached requests therefore sit on
+   `GEMINI_FLASH_CACHED` (`gemini-3.8-flash`), a constant of their own, so that moving `GEMINI_FLASH`
+   never breaks them. Gemini 4 still caches *implicitly* (repeated prefixes above 4,096 tokens),
+   which needs no code; the explicit cache is the one that fails.
+3. **No tools — in this codebase.** `tools` is only attached in the non-cached branch, so a cached
    request that declares tools will never receive a function call, silently. The API itself is less
    strict: `CreateCachedContentConfig` accepts `tools` and `toolConfig`, so tools *can* be baked into
    the cache. Nothing here does that yet, and `ReadonlyAgentCache` has no field for it.
-3. **No grounding.** `grounded` is likewise only honoured in the non-cached branch.
-4. **`structuredResponse` still works.** It is merged in outside the if/else, so a cached request can
+4. **No grounding.** `grounded` is likewise only honoured in the non-cached branch.
+5. **`structuredResponse` still works.** It is merged in outside the if/else, so a cached request can
    and should use a `responseSchema`.
-5. **Minimum size.** Gemini rejects cached content below a model-dependent token floor. Small
+6. **Minimum size.** Gemini rejects cached content below a model-dependent token floor. Small
    instructions (a few hundred tokens) are not worth caching — give the request a normal `context`
    and no cache.
-6. **TTL.** Caches expire. `expireTime` is checked by `DiscJockeyAgent`; a new cache is created on
+7. **TTL.** Caches expire. `expireTime` is checked by `DiscJockeyAgent`; a new cache is created on
    demand when it has lapsed.
 
 ---

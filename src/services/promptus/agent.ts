@@ -63,7 +63,11 @@ export abstract class Agent {
   protected abstract wrapResponse<ReqType>(request: PromptusRequest<ReqType>, response: GenerateContentResponse): ReqType;
 
   initialiseAgent(apiKey: string, toolService: ToolsService, eventEmitter: EventEmitter2, chatStream?: ChatStreamService) {
-    this.client = new GoogleGenAI({ apiKey });
+    // `@google/genai` 3.0 moved the Developer API default from `v1beta` to `v1`, and `v1` has no
+    // `cachedContent` on `GenerateContentRequest`: every cached request (the DJ query generator, the
+    // enrich pass) would be refused. Pinned to the surface this code was written against; lift the
+    // pin only once the `v1` discovery document lists `cachedContents`.
+    this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
     this.toolService = toolService;
     this.eventEmitter = eventEmitter;
     this.chatStream = chatStream;
@@ -202,14 +206,15 @@ export abstract class Agent {
     this.logger.debug(`Thinking: ${request.constructor.name} used ${thoughts ?? 'no'} thought tokens`);
   }
 
-  /** Either half of the pair may be set; `thinkingBudget` is the numeric form of the same knob. */
+  /**
+   * `thinkingLevel` is the only form of the knob. `thinkingBudget` used to be read here as its numeric
+   * twin, but current models answer a budget with `400 INVALID_ARGUMENT` rather than remapping it, so
+   * nothing in this codebase sets one and nothing should.
+   */
   private thinkingOf(config?: Partial<GenerateContentConfig>): string | undefined {
-    const thinking = config?.thinkingConfig;
+    const level = config?.thinkingConfig?.thinkingLevel;
 
-    if (thinking?.thinkingLevel) return String(thinking.thinkingLevel);
-    if (thinking?.thinkingBudget !== undefined) return `budget ${thinking.thinkingBudget}`;
-
-    return undefined;
+    return level ? String(level) : undefined;
   }
 
   protected async proceedFunctionCall(fc: FunctionCall, ctx?: ChatContext): Promise<FunctionCallResult> {

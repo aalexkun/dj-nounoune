@@ -1,5 +1,5 @@
 import { GEMINI_FLASH } from '../../../config';
-import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { AgentToolsDefinition } from '../../../tools/definition/agent-tools.definition';
@@ -48,7 +48,14 @@ export class BrowseDatabaseRequest extends PromptusRequest<BrowseDatabaseRespons
       required: ['description', 'items'],
     },
   };
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * One tool, a short instruction, a list in and a list out. LOW is enough.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.LOW,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH;

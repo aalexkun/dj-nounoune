@@ -1,5 +1,5 @@
 import { GEMINI_FLASH } from '../../../config';
-import { CachedContent, Content, GenerateContentConfig } from '@google/genai';
+import { CachedContent, Content, GenerateContentConfig, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { ToolDeclaration } from '../../../tools/tool.type';
 import { DuplicateVerdictResponse } from '../response/duplicate-verdict.response';
@@ -26,7 +26,15 @@ export interface DuplicateVerdictEntry {
  */
 export class DuplicateVerdictRequest extends PromptusRequest<DuplicateVerdictResponse> {
   public tools: ToolDeclaration[] = [];
-  public config: Partial<GenerateContentConfig> = {};
+  /**
+   * Small prompt, but a wrong `same` deletes a document and re-points an album, so this one keeps
+   * MEDIUM rather than LOW: the cost of the verdict, not the size of the prompt, sets the level.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    },
+  };
   public cache?: CachedContent = undefined;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH;
