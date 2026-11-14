@@ -6,6 +6,7 @@ import {
   ContentListUnion,
   Content,
   ToolListUnion,
+  ThinkingLevel,
 } from '@google/genai';
 import { ToolDeclaration } from './tools/tool.type';
 
@@ -50,6 +51,19 @@ export abstract class PromptusRequest<TResponse> {
    * nor a `structuredResponse` — Gemini rejects both combinations — and it cannot use a `cache`.
    */
   public grounded: boolean = false;
+
+  /**
+   * Override the level this request declares, for a caller that knows more about the job than the
+   * class does: `DiscJockeyAgent.createPlaylist` sizes its whole pipeline from one decision about the
+   * brief and runs every request in it at that level. Hands back `this` so it chains off `new`, and
+   * leaves the declared level alone when given `undefined`, so a call site needs no branch.
+   */
+  public withThinkingLevel(level?: ThinkingLevel): this {
+    if (level) {
+      this.config = { ...this.config, thinkingConfig: { ...this.config.thinkingConfig, thinkingLevel: level } };
+    }
+    return this;
+  }
 
   public get contextContent(): string {
     return this.context;

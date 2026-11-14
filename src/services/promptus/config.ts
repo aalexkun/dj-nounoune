@@ -8,6 +8,13 @@
 export const GEMINI_FLASH = 'gemini-4-hydrogen';
 export const GEMINI_FLASH_LITE = 'gemini-flash-lite-latest';
 export const GEMINI_3_FLASH = 'gemini-3-flash-preview';
+/**
+ * Yes/no and single-choice decisions, scored rather than generated. Reached through the Decisions
+ * API (`decision/decision.client.ts`), never through `generateContent`, so it has no row in
+ * `MODEL_RATE_LIMITS` below: `ThrottleHandler` never sees it, and its own quota is 200 requests a
+ * minute on the free tier against one call per playlist here.
+ */
+export const GEMINI_DECISION = 'gemini-decision-1';
 
 /** Per-model quota, as read off the Google AI Studio rate-limit dashboard for this key's tier. */
 export interface ModelRateLimit {
