@@ -271,8 +271,7 @@ export class DiscJockeyAgent extends Agent {
    */
   async generateQuery(naturalLanguageRequest: string, ctx?: ChatContext, thinkingLevel?: ThinkingLevel): Promise<GenerateQueryWithCacheResponse> {
     if (!this.cache.cacheContent || new Date(this.cache.cacheContent?.expireTime || 0).getTime() < new Date().getTime()) {
-      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
-      await this.fileService.saveFile(this.cache.name, dbProfile);
+      await this.refreshProfileFile(ctx);
 
       const cacheContent = await this.cacheHandler.cache(this.cache);
       if (!cacheContent || !cacheContent.expireTime) {
@@ -287,6 +286,42 @@ export class DiscJockeyAgent extends Agent {
 
     const request = new GenerateQueryWithCacheRequest(naturalLanguageRequest, this.cache.cacheContent).withThinkingLevel(thinkingLevel);
     return await this.generate(request, ctx);
+  }
+
+  /**
+   * Rewrite `files/dj-nounoune-cache` from a fresh database profile, or keep the one already there.
+   *
+   * The profile is rebuilt from OpenSearch each time the Gemini cache has to be recreated, which is
+   * the first playlist after a restart and then once per cache lifetime. A search node that is down
+   * at that moment used to freeze the request for as long as the profiler took to give up on every
+   * field, and then cache a profile with nothing in it. The profiler now fails fast, and the answer
+   * here is the last profile this method wrote: a day old at worst, and far better grounding than
+   * none. Only when there is no previous file either does the request fail, and then it says why.
+   */
+  private async refreshProfileFile(ctx?: ChatContext): Promise<void> {
+    try {
+      const dbProfile = await this.profilerService.getDatabaseProfileForPrompt();
+      await this.fileService.saveFile(this.cache.name, dbProfile);
+    } catch (e: unknown) {
+      const previous = await this.fileService.getFileContent(this.cache.name).catch(() => '');
+      if (!previous.trim()) {
+        const error = `The database profile could not be built (${getErrorMessage(e)}) and no previous profile is on disk.`;
+        if (ctx) {
+          await this.chatStream?.emit(
+            ctx,
+            {
+              type: 'error',
+              code: 'cache_unavailable',
+              message: 'The library index is unreachable right now. Try again in a moment?',
+              retryable: true,
+            },
+            { state: 'failed', actions: [{ kind: 'retry' }] },
+          );
+        }
+        throw new Error(error);
+      }
+      this.logger.warn(`Database profile could not be rebuilt (${getErrorMessage(e)}); reusing the last profile written to files/${this.cache.name}`);
+    }
   }
 
   /**
