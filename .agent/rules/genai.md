@@ -76,7 +76,9 @@ const ai = new GoogleGenAI({});
 ## Models
 
 -   In this project every model id is a constant in `src/services/promptus/config.ts`
-    (`GEMINI_FLASH`, `GEMINI_FLASH_LITE`, `GEMINI_3_FLASH`); reference those, never a raw id.
+    (`GEMINI_FLASH`, `GEMINI_FLASH_LITE`, `GEMINI_3_FLASH`, `GEMINI_FLASH_CACHED`); reference those,
+    never a raw id. Explicit context caching is refused by every Gemini 4 model, so a cached request
+    and its cache both use `GEMINI_FLASH_CACHED`.
 -   By default, use the following models when using `@google/genai`:
     -   **General Text & Multimodal Tasks:** `gemini-4-hydrogen` (GA 2026-11-12; thinking `low`/`medium`/`high`/`xhigh`, defaults to `high`)
     -   **Coding and Complex Reasoning Tasks:** `gemini-4-argon`, or `gemini-4-carbon` for the hardest reasoning

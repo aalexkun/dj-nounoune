@@ -1,4 +1,4 @@
-import { GEMINI_DECISION, GEMINI_FLASH } from '../../config';
+import { GEMINI_DECISION, GEMINI_FLASH_CACHED } from '../../config';
 import { Agent, ReadonlyAgentCache } from '../../agent';
 import { Logger } from '@nestjs/common';
 import { ToolsService } from '../../tools.service';
@@ -205,12 +205,15 @@ export class DiscJockeyAgent extends Agent {
    * `GenerateQueryWithCacheRequest` is the only request that references this cache, so nothing
    * else inherits the instruction — and because CacheHandler reuses a cache by name without
    * comparing content, editing the prompt does nothing until `promptus clear-cache`.
+   *
+   * On `GEMINI_FLASH_CACHED`, not `GEMINI_FLASH`: Gemini 4 refuses explicit caching, and the request
+   * that reads this cache must be on the same model. See the constant for the whole story.
    */
   protected cache: ReadonlyAgentCache = {
     name: 'dj-nounoune-cache',
     file: `files/dj-nounoune-cache`,
     fileMineType: 'text/plain',
-    model: GEMINI_FLASH,
+    model: GEMINI_FLASH_CACHED,
     cacheInstruction: generateQueryWithCache,
     cacheContent: undefined,
   };
