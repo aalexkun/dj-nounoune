@@ -1,5 +1,5 @@
 import { GEMINI_FLASH_LITE } from '../../../config';
-import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { EnrichMetadataResponse } from '../response/enrich-metadata.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
@@ -11,7 +11,14 @@ import { ToolDeclaration } from '../../../tools/tool.type';
  */
 export class EnrichMetadataRequest extends PromptusRequest<EnrichMetadataResponse> {
   public tools: ToolDeclaration[] = [];
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * Closed-vocabulary classification of a page of songs on Flash Lite: recall, not reasoning. LOW.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.LOW,
+    },
+  };
   private readonly _model = GEMINI_FLASH_LITE; // GEMINI_3_FLASH
   private readonly _role: RequestRole = 'user';
   private readonly _context = ''; // This will be cached prior to the request

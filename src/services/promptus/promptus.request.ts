@@ -51,16 +51,6 @@ export abstract class PromptusRequest<TResponse> {
    */
   public grounded: boolean = false;
 
-  /**
-   * Sampling spread, both unset by default so the GenAI library's own defaults apply. A request
-   * with no opinion about variety must not be silently re-tuned just because the knob exists here.
-   *
-   * Raise them on a request whose answers read the same every time: `topP` is the one that actually
-   * bites, since nucleus sampling truncates the candidate set before `topK` is ever reached.
-   */
-  public topK?: number;
-  public topP?: number;
-
   public get contextContent(): string {
     return this.context;
   }
@@ -99,12 +89,11 @@ export abstract class PromptusRequest<TResponse> {
       contents: this.history,
     };
 
-    // Applied only when set: an unset knob must leave the library default in place. Written after
-    // the spread on purpose, so an explicit knob wins over the same key inside a request's config.
-    if (this.genaiRequest.config) {
-      if (this.topK !== undefined) this.genaiRequest.config.topK = this.topK;
-      if (this.topP !== undefined) this.genaiRequest.config.topP = this.topP;
-    }
+    // No sampling knob is ever written here. `temperature`, `topP` and `topK` are deprecated on the
+    // Gemini API: pinned to the model defaults since Gemini 3.6 Flash, so a custom value changed
+    // nothing, and rejected with an error by the models after it. The model's own sampling is the
+    // only sampling there is; `thinkingConfig.thinkingLevel` on a request's config is the one tuning
+    // knob left, and `thinkingBudget` is refused (400 INVALID_ARGUMENT) the same way.
 
     if (this.history)
       if (this.genaiRequest.config) {

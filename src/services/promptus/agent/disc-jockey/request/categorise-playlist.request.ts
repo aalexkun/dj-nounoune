@@ -1,5 +1,5 @@
 import { GEMINI_FLASH } from '../../../config';
-import { GenerateContentConfig, CachedContent, Content } from '@google/genai';
+import { GenerateContentConfig, CachedContent, Content, ThinkingLevel } from '@google/genai';
 import { PromptusRequest, RequestRole, StructuredResponse } from '../../../promptus.request';
 import { CategorisePlaylistResponse } from '../response/categorise-playlist.response';
 import { ToolDeclaration } from '../../../tools/tool.type';
@@ -56,7 +56,15 @@ export class CategorisePlaylistRequest extends PromptusRequest<CategorisePlaylis
       required: ['type'],
     },
   };
-  public config: Partial<GenerateContentConfig>;
+  /**
+   * Three distribution tools and a short instruction, naming a category: a lookup more than a
+   * deliberation. LOW.
+   */
+  public config: Partial<GenerateContentConfig> = {
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.LOW,
+    },
+  };
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH;

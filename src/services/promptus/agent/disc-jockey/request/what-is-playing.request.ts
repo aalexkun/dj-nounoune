@@ -36,19 +36,14 @@ export class WhatIsPlayingRequest extends PromptusRequest<WhatIsPlayingResponse>
   };
 
   /**
-   * Widened on purpose, and only here. This prompt answers about the same few hundred songs night
-   * after night in one fixed voice, and at the library defaults it settles into the same openings and
-   * the same anecdotes — the complaint this request exists to fix. A wider nucleus lets the
-   * second-choice phrasing through, which is where the variety comes from.
-   *
-   * A deliberately small first step: `topP` sits just above the ~0.95 default rather than at 1.0,
-   * which would also admit genuinely broken continuations, and `topK` is lifted clear so it is never
-   * the binding constraint. Still repetitive? Raise `topP` towards 0.99 before touching anything
-   * else, and reach for `config.temperature` only after that.
+   * Nothing here widens the sampling. This request once carried `topP = 0.98` / `topK = 100`
+   * against the complaint that it settles into the same openings and the same anecdotes night after
+   * night, but the sampling parameters are deprecated on the Gemini API: no effect since Gemini 3.6
+   * Flash, an error on the models after it. Variety therefore rests on the prompt alone: the
+   * "Vary Yourself" section of `WhatIsPlayingPrompt`, and the per-song scene built below, which is
+   * what makes one record's entry read unlike the last one. Still repetitive? Sharpen those, there is
+   * no knob left to turn.
    */
-  public topP = 0.98;
-  public topK = 100;
-
   public cache?: CachedContent;
   public history: Content[] = [];
   private readonly _model = GEMINI_FLASH_LITE;
